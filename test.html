@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>人脸识别 API 测试页</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; max-width: 960px; margin: 20px auto; padding: 0 20px; background: #f7f7f9; }
+  h1 { color: #333; }
+  .card { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .card h2 { margin-top: 0; font-size: 18px; border-left: 4px solid #4a90e2; padding-left: 10px; }
+  input, button { padding: 8px 12px; font-size: 14px; margin: 4px 0; border-radius: 4px; border: 1px solid #ddd; }
+  button { background: #4a90e2; color: #fff; border: none; cursor: pointer; }
+  button:hover { background: #357abd; }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  .row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 280px; }
+  img.preview { max-width: 200px; max-height: 200px; border: 1px solid #eee; border-radius: 4px; display: block; margin-top: 8px; }
+  pre { background: #2d2d2d; color: #e8e8e8; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; max-height: 300px; }
+  .status { padding: 6px 10px; border-radius: 4px; display: inline-block; font-size: 13px; }
+  .status.ok { background: #d4edda; color: #155724; }
+  .status.err { background: #f8d7da; color: #721c24; }
+  .badge { display:inline-block; background:#e7f5ff; color:#0066cc; padding:2px 8px; border-radius:10px; font-size:12px; margin-left:8px; }
+  label { font-size: 13px; color: #555; display: block; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<h1>🧑‍💻 人脸识别 API 测试台</h1>
+
+<div class="card">
+  <h2>服务状态</h2>
+  <button onclick="checkHealth()">检查服务</button>
+  <span id="healthStatus"></span>
+  <pre id="healthOutput"></pre>
+</div>
+
+<div class="card">
+  <h2>① 人脸检测</h2>
+  <input type="file" id="detectFile" accept="image/*">
+  <img id="detectPreview" class="preview" style="display:none">
+  <button onclick="doDetect()">检测人脸</button>
+  <pre id="detectOutput"></pre>
+</div>
+
+<div class="card">
+  <h2>② 注册人脸到底库</h2>
+  <label>姓名</label>
+  <input type="text" id="regName" placeholder="例如：张三" style="width: 250px;">
+  <label>图片（仅单人）</label>
+  <input type="file" id="regFile" accept="image/*">
+  <img id="regPreview" class="preview" style="display:none">
+  <br>
+  <button onclick="doRegister()">注册</button>
+  <pre id="regOutput"></pre>
+</div>
+
+<div class="card">
+  <h2>③ 1:1 人脸比对</h2>
+  <div class="row">
+    <div class="col">
+      <label>图片 1</label>
+      <input type="file" id="cmpFile1" accept="image/*">
+      <img id="cmpPreview1" class="preview" style="display:none">
+    </div>
+    <div class="col">
+      <label>图片 2</label>
+      <input type="file" id="cmpFile2" accept="image/*">
+      <img id="cmpPreview2" class="preview" style="display:none">
+    </div>
+  </div>
+  <button onclick="doCompare()">比对</button>
+  <pre id="cmpOutput"></pre>
+</div>
+
+<div class="card">
+  <h2>④ 1:N 搜索</h2>
+  <input type="file" id="searchFile" accept="image/*">
+  <img id="searchPreview" class="preview" style="display:none">
+  <br>
+  <label>阈值（0~1，越高越严格）</label>
+  <input type="number" id="searchThreshold" value="0.5" min="0" max="1" step="0.05" style="width: 100px;">
+  <button onclick="doSearch()">搜索</button>
+  <pre id="searchOutput"></pre>
+</div>
+
+<div class="card">
+  <h2>⑤ 查看 / 删除底库</h2>
+  <button onclick="listFaces()">刷新列表</button>
+  <pre id="listOutput"></pre>
+</div>
+
+<script>
+const API = "http://localhost:8000";
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function bindPreview(inputId, imgId) {
+  document.getElementById(inputId).addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const img = document.getElementById(imgId);
+    img.src = URL.createObjectURL(file);
+    img.style.display = "block";
+  });
+}
+["detectFile:detectPreview", "regFile:regPreview",
+ "cmpFile1:cmpPreview1", "cmpFile2:cmpPreview2",
+ "searchFile:searchPreview"].forEach(p => {
+  const [i, g] = p.split(":");
+  bindPreview(i, g);
+});
+
+async function apiPost(path, body, isJSON = true) {
+  const opts = { method: "POST" };
+  if (isJSON) {
+    opts.headers = { "Content-Type": "application/json" };
+    opts.body = JSON.stringify(body);
+  } else {
+    opts.body = body;
+  }
+  const res = await fetch(API + path, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  return data;
+}
+
+function show(elId, data) {
+  document.getElementById(elId).textContent = JSON.stringify(data, null, 2);
+}
+
+async function checkHealth() {
+  const el = document.getElementById("healthStatus");
+  try {
+    const res = await fetch(API + "/health");
+    const data = await res.json();
+    el.className = "status ok";
+    const deviceLabel = data.device.includes("GPU") ? "🚀 GPU 加速" : "🐢 CPU 模式";
+    el.textContent = `✅ 在线 - ${deviceLabel} - 已注册 ${data.faces} 个人脸`;
+    show("healthOutput", data);
+  } catch (e) {
+    el.className = "status err";
+    el.textContent = "❌ 无法连接 " + API;
+    show("healthOutput", { error: e.message });
+  }
+}
+
+async function doDetect() {
+  const file = document.getElementById("detectFile").files[0];
+  if (!file) return alert("请选择图片");
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const data = await apiPost("/detect", fd, false);
+    show("detectOutput", data);
+  } catch (e) { show("detectOutput", { error: e.message }); }
+}
+
+async function doRegister() {
+  const name = document.getElementById("regName").value.trim();
+  const file = document.getElementById("regFile").files[0];
+  if (!name) return alert("请输入姓名");
+  if (!file) return alert("请选择图片");
+  try {
+    const b64 = await fileToBase64(file);
+    const data = await apiPost("/faces/register", { name, image: b64 });
+    show("regOutput", data);
+    listFaces();
+  } catch (e) { show("regOutput", { error: e.message }); }
+}
+
+async function doCompare() {
+  const f1 = document.getElementById("cmpFile1").files[0];
+  const f2 = document.getElementById("cmpFile2").files[0];
+  if (!f1 || !f2) return alert("请选择两张图片");
+  try {
+    const [b1, b2] = await Promise.all([fileToBase64(f1), fileToBase64(f2)]);
+    const data = await apiPost("/compare", { image1: b1, image2: b2 });
+    show("cmpOutput", data);
+  } catch (e) { show("cmpOutput", { error: e.message }); }
+}
+
+async function doSearch() {
+  const file = document.getElementById("searchFile").files[0];
+  const threshold = parseFloat(document.getElementById("searchThreshold").value);
+  if (!file) return alert("请选择图片");
+  try {
+    const b64 = await fileToBase64(file);
+    const data = await apiPost("/search", { image: b64, threshold, top_k: 5 });
+    show("searchOutput", data);
+  } catch (e) { show("searchOutput", { error: e.message }); }
+}
+
+async function listFaces() {
+  try {
+    const res = await fetch(API + "/faces");
+    const data = await res.json();
+    show("listOutput", data);
+  } catch (e) { show("listOutput", { error: e.message }); }
+}
+
+window.addEventListener("load", checkHealth);
+</script>
+
+</body>
+</html>

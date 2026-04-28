@@ -1,0 +1,26 @@
+# ==================================================
+# 人脸识别 API 依赖
+# 针对 GTX 1080 Ti + CUDA 12.6 驱动 + Python 3.10.8 优化
+# ==================================================
+
+# ==== 核心依赖 ====
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+pydantic>=2.0.0
+
+# ==== 图像处理 ====
+opencv-python>=4.8.0
+numpy>=1.24.0,<2.0.0     # 锁定 < 2.0，InsightFace 不兼容 NumPy 2.x
+
+# ==== InsightFace ====
+insightface>=0.7.3
+
+# ==== ONNX Runtime（GPU 版，匹配 CUDA 12.x）====
+onnxruntime-gpu==1.19.2
+
+# ==== 说明 ====
+# 1. onnxruntime-gpu 1.19.2 自带 CUDA 12 运行时，无需另装 CUDA Toolkit
+# 2. 你的 GTX 1080 Ti（11GB）跑 buffalo_l 显存占用约 600MB，富余很多
+# 3. 不要混装 onnxruntime 和 onnxruntime-gpu，会冲突
+# 4. 想强制走 CPU 调试，用环境变量 FACE_FORCE_CPU=1，无需改依赖
