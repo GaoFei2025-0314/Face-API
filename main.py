@@ -69,6 +69,9 @@ app.add_middleware(
 
 # ---------- 启动时加载（模块级单例）----------
 FORCE_CPU = os.getenv("FACE_FORCE_CPU", "0") == "1"
+FACE_MODEL = os.getenv("FACE_MODEL", "buffalo_l")
+FACE_DET_SIZE = int(os.getenv("FACE_DET_SIZE", "640"))
+MAX_BASE64_IMAGE_CHARS = 10 * 1024 * 1024
 engine = FaceEngine(force_cpu=FORCE_CPU)
 db = FaceDB()  # 自动读 FACE_DB_PATH 环境变量
 
@@ -83,27 +86,128 @@ async def verify_api_key(x_api_key: Optional[str] = Header(None)):
         raise HTTPException(401, "Invalid or missing X-API-Key")
 
 
+async def require_api_key(x_api_key: Optional[str] = Header(None)):
+    """认证接口必须显式配置并提供 API Key。"""
+    if not API_KEY or x_api_key != API_KEY:
+        raise HTTPException(401, "Invalid or missing X-API-Key")
+
+
 # ---------- 辅助函数 ----------
 def decode_image_bytes(image_bytes: bytes) -> np.ndarray:
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
-        raise HTTPException(400, "无效图像，无法解码")
+        raise HTTPException(400, error_detail("IMAGE_DECODE_FAILED", "无效图像，无法解码"))
     return img
 
 
 def decode_base64(b64_str: str) -> np.ndarray:
+    if len(b64_str) > MAX_BASE64_IMAGE_CHARS:
+        raise HTTPException(413, error_detail("IMAGE_TOO_LARGE", "图片数据过大"))
     if "," in b64_str:
         b64_str = b64_str.split(",", 1)[1]
     try:
         image_bytes = base64.b64decode(b64_str)
     except Exception:
-        raise HTTPException(400, "Base64 解码失败")
+        raise HTTPException(400, error_detail("IMAGE_DECODE_FAILED", "无效图像，无法解码"))
     return decode_image_bytes(image_bytes)
+
+
+def error_detail(code: str, message: str) -> dict:
+    return {"code": code, "message": message}
+
+
+def normalize_auth_threshold(threshold: float) -> float:
+    """认证场景收紧最低阈值，允许业务侧传入更严格的值。"""
+    return max(threshold, 0.55)
+
+
+def get_single_face_or_raise(image: np.ndarray) -> dict:
+    faces = engine.analyze(image)
+    if not faces:
+        raise HTTPException(400, error_detail("NO_FACE", "未检测到人脸"))
+    if len(faces) > 1:
+        raise HTTPException(400, error_detail("MULTIPLE_FACES", "检测到多张人脸"))
+
+    face = faces[0]
+    embedding = face.get("embedding")
+    if not hasattr(embedding, "__len__") or len(embedding) != 512:
+        raise HTTPException(500, error_detail("INVALID_EMBEDDING_RESPONSE", "人脸特征提取失败"))
+    return face
 
 
 def strip_embedding(face: dict) -> dict:
     return {k: v for k, v in face.items() if k != "embedding"}
+
+
+def get_available_providers() -> list[str]:
+    try:
+        import onnxruntime as ort
+        providers = ort.get_available_providers()
+        return list(providers)
+    except Exception:
+        return []
+
+
+def write_login_audit(
+    *,
+    success: bool,
+    matched_user_id: Optional[int] = None,
+    matched_username: Optional[str] = None,
+    similarity: Optional[float] = None,
+    threshold: Optional[float] = None,
+    failure_reason: Optional[str] = None,
+    terminal_id: Optional[str] = None,
+    state: Optional[str] = None,
+    elapsed_ms: Optional[float] = None,
+) -> str:
+    return db.add_login_audit(
+        success=success,
+        matched_user_id=matched_user_id,
+        matched_username=matched_username,
+        similarity=similarity,
+        threshold=threshold,
+        failure_reason=failure_reason,
+        terminal_id=terminal_id,
+        state=state,
+        elapsed_ms=elapsed_ms,
+    )
+
+
+def raise_with_audit(
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+    threshold: Optional[float] = None,
+    terminal_id: Optional[str] = None,
+    state: Optional[str] = None,
+    similarity: Optional[float] = None,
+    elapsed_ms: Optional[float] = None,
+) -> None:
+    write_login_audit(
+        success=False,
+        similarity=similarity,
+        threshold=threshold,
+        failure_reason=code,
+        terminal_id=terminal_id,
+        state=state,
+        elapsed_ms=elapsed_ms,
+    )
+    raise HTTPException(status_code, error_detail(code, message))
+
+
+def get_system_status() -> dict:
+    return {
+        "status": "ok",
+        "device": engine.device,
+        "providers": get_available_providers(),
+        "model": FACE_MODEL,
+        "det_size": [FACE_DET_SIZE, FACE_DET_SIZE],
+        "auth_enabled": bool(API_KEY),
+        "force_cpu": FORCE_CPU,
+        "faces_count": db.count(),
+    }
 
 
 # ---------- Pydantic Schema ----------
@@ -128,13 +232,21 @@ class SearchReq(BaseModel):
 
 
 class RegisterReq(BaseModel):
-    name: str = Field(..., description="人员姓名或标识", examples=["张三"])
+    user_id: Optional[int] = Field(None, description="外部用户表 users.id", examples=[10001])
+    username: str = Field(..., description="外部用户表 users.username", examples=["zhangsan"])
     image: str = Field(..., description="单人人脸照片的 Base64")
     metadata: Optional[dict] = Field(
         None,
-        description="自定义元数据，任意 JSON 对象",
-        examples=[{"department": "研发部", "employee_id": "E001"}],
+        description="自定义元数据，不作为登录认证主依据",
+        examples=[{"department": "研发部", "tenant_id": "000000"}],
     )
+
+
+class FaceLoginReq(BaseModel):
+    image: str = Field(..., description="摄像头截图或照片的 Base64")
+    terminal_id: Optional[str] = Field(None, description="终端标识，用于审计和业务侧追踪")
+    state: Optional[str] = Field(None, description="前端请求追踪标识")
+    threshold: float = Field(0.6, ge=0.0, le=1.0, description="认证匹配阈值，默认 0.60")
 
 
 # ---------- 响应模型 ----------
@@ -161,13 +273,15 @@ class CompareResp(BaseModel):
 
 class RegisterResp(BaseModel):
     id: str
-    name: str
+    user_id: Optional[int] = None
+    username: str
     message: str
 
 
 class MatchItem(BaseModel):
     id: str
-    name: str
+    user_id: Optional[int] = None
+    username: str
     similarity: float
     metadata: dict
 
@@ -179,12 +293,80 @@ class SearchResp(BaseModel):
     elapsed_ms: float
 
 
+class FaceLoginMatch(BaseModel):
+    user_id: Optional[int] = None
+    username: str
+
+
+class FaceLoginResp(BaseModel):
+    authenticated: bool
+    message: str
+    match: FaceLoginMatch
+    state: Optional[str] = None
+    elapsed_ms: float
+
+
+class ExtractResp(BaseModel):
+    count: int
+    code: str
+    message: str
+    embedding: list[float]
+    face: dict
+    elapsed_ms: float
+
+
+class SystemStatusResp(BaseModel):
+    status: str
+    device: str
+    providers: list[str]
+    model: str
+    det_size: list[int]
+    auth_enabled: bool
+    force_cpu: bool
+    faces_count: int
+
+
+class EffectiveConfigResp(BaseModel):
+    face_login_threshold: float
+    auth_enabled: bool
+    force_cpu: bool
+    model: str
+    det_size: list[int]
+    db_path: str
+
+
+class LoginAuditItem(BaseModel):
+    id: str
+    success: bool
+    matched_user_id: Optional[int] = None
+    matched_username: Optional[str] = None
+    similarity: Optional[float] = None
+    threshold: Optional[float] = None
+    failure_reason: Optional[str] = None
+    terminal_id: Optional[str] = None
+    state: Optional[str] = None
+    elapsed_ms: Optional[float] = None
+    created_at: Optional[str] = None
+
+
+class LoginAuditListResp(BaseModel):
+    items: list[LoginAuditItem]
+
+
+class LoginAuditSummaryResp(BaseModel):
+    total: int
+    success_count: int
+    failure_count: int
+    success_rate: float
+
+
 # ---------- 路由分组 tag ----------
 TAG_SYSTEM = "系统"
 TAG_DETECT = "人脸检测"
 TAG_COMPARE = "人脸比对"
 TAG_DB = "人脸库管理"
 TAG_SEARCH = "人脸搜索"
+TAG_AUTH = "认证"
 
 
 # ---------- 系统 ----------
@@ -207,6 +389,29 @@ def health():
         "status": "ok",
         "device": engine.device,
         "faces": db.count(),
+    }
+
+
+@app.get("/system/status", tags=[TAG_SYSTEM], summary="系统运行状态", response_model=SystemStatusResp, dependencies=[Depends(require_api_key)])
+def system_status():
+    return get_system_status()
+
+
+@app.get(
+    "/config/effective",
+    tags=[TAG_SYSTEM],
+    summary="当前生效配置",
+    response_model=EffectiveConfigResp,
+    dependencies=[Depends(require_api_key)],
+)
+def effective_config():
+    return {
+        "face_login_threshold": 0.55,
+        "auth_enabled": bool(API_KEY),
+        "force_cpu": FORCE_CPU,
+        "model": FACE_MODEL,
+        "det_size": [FACE_DET_SIZE, FACE_DET_SIZE],
+        "db_path": os.getenv("FACE_DB_PATH", "faces.db"),
     }
 
 
@@ -254,6 +459,28 @@ def detect_base64(req: Base64ImageReq):
     }
 
 
+@app.post(
+    "/extract/base64",
+    tags=[TAG_DETECT],
+    summary="提取单人脸特征（Base64）",
+    response_model=ExtractResp,
+    dependencies=[Depends(require_api_key)],
+)
+def extract_base64(req: Base64ImageReq):
+    t0 = time.perf_counter()
+    img = decode_base64(req.image)
+    face = get_single_face_or_raise(img)
+    elapsed = (time.perf_counter() - t0) * 1000
+    return {
+        "count": 1,
+        "code": "OK",
+        "message": "ok",
+        "embedding": face["embedding"],
+        "face": strip_embedding(face),
+        "elapsed_ms": round(elapsed, 2),
+    }
+
+
 # ---------- 1:1 比对 ----------
 @app.post(
     "/compare",
@@ -270,7 +497,7 @@ def compare(req: CompareReq):
     faces2 = engine.analyze(img2)
 
     if not faces1 or not faces2:
-        raise HTTPException(400, "至少一张图未检测到人脸")
+        raise HTTPException(400, error_detail("NO_FACE", "至少一张图未检测到人脸"))
 
     faces1.sort(key=lambda f: f["det_score"], reverse=True)
     faces2.sort(key=lambda f: f["det_score"], reverse=True)
@@ -295,17 +522,26 @@ def compare(req: CompareReq):
     dependencies=[Depends(verify_api_key)],
 )
 def register(req: RegisterReq):
-    """图片中必须只有一张脸"""
+    """图片中必须只有一张脸，username 必须对应外部用户表。"""
     img = decode_base64(req.image)
     faces = engine.analyze(img)
 
     if not faces:
-        raise HTTPException(400, "未检测到人脸")
+        raise HTTPException(400, error_detail("NO_FACE", "未检测到人脸"))
     if len(faces) > 1:
-        raise HTTPException(400, f"检测到 {len(faces)} 张人脸，注册需单人图片")
+        raise HTTPException(400, error_detail("MULTIPLE_FACES", f"检测到 {len(faces)} 张人脸，注册需单人图片"))
 
-    face_id = db.add(req.name, faces[0]["embedding"], req.metadata)
-    return {"id": face_id, "name": req.name, "message": "注册成功"}
+    username = req.username.strip()
+    if not username:
+        raise HTTPException(400, error_detail("INVALID_USERNAME", "username 不能为空"))
+
+    face_id = db.add(username, faces[0]["embedding"], req.metadata, req.user_id)
+    return {
+        "id": face_id,
+        "user_id": req.user_id,
+        "username": username,
+        "message": "注册成功",
+    }
 
 
 @app.get(
@@ -327,7 +563,7 @@ def list_faces():
 def delete_face(face_id: str):
     if db.remove(face_id):
         return {"deleted": face_id}
-    raise HTTPException(404, "该 ID 不存在")
+    raise HTTPException(404, error_detail("FACE_ID_NOT_FOUND", "该 ID 不存在"))
 
 
 # ---------- 1:N 搜索 ----------
@@ -345,7 +581,7 @@ def search(req: SearchReq):
     faces = engine.analyze(img)
 
     if not faces:
-        raise HTTPException(400, "未检测到人脸")
+        raise HTTPException(400, error_detail("NO_FACE", "未检测到人脸"))
 
     faces.sort(key=lambda f: f["det_score"], reverse=True)
     results = db.search(faces[0]["embedding"], req.top_k, req.threshold)
@@ -357,6 +593,102 @@ def search(req: SearchReq):
         "matches": results,
         "elapsed_ms": round(elapsed, 2),
     }
+
+
+@app.post(
+    "/auth/face-login",
+    tags=[TAG_AUTH],
+    summary="轻量人脸登录认证",
+    response_model=FaceLoginResp,
+    dependencies=[Depends(require_api_key)],
+)
+def face_login(req: FaceLoginReq):
+    """执行单人脸校验和 top-1 检索，返回业务侧可继续处理的认证结果，不签发 token。"""
+    t0 = time.perf_counter()
+    img = decode_base64(req.image)
+    try:
+        face = get_single_face_or_raise(img)
+    except HTTPException as exc:
+        raise_with_audit(
+            status_code=exc.status_code,
+            code=exc.detail["code"],
+            message=exc.detail["message"],
+            threshold=normalize_auth_threshold(req.threshold),
+            terminal_id=req.terminal_id,
+            state=req.state,
+            elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )
+
+    threshold = normalize_auth_threshold(req.threshold)
+    results = db.search(face["embedding"], top_k=1, threshold=threshold)
+    if not results:
+        raise_with_audit(
+            status_code=403,
+            code="NO_MATCH",
+            message="身份验证失败，未匹配到有效用户",
+            threshold=threshold,
+            terminal_id=req.terminal_id,
+            state=req.state,
+            elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )
+
+    best_match = results[0]
+    username = str(best_match.get("username") or "").strip()
+    if not username:
+        raise_with_audit(
+            status_code=403,
+            code="INVALID_MATCH_RECORD",
+            message="身份验证失败，匹配记录无效",
+            threshold=threshold,
+            terminal_id=req.terminal_id,
+            state=req.state,
+            similarity=best_match.get("similarity"),
+            elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )
+
+    elapsed = (time.perf_counter() - t0) * 1000
+    write_login_audit(
+        success=True,
+        matched_user_id=best_match.get("user_id"),
+        matched_username=username,
+        similarity=best_match.get("similarity"),
+        threshold=threshold,
+        terminal_id=req.terminal_id,
+        state=req.state,
+        elapsed_ms=round(elapsed, 2),
+    )
+    return {
+        "authenticated": True,
+        "message": "认证成功",
+        "match": {
+            "user_id": best_match.get("user_id"),
+            "username": username,
+        },
+        "state": req.state,
+        "elapsed_ms": round(elapsed, 2),
+    }
+
+
+@app.get(
+    "/audit/login/recent",
+    tags=[TAG_AUTH],
+    summary="最近登录审计",
+    response_model=LoginAuditListResp,
+    dependencies=[Depends(require_api_key)],
+)
+def list_login_audits(limit: int = 20):
+    return {"items": db.list_login_audits(limit)}
+
+
+@app.get(
+    "/audit/login/summary",
+    tags=[TAG_AUTH],
+    summary="登录审计汇总",
+    response_model=LoginAuditSummaryResp,
+    dependencies=[Depends(require_api_key)],
+)
+def login_audit_summary(limit: int = 100):
+    return db.get_login_audit_summary(limit)
 
 
 if __name__ == "__main__":

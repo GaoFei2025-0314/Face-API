@@ -45,8 +45,10 @@
 
 <div class="card">
   <h2>② 注册人脸到底库</h2>
-  <label>姓名</label>
-  <input type="text" id="regName" placeholder="例如：张三" style="width: 250px;">
+  <label>用户 ID（可选，对应外部 users.id）</label>
+  <input type="number" id="regUserId" placeholder="例如：10001" style="width: 250px;">
+  <label>用户名</label>
+  <input type="text" id="regUsername" placeholder="例如：zhangsan" style="width: 250px;">
   <label>图片（仅单人）</label>
   <input type="file" id="regFile" accept="image/*">
   <img id="regPreview" class="preview" style="display:none">
@@ -164,13 +166,15 @@ async function doDetect() {
 }
 
 async function doRegister() {
-  const name = document.getElementById("regName").value.trim();
+  const userIdValue = document.getElementById("regUserId").value.trim();
+  const user_id = userIdValue ? Number(userIdValue) : null;
+  const username = document.getElementById("regUsername").value.trim();
   const file = document.getElementById("regFile").files[0];
-  if (!name) return alert("请输入姓名");
+  if (!username) return alert("请输入用户名");
   if (!file) return alert("请选择图片");
   try {
     const b64 = await fileToBase64(file);
-    const data = await apiPost("/faces/register", { name, image: b64 });
+    const data = await apiPost("/faces/register", { user_id, username, image: b64 });
     show("regOutput", data);
     listFaces();
   } catch (e) { show("regOutput", { error: e.message }); }

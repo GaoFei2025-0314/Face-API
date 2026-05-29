@@ -1,205 +1,313 @@
-# 人脸识别 API（实际运行版）
+# 人脸识别 API 运行与使用说明
 
-> 基于 InsightFace + FastAPI + SQLite，已在 i9-7940X + GTX 1080 Ti + Python 3.10.8 上跑通。
-> 当前推理后端：**CPU**（GPU 模式需要额外装 CUDA Toolkit，详见第八节）。
+> 最后同步：2026-05-27  
+> 适用阶段：face_api modularization phase-1
 
----
+这是 **首次接手时优先阅读** 的文档。
 
-## 一、环境状态
+如果你现在的目标是：
+- 把服务跑起来
+- 验证接口是否可用
+- 知道下一份该看什么文档
 
-| 项 | 值 |
-|---|---|
-| 环境管理 | conda |
-| 环境名 | `face_api` |
-| Python | 3.10.8 |
-| InsightFace | 0.7.3（用 cgohlke 的 Win64 预编译 wheel 装的） |
-| ONNX Runtime | onnxruntime-gpu 1.19.2（实际跑 CPU） |
-| NumPy | 1.26.4（已锁定 < 2.0） |
-| 数据库 | SQLite（faces.db） |
+先看这一份就够了。
 
 ---
 
-## 二、日常启动（最常用）
+## 1. 项目是什么
 
-### 方式 A：双击 run.bat
+`face_api` 是一个运行在本地 Windows 工作站上的人脸识别 REST API。
 
-最简单。
+当前已经支持：
+- 人脸检测
+- 单人脸特征提取（受控 primitive）
+- 1:1 人脸比对
+- 1:N 人脸搜索
+- 人脸库增删查
+- 轻量人脸登录认证
+- 最小运维状态 / 配置 / 审计查询
 
-### 方式 B：命令行
+它当前更适合被理解为：
 
-打开 Anaconda Prompt（或 cmd），执行：
+> **可复用的人脸识别模块底座**
 
-```bash
+而不是：
+
+> 完整登录平台 / 权限平台 / 大规模向量数据库平台
+
+它不负责：
+- 业务用户主表管理
+- token / session 签发
+- 完整权限体系
+- 分布式部署
+- 活体检测
+
+---
+
+## 2. 唯一推荐启动路径
+
+当前仓库同时保留了 conda 和 venv 两套说明，但：
+
+- **主路径：conda**
+- **备选路径：venv**
+
+第一次接手时，**直接按 conda 路径跑**，不要犹豫。
+
+### 方式 A：双击启动
+
+直接双击：
+
+- `H:\AI_test\face_api\run.bat`
+
+### 方式 B：命令行启动
+
+在 **Anaconda Prompt / cmd** 中执行：
+
+```bat
 cd /d H:\AI_test\face_api
 conda activate face_api
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-启动成功的标志：
+启动成功后默认访问：
 
-```
-[FaceEngine] Available providers: ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
-[FaceEngine] Ready. Running on GPU (CUDA)
-[FaceDB-SQLite] Ready at H:\AI_test\face_api\faces.db, N faces loaded
-INFO:     Uvicorn running on http://0.0.0.0:8000
-```
-
-> **关于 `Running on GPU (CUDA)` 提示**：这只是基于 provider 列表的探测显示，**实际推理回落到 CPU**（因为 cuda dll 加载失败，看启动日志会有 `Applied providers: ['CPUExecutionProvider']` 字样）。要让 GPU 真正生效需要装 CUDA Toolkit，详见第八节。
+- Swagger：`http://localhost:8000/docs`
+- OpenAPI：`http://localhost:8000/openapi.json`
+- 联调页：直接打开 `test.html`
 
 ---
 
-## 三、停止服务
+## 3. 启动后最小验证（只做这 3 步）
 
-在 cmd 窗口按 `Ctrl + C`。
+### 1）健康检查
 
----
-
-## 四、测试
-
-服务跑起来后，三种方式都能测：
-
-1. **浏览器打开 test.html** —— 最直观
-2. **浏览器打开 http://localhost:8000/docs** —— Swagger 交互式文档
-3. **curl 命令行** —— 见 FRONTEND_API.md
-
----
-
-## 五、人脸库存放在哪
-
-- 主库文件：`H:\AI_test\face_api\faces.db`
-- WAL 日志：`faces.db-wal`（运行时存在，正常）
-- 共享内存：`faces.db-shm`（运行时存在，正常）
-
-**备份**：停止服务后直接复制 `faces.db` 即可。
-
-**清空**：停止服务，删除 `faces.db`、`faces.db-wal`、`faces.db-shm` 三个文件，下次启动自动重建空库。
-
----
-
-## 六、查看人脸库内容
-
-不停止服务的情况下：
-
-```bash
-conda activate face_api
-python -c "import sqlite3; conn=sqlite3.connect('faces.db'); rows=conn.execute('SELECT id, name, length(embedding), created_at FROM faces').fetchall(); [print(r) for r in rows]"
+```bat
+curl http://localhost:8000/health
 ```
 
-或者推荐用图形化工具：[DB Browser for SQLite](https://sqlitebrowser.org/)。
+期望返回类似：
+
+```json
+{ "status": "ok", "device": "CPU", "faces": 0 }
+```
+
+### 2）打开 Swagger
+
+浏览器打开：
+
+```text
+http://localhost:8000/docs
+```
+
+### 3）查看 OpenAPI
+
+```bat
+curl http://localhost:8000/openapi.json
+```
+
+做到这 3 步，就说明：
+- 服务起来了
+- 路由注册正常
+- 文档可访问
 
 ---
 
-## 七、接口一览
+## 4. 接口怎么分层理解
 
-| 方法 | 路径 | 说明 |
+这是当前模块最重要的理解方式。
+
+### runtime primitives
+给受控集成方的原子能力：
+- `GET /health`
+- `GET /system/status`
+- `GET /config/effective`
+- `POST /extract/base64`
+
+### library helpers
+围绕人脸库和通用识别的能力：
+- `POST /detect`
+- `POST /detect/base64`
+- `POST /compare`
+- `POST /search`
+- `POST /faces/register`
+- `GET /faces`
+- `DELETE /faces/{face_id}`
+
+### auth helper
+给业务系统做认证辅助：
+- `POST /auth/face-login`
+
+### ops helpers
+给运维/调优用：
+- `GET /audit/login/recent`
+- `GET /audit/login/summary`
+
+---
+
+## 5. 鉴权规则
+
+先记最重要的两句：
+
+### 永远公开
+- `GET /health`
+
+### 强制鉴权
+这些接口必须显式配置并传入 `X-API-Key`：
+- `POST /extract/base64`
+- `GET /system/status`
+- `GET /config/effective`
+- `POST /auth/face-login`
+- `GET /audit/login/recent`
+- `GET /audit/login/summary`
+
+### 条件启用鉴权
+这些接口保留原有兼容行为：
+- `POST /detect`
+- `POST /detect/base64`
+- `POST /compare`
+- `POST /faces/register`
+- `GET /faces`
+- `DELETE /faces/{face_id}`
+- `POST /search`
+
+也就是说：
+- 如果没设置 `FACE_API_KEY`，这些接口默认不强制校验
+- 如果设置了 `FACE_API_KEY`，就必须带请求头
+
+---
+
+## 6. 当前最常用的接口
+
+### 探活
+- `GET /health`
+
+### 检测
+- `POST /detect`
+- `POST /detect/base64`
+
+### 提特征（受控 primitive）
+- `POST /extract/base64`
+
+### 比对 / 检索
+- `POST /compare`
+- `POST /search`
+
+### 登录辅助
+- `POST /auth/face-login`
+
+### 运维
+- `GET /system/status`
+- `GET /config/effective`
+- `GET /audit/login/recent`
+- `GET /audit/login/summary`
+
+详细请求/响应样例不要在这里死记，直接去看：
+- `docs/usage/API_INTEGRATION.md`
+
+---
+
+## 7. GPU / CPU 怎么看
+
+### 默认行为
+系统默认：
+- 优先尝试 `CUDAExecutionProvider`
+- 不可用时回退 `CPUExecutionProvider`
+
+### 强制 CPU
+```bat
+set FACE_FORCE_CPU=1
+```
+
+### 一个非常容易误解的点
+
+**看到 CUDA provider，不代表实际推理已经稳定跑在 GPU 上。**
+
+判断顺序建议：
+1. 看 `onnxruntime.get_available_providers()`
+2. 看服务启动日志
+3. 看接口耗时
+4. 必要时再做单独 provider 验证
+
+---
+
+## 8. 环境变量
+
+| 变量 | 默认值 | 作用 |
 |---|---|---|
-| GET | `/health` | 健康检查 |
-| POST | `/detect` | 人脸检测（文件） |
-| POST | `/detect/base64` | 人脸检测（Base64） |
-| POST | `/compare` | 1:1 比对 |
-| POST | `/faces/register` | 注册人脸 |
-| GET | `/faces` | 列出底库 |
-| DELETE | `/faces/{id}` | 删除人脸 |
-| POST | `/search` | 1:N 搜索 |
-
-详细接口文档见 `FRONTEND_API.md` 或运行后访问 `/docs`。
+| `FACE_MODEL` | `buffalo_l` | 模型名 |
+| `FACE_DET_SIZE` | `640` | 检测输入尺寸 |
+| `FACE_DB_PATH` | `faces.db` | SQLite 数据库路径 |
+| `FACE_FORCE_CPU` | `0` | 设为 `1` 时强制 CPU |
+| `FACE_API_KEY` | 空 | 启用 API Key 鉴权 |
 
 ---
 
-## 八、让 GPU 真正生效（可选，性能提升 5-10 倍）
+## 9. 数据库文件说明
 
-当前 CPU 推理：约 200-400ms/次。
-GPU 模式可以降到：约 30-50ms/次。
+运行过程中通常会看到：
+- `faces.db`
+- `faces.db-wal`
+- `faces.db-shm`
 
-需要装两个 NVIDIA 工具包：
+这是 WAL 模式下的正常现象。
 
-### 1. 装 CUDA Toolkit 12.x
+### 备份
+- **停服务后** 复制数据库文件
 
-- 下载：<https://developer.nvidia.com/cuda-12-1-0-download-archive>
-- 选 Windows → x86_64 → 10 → exe (local)
-- 大小约 3GB
-- 安装时可以**自定义路径到 D 盘**省 C 盘空间
-- 装完会自动配好环境变量
-
-### 2. 装 cuDNN 9.x for CUDA 12
-
-- 下载：<https://developer.nvidia.com/cudnn>
-- 需要注册 NVIDIA 账号
-- 选 cuDNN v9.x for CUDA 12.x
-- 大小约 700MB
-- 解压后把 bin / lib / include 三个文件夹的内容**复制到 CUDA Toolkit 安装目录的对应文件夹**
-
-### 3. 验证
-
-```bash
-conda activate face_api
-python -c "import onnxruntime as ort; sess = ort.InferenceSession('C:/Users/Administrator/.insightface/models/buffalo_l/det_10g.onnx', providers=['CUDAExecutionProvider']); print('Active:', sess.get_providers())"
-```
-
-如果输出 `Active: ['CUDAExecutionProvider', 'CPUExecutionProvider']`（不是仅 CPU），说明 GPU 真的生效了。
-
-### 4. 重启服务
-
-按 Ctrl+C 停止当前服务，重新 run.bat。日志里 `Applied providers` 应该变成 `['CUDAExecutionProvider', ...]`。
+### 清空底库
+- 停服务
+- 删除 `faces.db`、`faces.db-wal`、`faces.db-shm`
+- 重启服务后自动重建空库
 
 ---
 
-## 九、常见问题
+## 10. 常见问题
 
-### Q1：不小心关了 cmd 窗口
+### Q1：我该先看哪份文档？
 
-服务停了，重新双击 run.bat 即可。底库数据会保留。
+按这个顺序：
+1. `README.md` —— 先跑起来
+2. `docs/usage/API_INTEGRATION.md` —— 看怎么调用接口
+3. `docs/architecture/ARCHITECTURE.md` —— 看架构、边界和维护重点
+4. `docs/releases/2026-05-27-phase-1-summary.md` —— 看当前阶段成果和风险边界
 
-### Q2：报 "ModuleNotFoundError: No module named 'xxx'"
+### Q2：报 `ModuleNotFoundError`
 
-conda 环境没激活成功。检查命令行最前面是否有 `(face_api)`，没有就跑：
+说明环境没激活好，先确认：
+- conda 路径是否已 `conda activate face_api`
+- venv 路径是否已 `venv\Scripts\activate`
 
-```bash
-conda activate face_api
-```
+### Q3：前端接口报 401
 
-### Q3：GPU dll 加载失败的红色错误一直滚
+优先检查：
+- 是否设置了 `FACE_API_KEY`
+- 前端是否带了 `X-API-Key`
+- 当前调用的是不是强制鉴权接口
 
-这是当前 CPU 模式下的预期警告（每次推理都试图加载 GPU 但失败），**不影响功能**。如果觉得吵，装 CUDA Toolkit（第八节）让它真的能加载，错误就消失了。
+### Q4：局域网访问不了
 
-### Q4：相似度比预期低
-
-InsightFace 的相似度在 0.4-0.5 之间是"模糊地带"，不是 bug。提升相似度的方法：
-- 用更标准的正面照（无侧脸、无遮挡、光线好）
-- 同人不同时期/不同照片本身就会有差异
-- 阈值可以根据实际情况调整（business 场景常用 0.45-0.55）
-
-### Q5：想让局域网内其他电脑访问
-
-启动命令已经是 `--host 0.0.0.0`，其他电脑用你这台电脑的 IP 访问即可：
-
-```bash
-ipconfig                # 查 IPv4 地址
-```
-
-让他们浏览器打开 `http://<你的IP>:8000/docs`。如果连不上，检查 Windows 防火墙是否放行 8000 端口。
+排查顺序：
+1. 服务是否启动成功
+2. 是否绑定 `0.0.0.0`
+3. 后端机器 IPv4 是否正确
+4. Windows 防火墙是否放行 8000 端口
 
 ---
 
-## 十、目录结构（最终版）
+## 11. 其他文档分别干什么
 
-```
-H:\AI_test\face_api\
-├── main.py                  # FastAPI 应用与路由
-├── face_engine.py           # InsightFace 封装
-├── storage.py               # SQLite 人脸库
-├── requirements.txt         # 依赖清单（参考用，实际用 conda 装）
-├── requirements-cpu.txt     # CPU 版备用
-├── run.bat                  # 一键启动（conda 版）
-├── test.html                # 浏览器测试页
-├── README.md                # 本文档（启动指南）
-├── FRONTEND_API.md          # 给前端的接口文档
-├── HOW_TO_DELIVER.md        # 部署交付指南
-├── CLAUDE.md                # 给 Claude Code 的项目说明
-├── faces.db                 # SQLite 主库（运行后生成）
-├── faces.db-wal             # WAL 日志（运行时存在）
-├── faces.db-shm             # 共享内存索引（运行时存在）
-└── __pycache__/             # Python 编译缓存（自动生成，可忽略）
-```
+### `docs/usage/API_INTEGRATION.md`
+适合：
+- 前端/全栈联调
+- 想直接复制请求体、返回体、TS 类型、fetch 示例
 
-注意：原来的 `setup.bat` 已经废弃（因为环境用 conda 不用 venv 了），删掉就行。
+### `docs/architecture/ARCHITECTURE.md`
+适合：
+- 接手维护
+- 看模块边界、数据流、存储设计、高风险改动点
+
+### `docs/releases/2026-05-27-phase-1-summary.md`
+适合：
+- 看本轮阶段成果
+- 看 phase-1 当前已经交付了什么
+- 看已接受的风险边界

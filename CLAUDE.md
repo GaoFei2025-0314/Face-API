@@ -90,6 +90,7 @@ Current route groups:
 - Comparison: `POST /compare`
 - Face database: `POST /faces/register`, `GET /faces`, `DELETE /faces/{face_id}`
 - Search: `POST /search`
+- Auth: `POST /auth/face-login`
 
 Image inputs are OpenCV BGR arrays after decoding. Base64 inputs support strings with or without a `data:image/...;base64,` prefix.
 
@@ -105,7 +106,7 @@ Wraps InsightFace `FaceAnalysis`. It chooses `CUDAExecutionProvider` when availa
 
 Use the `FaceDB` interface instead of direct SQLite access from routes:
 
-- `add(name, embedding, metadata=None) -> str`
+- `add(username, embedding, metadata=None, user_id=None) -> str`
 - `remove(face_id) -> bool`
 - `list_all() -> list`
 - `count() -> int`
@@ -116,9 +117,10 @@ Use the `FaceDB` interface instead of direct SQLite access from routes:
 
 ## API behavior to preserve
 
-- `/faces/register` requires exactly one detected face; zero or multiple faces return HTTP 400.
+- `/faces/register` requires exactly one detected face; zero or multiple faces return HTTP 400. It stores internal face `id` plus optional external `user_id` and required `username`.
 - `/compare` returns HTTP 400 if either image has no face; if multiple faces exist, use the highest `det_score` face from each image.
 - `/search` returns HTTP 400 if no face is detected; if multiple faces exist, use the highest `det_score` face.
+- `/auth/face-login` requires `FACE_API_KEY`, requires exactly one detected face, and returns the matched `user_id` / `username` for the business system to query its user table.
 - Never return `embedding` to the frontend; use `strip_embedding()` or equivalent filtering.
 - Error responses should remain FastAPI `HTTPException` responses shaped as `{ "detail": "..." }`.
 - Similarity fields are named `similarity` and use cosine similarity in `[-1, 1]`.
@@ -131,7 +133,7 @@ Use the `FaceDB` interface instead of direct SQLite access from routes:
 When API behavior, request/response models, environment variables, setup, or frontend-facing semantics change, update the relevant docs together:
 
 - `README.md` for setup/run/operator guidance.
-- `FRONTEND_API.md` for frontend contract changes.
+- `docs/usage/API_INTEGRATION.md` for frontend contract changes.
 - `HOW_TO_DELIVER.md` for deployment/hand-off changes when applicable.
 
 ## Adding or changing endpoints

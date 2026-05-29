@@ -5,7 +5,7 @@
 后端启动后，发以下三样东西给前端同学即可：
 1. 接口地址：`http://<后端机器IP>:8000`
 2. Swagger 文档链接：`http://<后端机器IP>:8000/docs`
-3. 附件 `FRONTEND_API.md`
+3. 附件 `docs/usage/API_INTEGRATION.md`
 
 ---
 
@@ -208,7 +208,7 @@ axios.interceptors.request.use(config => {
 >
 > **交互式文档**：http://192.168.1.100:8000/docs
 >
-> **详细文档**：见附件 `FRONTEND_API.md`
+> **详细文档**：见附件 `docs/usage/API_INTEGRATION.md`
 >
 > **TypeScript 类型**：文档第七章
 >

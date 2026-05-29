@@ -49,13 +49,44 @@ class FaceDB:
             c.execute("""
                 CREATE TABLE IF NOT EXISTS faces (
                     id          TEXT PRIMARY KEY,
-                    name        TEXT NOT NULL,
+                    user_id     INTEGER,
+                    username    TEXT NOT NULL,
                     embedding   BLOB NOT NULL,
                     metadata    TEXT,
                     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            c.execute("CREATE INDEX IF NOT EXISTS idx_name ON faces(name)")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS face_login_audit (
+                    id              TEXT PRIMARY KEY,
+                    success         INTEGER NOT NULL DEFAULT 0,
+                    matched_user_id INTEGER,
+                    matched_username TEXT,
+                    similarity      REAL,
+                    threshold       REAL,
+                    failure_reason  TEXT,
+                    terminal_id     TEXT,
+                    state           TEXT,
+                    elapsed_ms      REAL,
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_face_login_audit_created_at ON face_login_audit(created_at)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_face_login_audit_success ON face_login_audit(success)")
+            columns = {row[1] for row in c.execute("PRAGMA table_info(faces)")}
+            if "name" in columns and "username" not in columns:
+                c.execute("ALTER TABLE faces RENAME COLUMN name TO username")
+                columns = {row[1] for row in c.execute("PRAGMA table_info(faces)")}
+            elif "name" in columns and "username" in columns:
+                c.execute("""
+                    UPDATE faces
+                    SET username = name
+                    WHERE username IS NULL OR TRIM(username) = ''
+                """)
+            if "user_id" not in columns:
+                c.execute("ALTER TABLE faces ADD COLUMN user_id INTEGER")
+            c.execute("DROP INDEX IF EXISTS idx_name")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_username ON faces(username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON faces(created_at)")
 
     # ---------- 序列化辅助 ----------
@@ -78,14 +109,24 @@ class FaceDB:
             self._write_count = 0
 
     # ---------- CRUD ----------
-    def add(self, name: str, embedding: list, metadata: Optional[dict] = None) -> str:
+    def add(
+        self,
+        username: str,
+        embedding: list,
+        metadata: Optional[dict] = None,
+        user_id: Optional[int] = None,
+    ) -> str:
         face_id = str(uuid.uuid4())
         with self._conn() as c:
             c.execute(
-                "INSERT INTO faces (id, name, embedding, metadata) VALUES (?, ?, ?, ?)",
+                """
+                INSERT INTO faces (id, user_id, username, embedding, metadata)
+                VALUES (?, ?, ?, ?, ?)
+                """,
                 (
                     face_id,
-                    name,
+                    user_id,
+                    username,
                     self._emb_to_blob(embedding),
                     json.dumps(metadata or {}, ensure_ascii=False),
                 ),
@@ -103,12 +144,17 @@ class FaceDB:
 
     def list_all(self) -> list:
         rows = self._conn().execute(
-            "SELECT id, name, metadata, created_at FROM faces ORDER BY created_at DESC"
+            """
+            SELECT id, user_id, username, metadata, created_at
+            FROM faces
+            ORDER BY created_at DESC
+            """
         ).fetchall()
         return [
             {
                 "id": r["id"],
-                "name": r["name"],
+                "user_id": r["user_id"],
+                "username": r["username"],
                 "metadata": json.loads(r["metadata"] or "{}"),
                 "created_at": r["created_at"],
             }
@@ -127,14 +173,15 @@ class FaceDB:
         - 10w 人：~200ms（建议接 Faiss）
         """
         rows = self._conn().execute(
-            "SELECT id, name, embedding, metadata FROM faces"
+            "SELECT id, user_id, username, embedding, metadata FROM faces"
         ).fetchall()
 
         if not rows:
             return []
 
         ids = [r["id"] for r in rows]
-        names = [r["name"] for r in rows]
+        user_ids = [r["user_id"] for r in rows]
+        usernames = [r["username"] for r in rows]
         metas = [json.loads(r["metadata"] or "{}") for r in rows]
         emb_matrix = np.stack([self._blob_to_emb(r["embedding"]) for r in rows])
 
@@ -149,7 +196,7 @@ class FaceDB:
         # 过滤 + 排序 + 取 top_k
         mask = sims >= threshold
         candidates = [
-            (sims[i], ids[i], names[i], metas[i])
+            (sims[i], ids[i], user_ids[i], usernames[i], metas[i])
             for i in np.where(mask)[0]
         ]
         candidates.sort(key=lambda x: x[0], reverse=True)
@@ -157,12 +204,92 @@ class FaceDB:
         return [
             {
                 "id": cid,
-                "name": cname,
+                "user_id": user_id,
+                "username": username,
                 "similarity": float(sim),
                 "metadata": cmeta,
             }
-            for sim, cid, cname, cmeta in candidates[:top_k]
+            for sim, cid, user_id, username, cmeta in candidates[:top_k]
         ]
+
+    def add_login_audit(
+        self,
+        *,
+        success: bool,
+        matched_user_id: Optional[int] = None,
+        matched_username: Optional[str] = None,
+        similarity: Optional[float] = None,
+        threshold: Optional[float] = None,
+        failure_reason: Optional[str] = None,
+        terminal_id: Optional[str] = None,
+        state: Optional[str] = None,
+        elapsed_ms: Optional[float] = None,
+    ) -> str:
+        audit_id = str(uuid.uuid4())
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO face_login_audit (
+                    id, success, matched_user_id, matched_username, similarity,
+                    threshold, failure_reason, terminal_id, state, elapsed_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    audit_id,
+                    1 if success else 0,
+                    matched_user_id,
+                    matched_username,
+                    similarity,
+                    threshold,
+                    failure_reason,
+                    terminal_id,
+                    state,
+                    elapsed_ms,
+                ),
+            )
+        self._maybe_checkpoint()
+        return audit_id
+
+    def list_login_audits(self, limit: int = 20) -> list:
+        safe_limit = min(max(int(limit), 1), 100)
+        rows = self._conn().execute(
+            """
+            SELECT id, success, matched_user_id, matched_username, similarity,
+                   threshold, failure_reason, terminal_id, state, elapsed_ms, created_at
+            FROM face_login_audit
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "success": bool(r["success"]),
+                "matched_user_id": r["matched_user_id"],
+                "matched_username": r["matched_username"],
+                "similarity": r["similarity"],
+                "threshold": r["threshold"],
+                "failure_reason": r["failure_reason"],
+                "terminal_id": r["terminal_id"],
+                "state": r["state"],
+                "elapsed_ms": r["elapsed_ms"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+    def get_login_audit_summary(self, limit: int = 100) -> dict:
+        items = self.list_login_audits(limit)
+        total = len(items)
+        success_count = sum(1 for item in items if item["success"])
+        failure_count = total - success_count
+        return {
+            "total": total,
+            "success_count": success_count,
+            "failure_count": failure_count,
+            "success_rate": success_count / total if total else 0,
+        }
 
     def close(self):
         conn = getattr(self._local, "conn", None)
