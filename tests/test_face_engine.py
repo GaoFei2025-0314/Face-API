@@ -5,6 +5,19 @@ import unittest
 
 
 class FaceEngineInitializationTests(unittest.TestCase):
+    def setUp(self):
+        self._saved_modules = {
+            name: sys.modules.get(name)
+            for name in ("onnxruntime", "insightface", "insightface.app", "face_engine")
+        }
+
+    def tearDown(self):
+        for name, module in self._saved_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
     def load_face_engine_module(self, prepare_error=None, providers=None):
         providers = providers or ["CPUExecutionProvider"]
 
