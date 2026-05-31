@@ -94,6 +94,41 @@ def get_route_dependency_calls(app, path: str, method: str):
 
 
 class MainApiContractTests(unittest.TestCase):
+    def test_auth_errors_return_chinese_reason_payload(self):
+        module = load_main_module()
+
+        async def run_check():
+            with self.assertRaises(HTTPException) as exc_info:
+                await module.require_api_key(None)
+            self.assertEqual(exc_info.exception.status_code, 401)
+            self.assertEqual(
+                exc_info.exception.detail,
+                {
+                    "code": "AUTH_INVALID_OR_MISSING",
+                    "message": "认证失败",
+                    "reason": "请求缺少有效的 X-API-Key，请检查前端或业务系统的接口配置",
+                },
+            )
+
+        import asyncio
+        asyncio.run(run_check())
+
+    def test_known_error_detail_includes_reason(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda _: object()
+        module.engine.analyze = lambda _: []
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.register(module.RegisterReq(username="zhangsan", image="dummy"))
+
+        self.assertEqual(exc_info.exception.status_code, 400)
+        self.assertEqual(exc_info.exception.detail["code"], "NO_FACE")
+        self.assertEqual(exc_info.exception.detail["message"], "未检测到人脸")
+        self.assertEqual(
+            exc_info.exception.detail["reason"],
+            "图片中没有检测到可用于识别的人脸，请调整光线、角度或距离后重试",
+        )
+
     def test_sensitive_routes_require_expected_auth_mode(self):
         module = load_main_module()
 

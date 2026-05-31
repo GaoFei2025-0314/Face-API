@@ -83,13 +83,13 @@ API_KEY = os.getenv("FACE_API_KEY", "")
 async def verify_api_key(x_api_key: Optional[str] = Header(None)):
     """如果环境变量没设 FACE_API_KEY，则不强制校验（开发模式）"""
     if API_KEY and x_api_key != API_KEY:
-        raise HTTPException(401, "Invalid or missing X-API-Key")
+        raise_api_error(401, "AUTH_INVALID_OR_MISSING")
 
 
 async def require_api_key(x_api_key: Optional[str] = Header(None)):
     """认证接口必须显式配置并提供 API Key。"""
     if not API_KEY or x_api_key != API_KEY:
-        raise HTTPException(401, "Invalid or missing X-API-Key")
+        raise_api_error(401, "AUTH_INVALID_OR_MISSING")
 
 
 # ---------- 辅助函数 ----------
@@ -97,24 +97,81 @@ def decode_image_bytes(image_bytes: bytes) -> np.ndarray:
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
-        raise HTTPException(400, error_detail("IMAGE_DECODE_FAILED", "无效图像，无法解码"))
+        raise_api_error(400, "IMAGE_DECODE_FAILED")
     return img
 
 
 def decode_base64(b64_str: str) -> np.ndarray:
     if len(b64_str) > MAX_BASE64_IMAGE_CHARS:
-        raise HTTPException(413, error_detail("IMAGE_TOO_LARGE", "图片数据过大"))
+        raise_api_error(413, "IMAGE_TOO_LARGE")
     if "," in b64_str:
         b64_str = b64_str.split(",", 1)[1]
     try:
         image_bytes = base64.b64decode(b64_str)
     except Exception:
-        raise HTTPException(400, error_detail("IMAGE_DECODE_FAILED", "无效图像，无法解码"))
+        raise_api_error(400, "IMAGE_DECODE_FAILED")
     return decode_image_bytes(image_bytes)
 
 
-def error_detail(code: str, message: str) -> dict:
-    return {"code": code, "message": message}
+ERROR_DEFINITIONS = {
+    "AUTH_INVALID_OR_MISSING": {
+        "message": "认证失败",
+        "reason": "请求缺少有效的 X-API-Key，请检查前端或业务系统的接口配置",
+    },
+    "IMAGE_DECODE_FAILED": {
+        "message": "无效图像，无法解码",
+        "reason": "上传内容不是有效图片，或 Base64 内容损坏，请重新选择 jpg、png 或 webp 图片",
+    },
+    "IMAGE_TOO_LARGE": {
+        "message": "图片数据过大",
+        "reason": "上传图片超过服务允许的大小限制，请压缩图片或降低分辨率后重试",
+    },
+    "IMAGE_PIXELS_TOO_LARGE": {
+        "message": "图片分辨率过高",
+        "reason": "图片宽高像素总数超过服务限制，请降低分辨率后重试",
+    },
+    "NO_FACE": {
+        "message": "未检测到人脸",
+        "reason": "图片中没有检测到可用于识别的人脸，请调整光线、角度或距离后重试",
+    },
+    "MULTIPLE_FACES": {
+        "message": "检测到多张人脸",
+        "reason": "当前接口要求图片中只能有一张人脸，请使用单人照片后重试",
+    },
+    "INVALID_EMBEDDING_RESPONSE": {
+        "message": "人脸特征提取失败",
+        "reason": "模型返回的人脸特征不完整，请检查模型文件、推理环境或输入图片质量",
+    },
+    "INVALID_USERNAME": {
+        "message": "username 不能为空",
+        "reason": "注册人脸时必须传入非空 username，用于和业务系统用户记录对应",
+    },
+    "FACE_ID_NOT_FOUND": {
+        "message": "该 ID 不存在",
+        "reason": "请求删除的人脸 ID 不在当前本地人脸库中",
+    },
+    "NO_MATCH": {
+        "message": "身份验证失败，未匹配到有效用户",
+        "reason": "当前人脸与底库记录的相似度未达到登录阈值，请重新拍摄或先完成人脸注册",
+    },
+    "INVALID_MATCH_RECORD": {
+        "message": "身份验证失败，匹配记录无效",
+        "reason": "底库命中了人脸记录，但该记录缺少有效 username 或 user_id，请检查人脸库数据",
+    },
+}
+
+
+def error_detail(code: str, message: Optional[str] = None, reason: Optional[str] = None) -> dict:
+    definition = ERROR_DEFINITIONS.get(code, {})
+    return {
+        "code": code,
+        "message": message or definition.get("message", "请求失败"),
+        "reason": reason or definition.get("reason", "请求处理失败，请检查请求参数或联系服务维护人员"),
+    }
+
+
+def raise_api_error(status_code: int, code: str, message: Optional[str] = None, reason: Optional[str] = None):
+    raise HTTPException(status_code=status_code, detail=error_detail(code, message, reason))
 
 
 def normalize_auth_threshold(threshold: float) -> float:
@@ -125,14 +182,14 @@ def normalize_auth_threshold(threshold: float) -> float:
 def get_single_face_or_raise(image: np.ndarray) -> dict:
     faces = engine.analyze(image)
     if not faces:
-        raise HTTPException(400, error_detail("NO_FACE", "未检测到人脸"))
+        raise_api_error(400, "NO_FACE")
     if len(faces) > 1:
-        raise HTTPException(400, error_detail("MULTIPLE_FACES", "检测到多张人脸"))
+        raise_api_error(400, "MULTIPLE_FACES")
 
     face = faces[0]
     embedding = face.get("embedding")
     if not hasattr(embedding, "__len__") or len(embedding) != 512:
-        raise HTTPException(500, error_detail("INVALID_EMBEDDING_RESPONSE", "人脸特征提取失败"))
+        raise_api_error(500, "INVALID_EMBEDDING_RESPONSE")
     return face
 
 
@@ -194,7 +251,7 @@ def raise_with_audit(
         state=state,
         elapsed_ms=elapsed_ms,
     )
-    raise HTTPException(status_code, error_detail(code, message))
+    raise_api_error(status_code, code, message)
 
 
 def get_system_status() -> dict:
@@ -497,7 +554,7 @@ def compare(req: CompareReq):
     faces2 = engine.analyze(img2)
 
     if not faces1 or not faces2:
-        raise HTTPException(400, error_detail("NO_FACE", "至少一张图未检测到人脸"))
+        raise_api_error(400, "NO_FACE", "至少一张图未检测到人脸")
 
     faces1.sort(key=lambda f: f["det_score"], reverse=True)
     faces2.sort(key=lambda f: f["det_score"], reverse=True)
@@ -527,13 +584,13 @@ def register(req: RegisterReq):
     faces = engine.analyze(img)
 
     if not faces:
-        raise HTTPException(400, error_detail("NO_FACE", "未检测到人脸"))
+        raise_api_error(400, "NO_FACE")
     if len(faces) > 1:
-        raise HTTPException(400, error_detail("MULTIPLE_FACES", f"检测到 {len(faces)} 张人脸，注册需单人图片"))
+        raise_api_error(400, "MULTIPLE_FACES", f"检测到 {len(faces)} 张人脸，注册需单人图片")
 
     username = req.username.strip()
     if not username:
-        raise HTTPException(400, error_detail("INVALID_USERNAME", "username 不能为空"))
+        raise_api_error(400, "INVALID_USERNAME")
 
     face_id = db.add(username, faces[0]["embedding"], req.metadata, req.user_id)
     return {
@@ -563,7 +620,7 @@ def list_faces():
 def delete_face(face_id: str):
     if db.remove(face_id):
         return {"deleted": face_id}
-    raise HTTPException(404, error_detail("FACE_ID_NOT_FOUND", "该 ID 不存在"))
+    raise_api_error(404, "FACE_ID_NOT_FOUND")
 
 
 # ---------- 1:N 搜索 ----------
@@ -581,7 +638,7 @@ def search(req: SearchReq):
     faces = engine.analyze(img)
 
     if not faces:
-        raise HTTPException(400, error_detail("NO_FACE", "未检测到人脸"))
+        raise_api_error(400, "NO_FACE")
 
     faces.sort(key=lambda f: f["det_score"], reverse=True)
     results = db.search(faces[0]["embedding"], req.top_k, req.threshold)
