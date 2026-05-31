@@ -426,7 +426,10 @@ X-API-Key: <你的密钥>
   "force_cpu": false,
   "model": "buffalo_l",
   "det_size": [640, 640],
-  "db_path": "faces.db"
+  "db_path": "faces.db",
+  "max_base64_image_chars": 11185068,
+  "max_image_bytes": 8388608,
+  "max_image_pixels": 4096000
 }
 ```
 

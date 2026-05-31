@@ -18,7 +18,9 @@ from typing import Optional
 import cv2
 import numpy as np
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from face_engine import FaceEngine
@@ -124,7 +126,7 @@ def decode_base64(b64_str: str) -> np.ndarray:
     if len(b64_str) > MAX_BASE64_IMAGE_CHARS:
         raise_api_error(413, "IMAGE_TOO_LARGE")
     try:
-        image_bytes = base64.b64decode(b64_str)
+        image_bytes = base64.b64decode(b64_str, validate=True)
     except Exception:
         raise_api_error(400, "IMAGE_DECODE_FAILED")
     return decode_image_bytes(image_bytes)
@@ -138,6 +140,10 @@ ERROR_DEFINITIONS = {
     "IMAGE_DECODE_FAILED": {
         "message": "无效图像，无法解码",
         "reason": "上传内容不是有效图片，或 Base64 内容损坏，请重新选择 jpg、png 或 webp 图片",
+    },
+    "VALIDATION_ERROR": {
+        "message": "请求参数校验失败",
+        "reason": "请求参数格式或取值不符合接口要求，请检查请求体、路径参数或查询参数",
     },
     "IMAGE_TOO_LARGE": {
         "message": "图片数据过大",
@@ -189,6 +195,11 @@ def error_detail(code: str, message: Optional[str] = None, reason: Optional[str]
 
 def raise_api_error(status_code: int, code: str, message: Optional[str] = None, reason: Optional[str] = None):
     raise HTTPException(status_code=status_code, detail=error_detail(code, message, reason))
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(_request, _exc):
+    return JSONResponse(status_code=422, content={"detail": error_detail("VALIDATION_ERROR")})
 
 
 def normalize_auth_threshold(threshold: float) -> float:
@@ -253,6 +264,7 @@ def raise_with_audit(
     status_code: int,
     code: str,
     message: str,
+    reason: Optional[str] = None,
     threshold: Optional[float] = None,
     terminal_id: Optional[str] = None,
     state: Optional[str] = None,
@@ -268,7 +280,7 @@ def raise_with_audit(
         state=state,
         elapsed_ms=elapsed_ms,
     )
-    raise_api_error(status_code, code, message)
+    raise_api_error(status_code, code, message, reason)
 
 
 def get_system_status() -> dict:
@@ -689,10 +701,12 @@ def face_login(req: FaceLoginReq):
     try:
         face = get_single_face_or_raise(img)
     except HTTPException as exc:
+        reason = exc.detail.get("reason") if isinstance(exc.detail, dict) else None
         raise_with_audit(
             status_code=exc.status_code,
             code=exc.detail["code"],
             message=exc.detail["message"],
+            reason=reason,
             threshold=normalize_auth_threshold(req.threshold),
             terminal_id=req.terminal_id,
             state=req.state,

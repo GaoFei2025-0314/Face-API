@@ -94,6 +94,19 @@ def get_route_dependency_calls(app, path: str, method: str):
 
 
 class MainApiContractTests(unittest.TestCase):
+    def setUp(self):
+        self._module_snapshot = {
+            name: sys.modules.get(name)
+            for name in ("face_engine", "storage", "onnxruntime", "main")
+        }
+
+    def tearDown(self):
+        for name, module in self._module_snapshot.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
     def assert_error_detail(self, detail, code, message, reason=None):
         self.assertEqual(detail["code"], code)
         self.assertEqual(detail["message"], message)
@@ -138,6 +151,15 @@ class MainApiContractTests(unittest.TestCase):
 
         self.assertIsNotNone(image)
         self.assertEqual(seen, [b"abcd"])
+
+    def test_decode_base64_rejects_invalid_base64_characters(self):
+        module = load_main_module()
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.decode_base64("YWJjZA==!!!!")
+
+        self.assertEqual(exc_info.exception.status_code, 400)
+        self.assert_error_detail(exc_info.exception.detail, "IMAGE_DECODE_FAILED", "无效图像，无法解码")
 
     def test_decode_image_bytes_rejects_raw_upload_over_limit(self):
         module = load_main_module()
@@ -196,6 +218,33 @@ class MainApiContractTests(unittest.TestCase):
             exc_info.exception.detail["reason"],
             "图片中没有检测到可用于识别的人脸，请调整光线、角度或距离后重试",
         )
+
+    def test_request_validation_error_returns_structured_payload(self):
+        module = load_main_module()
+        expected = {
+            "detail": {
+                "code": "VALIDATION_ERROR",
+                "message": "请求参数校验失败",
+                "reason": "请求参数格式或取值不符合接口要求，请检查请求体、路径参数或查询参数",
+            }
+        }
+
+        try:
+            from fastapi.testclient import TestClient
+        except RuntimeError:
+            import asyncio
+            import json
+
+            handler = module.app.exception_handlers[module.RequestValidationError]
+            response = asyncio.run(handler(None, module.RequestValidationError([])))
+            body = json.loads(response.body.decode("utf-8"))
+        else:
+            client = TestClient(module.app)
+            response = client.post("/search", json={"image": "dummy", "top_k": 0, "threshold": 0.5})
+            body = response.json()
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(body, expected)
 
     def test_sensitive_routes_require_expected_auth_mode(self):
         module = load_main_module()
@@ -368,7 +417,27 @@ class MainApiContractTests(unittest.TestCase):
             module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
 
         self.assertEqual(exc_info.exception.status_code, 400)
-        self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸")
+        self.assert_error_detail(
+            exc_info.exception.detail,
+            "NO_FACE",
+            "未检测到人脸",
+            "图片中没有检测到可用于识别的人脸，请调整光线、角度或距离后重试",
+        )
+
+    def test_face_login_preserves_failure_reason_from_inner_error(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda _: object()
+
+        def raise_custom_error(_image):
+            module.raise_api_error(400, "NO_FACE", "未检测到人脸", "custom reason")
+
+        module.get_single_face_or_raise = raise_custom_error
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
+
+        self.assertEqual(exc_info.exception.status_code, 400)
+        self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸", "custom reason")
 
     def test_face_login_returns_multiple_faces_failure_payload(self):
         module = load_main_module(api_key="secret")

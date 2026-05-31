@@ -181,6 +181,9 @@
 - `model`
 - `det_size`
 - `db_path`
+- `max_base64_image_chars`
+- `max_image_bytes`
+- `max_image_pixels`
 
 这让外部项目接入时不必再靠猜当前阈值和运行配置。
 
