@@ -407,6 +407,9 @@ class EffectiveConfigResp(BaseModel):
     model: str
     det_size: list[int]
     db_path: str
+    max_base64_image_chars: int
+    max_image_bytes: int
+    max_image_pixels: int
 
 
 class LoginAuditItem(BaseModel):
@@ -486,6 +489,9 @@ def effective_config():
         "model": FACE_MODEL,
         "det_size": [FACE_DET_SIZE, FACE_DET_SIZE],
         "db_path": os.getenv("FACE_DB_PATH", "faces.db"),
+        "max_base64_image_chars": MAX_BASE64_IMAGE_CHARS,
+        "max_image_bytes": MAX_IMAGE_BYTES,
+        "max_image_pixels": MAX_IMAGE_PIXELS,
     }
 
 
