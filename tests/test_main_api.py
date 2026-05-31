@@ -94,6 +94,41 @@ def get_route_dependency_calls(app, path: str, method: str):
 
 
 class MainApiContractTests(unittest.TestCase):
+    def test_decode_base64_rejects_decoded_bytes_over_limit(self):
+        module = load_main_module()
+        module.MAX_IMAGE_BYTES = 3
+        payload = "YWJjZA=="  # b"abcd"
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.decode_base64(payload)
+
+        self.assertEqual(exc_info.exception.status_code, 413)
+        self.assertEqual(exc_info.exception.detail["code"], "IMAGE_TOO_LARGE")
+        self.assertIn("超过服务允许", exc_info.exception.detail["reason"])
+
+    def test_decode_image_bytes_rejects_raw_upload_over_limit(self):
+        module = load_main_module()
+        module.MAX_IMAGE_BYTES = 3
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.decode_image_bytes(b"abcd")
+
+        self.assertEqual(exc_info.exception.status_code, 413)
+        self.assertEqual(exc_info.exception.detail["code"], "IMAGE_TOO_LARGE")
+
+    def test_decoded_image_pixels_over_limit_returns_413(self):
+        module = load_main_module()
+        module.MAX_IMAGE_BYTES = 1024 * 1024
+        module.MAX_IMAGE_PIXELS = 3
+        module.cv2.imdecode = lambda *_args, **_kwargs: module.np.zeros((2, 2, 3), dtype=module.np.uint8)
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.decode_image_bytes(b"valid-image-bytes")
+
+        self.assertEqual(exc_info.exception.status_code, 413)
+        self.assertEqual(exc_info.exception.detail["code"], "IMAGE_PIXELS_TOO_LARGE")
+        self.assertEqual(exc_info.exception.detail["message"], "图片分辨率过高")
+
     def test_auth_errors_return_chinese_reason_payload(self):
         module = load_main_module()
 

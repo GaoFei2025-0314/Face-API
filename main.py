@@ -71,7 +71,9 @@ app.add_middleware(
 FORCE_CPU = os.getenv("FACE_FORCE_CPU", "0") == "1"
 FACE_MODEL = os.getenv("FACE_MODEL", "buffalo_l")
 FACE_DET_SIZE = int(os.getenv("FACE_DET_SIZE", "640"))
-MAX_BASE64_IMAGE_CHARS = 10 * 1024 * 1024
+MAX_BASE64_IMAGE_CHARS = int(os.getenv("FACE_MAX_BASE64_CHARS", str(10 * 1024 * 1024)))
+MAX_IMAGE_BYTES = int(os.getenv("FACE_MAX_IMAGE_BYTES", str(8 * 1024 * 1024)))
+MAX_IMAGE_PIXELS = int(os.getenv("FACE_MAX_IMAGE_PIXELS", str(4_096_000)))
 engine = FaceEngine(force_cpu=FORCE_CPU)
 db = FaceDB()  # 自动读 FACE_DB_PATH 环境变量
 
@@ -93,11 +95,24 @@ async def require_api_key(x_api_key: Optional[str] = Header(None)):
 
 
 # ---------- 辅助函数 ----------
+def validate_image_bytes(image_bytes: bytes) -> None:
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        raise_api_error(413, "IMAGE_TOO_LARGE")
+
+
+def validate_decoded_image(image: np.ndarray) -> None:
+    height, width = image.shape[:2]
+    if height * width > MAX_IMAGE_PIXELS:
+        raise_api_error(413, "IMAGE_PIXELS_TOO_LARGE")
+
+
 def decode_image_bytes(image_bytes: bytes) -> np.ndarray:
+    validate_image_bytes(image_bytes)
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
         raise_api_error(400, "IMAGE_DECODE_FAILED")
+    validate_decoded_image(img)
     return img
 
 
