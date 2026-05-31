@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+  <title id="title">face_api REST API 服务架构图</title>
+  <desc id="desc">展示 face_api 的客户端、FastAPI 路由、鉴权、图片解码、InsightFace 推理、SQLite 存储和运维文档入口。</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f9fc; }
+      .band { fill: #eef4ff; stroke: #c9d8ef; stroke-width: 1.2; }
+      .card { fill: #ffffff; stroke: #c9d2df; stroke-width: 1.3; rx: 12; }
+      .card-blue { fill: #f0f7ff; stroke: #82aee8; }
+      .card-green { fill: #f0fbf6; stroke: #80c7a3; }
+      .card-orange { fill: #fff7ed; stroke: #e7a45f; }
+      .card-red { fill: #fff1f2; stroke: #ef8b98; }
+      .card-purple { fill: #f7f2ff; stroke: #b796e8; }
+      .title { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; font-size: 30px; font-weight: 700; fill: #172033; }
+      .subtitle { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; font-size: 15px; fill: #526074; }
+      .h2 { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; font-size: 18px; font-weight: 700; fill: #172033; }
+      .h3 { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; font-size: 15px; font-weight: 700; fill: #1e293b; }
+      .body { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; font-size: 13px; fill: #334155; }
+      .small { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; font-size: 12px; fill: #64748b; }
+      .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; fill: #334155; }
+      .label { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; font-size: 12px; fill: #475569; }
+      .arrow { stroke: #506176; stroke-width: 1.8; fill: none; marker-end: url(#arrow); }
+      .arrow-soft { stroke: #8a9aac; stroke-width: 1.5; fill: none; marker-end: url(#arrowSoft); stroke-dasharray: 5 5; }
+      .divider { stroke: #d8e0ea; stroke-width: 1; }
+      .pill { fill: #e8eef7; stroke: #c9d2df; rx: 14; }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#506176"/>
+    </marker>
+    <marker id="arrowSoft" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#8a9aac"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1400" height="900"/>
+  <text class="title" x="54" y="58">face_api REST API 服务架构图</text>
+  <text class="subtitle" x="54" y="86">本地 Windows 工作站部署 · FastAPI + InsightFace + ONNX Runtime + SQLite · GPU 优先，CPU 回退</text>
+
+  <rect class="band" x="44" y="120" width="1312" height="708" rx="18"/>
+  <text class="h2" x="70" y="153">运行时主链路</text>
+
+  <rect class="card card-blue" x="70" y="190" width="190" height="230" rx="12"/>
+  <text class="h2" x="94" y="222">客户端 / 调用方</text>
+  <line class="divider" x1="94" y1="238" x2="236" y2="238"/>
+  <text class="body" x="94" y="266">业务系统前端</text>
+  <text class="body" x="94" y="292">后端服务</text>
+  <text class="body" x="94" y="318">Swagger UI</text>
+  <text class="body" x="94" y="344">test.html 联调页</text>
+  <text class="small" x="94" y="380">图片输入：</text>
+  <text class="mono" x="94" y="402">multipart file</text>
+  <text class="mono" x="94" y="422">base64 / data URL</text>
+
+  <rect class="card" x="330" y="155" width="280" height="360" rx="12"/>
+  <text class="h2" x="356" y="188">FastAPI 应用</text>
+  <text class="small" x="356" y="210">main.py</text>
+  <line class="divider" x1="356" y1="226" x2="584" y2="226"/>
+  <rect class="pill" x="356" y="246" width="208" height="34"/>
+  <text class="h3" x="374" y="269">CORS / OpenAPI / Tags</text>
+  <rect class="pill" x="356" y="294" width="208" height="34"/>
+  <text class="h3" x="374" y="317">X-API-Key 鉴权</text>
+  <rect class="pill" x="356" y="342" width="208" height="34"/>
+  <text class="h3" x="374" y="365">图片解码</text>
+  <text class="small" x="374" y="397">OpenCV BGR 数组</text>
+  <rect class="pill" x="356" y="420" width="208" height="34"/>
+  <text class="h3" x="374" y="443">异常 / 响应模型</text>
+  <text class="small" x="374" y="476">HTTPException: {"detail": ...}</text>
+
+  <rect class="card card-purple" x="670" y="155" width="285" height="360" rx="12"/>
+  <text class="h2" x="696" y="188">API 路由层</text>
+  <text class="small" x="696" y="210">按能力分组</text>
+  <line class="divider" x1="696" y1="226" x2="929" y2="226"/>
+  <text class="mono" x="696" y="256">GET  /health</text>
+  <text class="mono" x="696" y="282">POST /detect</text>
+  <text class="mono" x="696" y="308">POST /detect/base64</text>
+  <text class="mono" x="696" y="334">POST /extract/base64</text>
+  <text class="mono" x="696" y="360">POST /compare</text>
+  <text class="mono" x="696" y="386">POST /search</text>
+  <text class="mono" x="696" y="412">POST /faces/register</text>
+  <text class="mono" x="696" y="438">GET/DELETE /faces</text>
+  <text class="mono" x="696" y="464">POST /auth/face-login</text>
+  <text class="small" x="696" y="493">计算类响应返回 elapsed_ms</text>
+
+  <rect class="card card-green" x="1010" y="155" width="295" height="360" rx="12"/>
+  <text class="h2" x="1036" y="188">人脸推理引擎</text>
+  <text class="small" x="1036" y="210">face_engine.py · 模块级单例</text>
+  <line class="divider" x1="1036" y1="226" x2="1279" y2="226"/>
+  <text class="h3" x="1036" y="256">InsightFace FaceAnalysis</text>
+  <text class="body" x="1036" y="284">模型：FACE_MODEL / buffalo_l</text>
+  <text class="body" x="1036" y="312">检测尺寸：FACE_DET_SIZE / 640</text>
+  <text class="body" x="1036" y="340">输出：bbox、landmarks、age、gender</text>
+  <text class="body" x="1036" y="368">输出：512 维 embedding</text>
+  <rect class="pill" x="1036" y="394" width="222" height="34"/>
+  <text class="h3" x="1054" y="417">CUDAExecutionProvider</text>
+  <rect class="pill" x="1036" y="442" width="222" height="34"/>
+  <text class="h3" x="1054" y="465">CPUExecutionProvider 回退</text>
+  <text class="small" x="1036" y="497">FACE_FORCE_CPU=1 可强制 CPU</text>
+
+  <rect class="card card-orange" x="330" y="575" width="310" height="210" rx="12"/>
+  <text class="h2" x="356" y="608">SQLite 人脸库</text>
+  <text class="small" x="356" y="630">storage.py · FaceDB</text>
+  <line class="divider" x1="356" y1="646" x2="614" y2="646"/>
+  <text class="body" x="356" y="676">faces 表：id、user_id、username</text>
+  <text class="body" x="356" y="702">embedding 以 float32 BLOB 存储</text>
+  <text class="body" x="356" y="728">NumPy 批量余弦相似度搜索</text>
+  <text class="body" x="356" y="754">WAL 模式 + 定期 checkpoint</text>
+
+  <rect class="card card-red" x="700" y="575" width="285" height="210" rx="12"/>
+  <text class="h2" x="726" y="608">登录审计</text>
+  <text class="small" x="726" y="630">face_login_audit 表</text>
+  <line class="divider" x1="726" y1="646" x2="959" y2="646"/>
+  <text class="body" x="726" y="676">记录登录成功 / 失败</text>
+  <text class="body" x="726" y="702">记录 similarity、threshold</text>
+  <text class="body" x="726" y="728">记录 failure_reason、client_ip</text>
+  <text class="mono" x="726" y="758">GET /audit/login/*</text>
+
+  <rect class="card" x="1050" y="575" width="255" height="210" rx="12"/>
+  <text class="h2" x="1076" y="608">配置与交付文档</text>
+  <text class="small" x="1076" y="630">operator / integration</text>
+  <line class="divider" x1="1076" y1="646" x2="1279" y2="646"/>
+  <text class="mono" x="1076" y="676">README.md</text>
+  <text class="mono" x="1076" y="702">API_INTEGRATION.md</text>
+  <text class="mono" x="1076" y="728">ARCHITECTURE.md</text>
+  <text class="mono" x="1076" y="754">HOW_TO_DELIVER.md</text>
+
+  <path class="arrow" d="M260 305 C288 305, 300 305, 330 305"/>
+  <text class="label" x="274" y="289">HTTP 请求</text>
+  <path class="arrow" d="M610 335 C632 335, 648 335, 670 335"/>
+  <text class="label" x="620" y="319">校验 / 解码后分发</text>
+  <path class="arrow" d="M955 335 C978 335, 990 335, 1010 335"/>
+  <text class="label" x="962" y="319">调用 engine.analyze()</text>
+
+  <path class="arrow" d="M810 515 C780 548, 650 564, 575 575"/>
+  <text class="label" x="632" y="554">register / search / list / delete</text>
+  <path class="arrow" d="M842 515 C842 538, 842 552, 842 575"/>
+  <text class="label" x="856" y="548">face-login 审计</text>
+  <path class="arrow-soft" d="M1158 515 C1158 540, 1158 552, 1158 575"/>
+  <text class="label" x="1172" y="548">配置说明</text>
+
+  <path class="arrow-soft" d="M1036 262 C970 242, 940 238, 905 248"/>
+  <text class="label" x="932" y="230">返回人脸结果</text>
+  <path class="arrow-soft" d="M670 470 C620 500, 553 514, 498 516"/>
+  <text class="label" x="520" y="503">响应模型过滤 embedding</text>
+
+  <rect class="card" x="70" y="575" width="190" height="210" rx="12"/>
+  <text class="h2" x="94" y="608">部署环境</text>
+  <line class="divider" x1="94" y1="630" x2="236" y2="630"/>
+  <text class="body" x="94" y="660">Windows 工作站</text>
+  <text class="body" x="94" y="686">Python 3.10.x</text>
+  <text class="body" x="94" y="712">conda / venv</text>
+  <text class="body" x="94" y="738">uvicorn :8000</text>
+  <text class="body" x="94" y="764">GPU 优先部署</text>
+
+  <path class="arrow-soft" d="M165 575 C165 500, 165 454, 165 420"/>
+  <text class="label" x="92" y="520">本机或局域网访问</text>
+
+  <rect class="card" x="70" y="842" width="1235" height="34" rx="10"/>
+  <text class="small" x="92" y="864">关键边界：服务不管理业务用户主表、不签发 token/session、不做完整权限系统、不做活体检测；人脸向量不返回前端。</text>
+</svg>
