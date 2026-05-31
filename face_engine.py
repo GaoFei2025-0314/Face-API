@@ -44,12 +44,26 @@ class FaceEngine:
             ctx_id = -1
             self.device = "CPU"
 
+        self.model_name = model_name
+        self.det_size = det_size
+        self.force_cpu = force_cpu
+        self.available_providers = available
+        self.selected_provider_names = [p if isinstance(p, str) else p[0] for p in providers]
+
         print(f"[FaceEngine] Available providers: {available}")
-        print(f"[FaceEngine] Using providers: {[p if isinstance(p, str) else p[0] for p in providers]}")
+        print(f"[FaceEngine] Using providers: {self.selected_provider_names}")
         print(f"[FaceEngine] Model: {model_name}, det_size: {det_size}")
 
-        self.app = FaceAnalysis(name=model_name, providers=providers)
-        self.app.prepare(ctx_id=ctx_id, det_size=det_size)
+        try:
+            self.app = FaceAnalysis(name=model_name, providers=providers)
+            self.app.prepare(ctx_id=ctx_id, det_size=det_size)
+        except Exception as exc:
+            raise RuntimeError(
+                "FaceEngine initialization failed: "
+                f"model={model_name}, det_size={det_size}, force_cpu={force_cpu}, "
+                f"available_providers={available}, selected_providers={self.selected_provider_names}. "
+                f"Original error: {exc}"
+            ) from exc
         print(f"[FaceEngine] Ready. Running on {self.device}")
 
     def analyze(self, image: np.ndarray):
