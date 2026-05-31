@@ -752,6 +752,8 @@ git commit -m "docs: document api hardening behavior"
 
 ## Task 7: Full Verification
 
+**Status:** Complete. Final verification was run after merging to `main`; `35` unittest tests passed.
+
 **Files:**
 - Read: `main.py`
 - Read: `face_engine.py`
@@ -761,7 +763,7 @@ git commit -m "docs: document api hardening behavior"
 - Read: `docs/usage/API_INTEGRATION.md`
 - Read: `docs/architecture/ARCHITECTURE.md`
 
-- [ ] **Step 1: Run the full unittest suite**
+- [x] **Step 1: Run the full unittest suite**
 
 Run:
 
@@ -771,7 +773,7 @@ python -m unittest discover -s tests -v
 
 Expected: all tests pass.
 
-- [ ] **Step 2: Verify OpenAPI imports without real model through existing fake tests**
+- [x] **Step 2: Verify OpenAPI imports without real model through existing fake tests**
 
 Run:
 
@@ -781,7 +783,7 @@ python -m unittest tests.test_main_api.MainApiContractTests.test_system_status_r
 
 Expected: both pass.
 
-- [ ] **Step 3: Manually inspect changed error call sites**
+- [x] **Step 3: Manually inspect changed error call sites**
 
 Run:
 
@@ -794,7 +796,7 @@ Expected:
 - Route and helper errors use `raise_api_error(...)`.
 - `error_detail(...)` is used by `raise_api_error` and any audit-specific helper that needs a payload.
 
-- [ ] **Step 4: Check docs mention all new fields**
+- [x] **Step 4: Check docs mention all new fields**
 
 Run:
 
@@ -804,7 +806,7 @@ Select-String -Path README.md,docs\usage\API_INTEGRATION.md,docs\architecture\AR
 
 Expected: all patterns appear in the relevant docs.
 
-- [ ] **Step 5: Final commit if verification required fixes**
+- [x] **Step 5: Final commit if verification required fixes**
 
 If Step 1 through Step 4 required any fixes, commit the fixes:
 
