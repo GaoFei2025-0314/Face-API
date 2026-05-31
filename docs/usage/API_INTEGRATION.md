@@ -155,23 +155,24 @@ function fileToBase64(file) {
 - `[-1, 1]`
 
 ### 5.3 错误结构
-错误统一走 FastAPI `detail` 字段，但有两种形态：
+错误统一走 FastAPI `detail` 字段，`detail` 是对象：
 
-#### 形态 A：普通字符串
 ```json
-{ "detail": "错误描述" }
+{
+  "detail": {
+    "code": "NO_FACE",
+    "message": "未检测到人脸",
+    "reason": "图片中没有检测到可用于识别的人脸，请调整光线、角度或距离后重试"
+  }
+}
 ```
 
-#### 形态 B：结构化对象
-```json
-{ "detail": { "code": "NO_FACE", "message": "未检测到人脸" } }
-```
+- `code`：稳定英文错误码，给前端和业务系统判断逻辑使用。
+- `message`：短中文提示，适合 toast、弹窗标题。
+- `reason`：较完整的中文原因和处理建议，适合详情提示、日志和客服排查。
 
 ### 推荐前端错误处理
-优先取：
-1. `data.detail.message`
-2. `data.detail`
-3. 默认文案
+当前 API 的错误 `detail` 是结构化对象。前端可以额外保留字符串 `detail` 的防御性处理，兼容代理层或旧版本服务返回。
 
 ### 5.4 特征向量返回边界
 普通页面不要把 embedding 当作普通展示字段来用。
@@ -465,9 +466,11 @@ async function request(path, options = {}) {
   const res = await fetch(API_BASE + path, options);
   const data = await res.json();
   if (!res.ok) {
+    const detail = data && data.detail;
     const errorMessage =
-      (data && data.detail && typeof data.detail === "object" && data.detail.message) ||
-      (data && data.detail) ||
+      (detail && typeof detail === "object" && detail.reason) ||
+      (detail && typeof detail === "object" && detail.message) ||
+      (typeof detail === "string" && detail) ||
       "请求失败";
     throw new Error(errorMessage);
   }

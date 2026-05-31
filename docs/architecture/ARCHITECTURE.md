@@ -152,6 +152,15 @@
 - 不应在请求处理函数里重新初始化 `FaceEngine`
 - 多 worker 下每个 worker 都会各自初始化资源
 
+### 图片输入保护
+
+所有图片入口必须经过统一校验：
+- Base64 字符串长度不能超过 `FACE_MAX_BASE64_CHARS`
+- 解码后的图片字节不能超过 `FACE_MAX_IMAGE_BYTES`
+- OpenCV 解码后的像素总数不能超过 `FACE_MAX_IMAGE_PIXELS`
+
+文件上传和 Base64 输入共用同一套字节和像素校验，避免不同入口出现不同资源消耗边界。
+
 ### 5.2 图像颜色空间
 整个系统默认使用 **BGR 图像**。  
 不要随手改成 RGB 再送进 InsightFace。

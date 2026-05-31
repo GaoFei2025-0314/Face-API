@@ -228,6 +228,18 @@ set FACE_FORCE_CPU=1
 3. 看接口耗时
 4. 必要时再做单独 provider 验证
 
+### 模型初始化失败怎么看
+
+如果服务启动时报 `FaceEngine initialization failed`，优先看错误中的：
+- `model`
+- `det_size`
+- `force_cpu`
+- `available_providers`
+- `selected_providers`
+- `Original error`
+
+这几个字段可以判断是模型下载/路径问题、CUDA provider 问题，还是输入配置问题。
+
 ---
 
 ## 8. 环境变量
@@ -239,8 +251,8 @@ set FACE_FORCE_CPU=1
 | `FACE_DB_PATH` | `faces.db` | SQLite 数据库路径 |
 | `FACE_FORCE_CPU` | `0` | 设为 `1` 时强制 CPU |
 | `FACE_API_KEY` | 空 | 启用 API Key 鉴权 |
-| `FACE_MAX_BASE64_CHARS` | `11185068` | Base64 图片正文最大字符数 |
-| `FACE_MAX_IMAGE_BYTES` | `8388608` | 解码前图片最大字节数 |
+| `FACE_MAX_BASE64_CHARS` | `11185068` | Base64 图片字符串最大长度 |
+| `FACE_MAX_IMAGE_BYTES` | `8388608` | 解码后图片字节最大值 |
 | `FACE_MAX_IMAGE_PIXELS` | `4096000` | 解码后图片最大像素数 |
 
 ---
