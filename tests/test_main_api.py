@@ -94,6 +94,22 @@ def get_route_dependency_calls(app, path: str, method: str):
 
 
 class MainApiContractTests(unittest.TestCase):
+    def assert_error_detail(self, detail, code, message, reason=None):
+        self.assertEqual(detail["code"], code)
+        self.assertEqual(detail["message"], message)
+        if reason is None:
+            self.assertTrue(detail["reason"])
+        else:
+            self.assertEqual(detail["reason"], reason)
+
+    def assert_auth_error_detail(self, detail):
+        self.assert_error_detail(
+            detail,
+            "AUTH_INVALID_OR_MISSING",
+            "认证失败",
+            "请求缺少有效的 X-API-Key，请检查前端或业务系统的接口配置",
+        )
+
     def test_decode_base64_rejects_decoded_bytes_over_limit(self):
         module = load_main_module()
         module.MAX_IMAGE_BYTES = 3
@@ -216,7 +232,7 @@ class MainApiContractTests(unittest.TestCase):
             module.register(module.RegisterReq(username="zhangsan", image="dummy"))
 
         self.assertEqual(exc_info.exception.status_code, 400)
-        self.assertEqual(exc_info.exception.detail, {"code": "NO_FACE", "message": "未检测到人脸"})
+        self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸")
 
     def test_delete_face_returns_structured_not_found(self):
         module = load_main_module(api_key="secret")
@@ -226,7 +242,7 @@ class MainApiContractTests(unittest.TestCase):
             module.delete_face("missing-id")
 
         self.assertEqual(exc_info.exception.status_code, 404)
-        self.assertEqual(exc_info.exception.detail, {"code": "FACE_ID_NOT_FOUND", "message": "该 ID 不存在"})
+        self.assert_error_detail(exc_info.exception.detail, "FACE_ID_NOT_FOUND", "该 ID 不存在")
 
     def test_extract_base64_rejects_oversized_payload(self):
         module = load_main_module()
@@ -236,10 +252,7 @@ class MainApiContractTests(unittest.TestCase):
             module.extract_base64(module.Base64ImageReq(image=oversized))
 
         self.assertEqual(exc_info.exception.status_code, 413)
-        self.assertEqual(
-            exc_info.exception.detail,
-            {"code": "IMAGE_TOO_LARGE", "message": "图片数据过大"},
-        )
+        self.assert_error_detail(exc_info.exception.detail, "IMAGE_TOO_LARGE", "图片数据过大")
 
     def test_face_login_returns_invalid_match_record_failure_payload(self):
         module = load_main_module(api_key="secret")
@@ -260,10 +273,7 @@ class MainApiContractTests(unittest.TestCase):
             module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
 
         self.assertEqual(exc_info.exception.status_code, 403)
-        self.assertEqual(
-            exc_info.exception.detail,
-            {"code": "INVALID_MATCH_RECORD", "message": "身份验证失败，匹配记录无效"},
-        )
+        self.assert_error_detail(exc_info.exception.detail, "INVALID_MATCH_RECORD", "身份验证失败，匹配记录无效")
 
     def test_system_status_requires_explicit_api_key(self):
         module = load_main_module()
@@ -272,7 +282,7 @@ class MainApiContractTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as exc_info:
                 await module.require_api_key(None)
             self.assertEqual(exc_info.exception.status_code, 401)
-            self.assertEqual(exc_info.exception.detail, "Invalid or missing X-API-Key")
+            self.assert_auth_error_detail(exc_info.exception.detail)
 
         import asyncio
         asyncio.run(run_check())
@@ -284,10 +294,7 @@ class MainApiContractTests(unittest.TestCase):
             module.extract_base64(module.Base64ImageReq(image="not-base64"))
 
         self.assertEqual(exc_info.exception.status_code, 400)
-        self.assertEqual(
-            exc_info.exception.detail,
-            {"code": "IMAGE_DECODE_FAILED", "message": "无效图像，无法解码"},
-        )
+        self.assert_error_detail(exc_info.exception.detail, "IMAGE_DECODE_FAILED", "无效图像，无法解码")
 
     def test_extract_base64_returns_no_face_code(self):
         module = load_main_module()
@@ -347,7 +354,7 @@ class MainApiContractTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as exc_info:
                 await module.require_api_key(None)
             self.assertEqual(exc_info.exception.status_code, 401)
-            self.assertEqual(exc_info.exception.detail, "Invalid or missing X-API-Key")
+            self.assert_auth_error_detail(exc_info.exception.detail)
 
         import asyncio
         asyncio.run(run_check())
@@ -361,10 +368,7 @@ class MainApiContractTests(unittest.TestCase):
             module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
 
         self.assertEqual(exc_info.exception.status_code, 400)
-        self.assertEqual(
-            exc_info.exception.detail,
-            {"code": "NO_FACE", "message": "未检测到人脸"},
-        )
+        self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸")
 
     def test_face_login_returns_multiple_faces_failure_payload(self):
         module = load_main_module(api_key="secret")
@@ -378,10 +382,7 @@ class MainApiContractTests(unittest.TestCase):
             module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
 
         self.assertEqual(exc_info.exception.status_code, 400)
-        self.assertEqual(
-            exc_info.exception.detail,
-            {"code": "MULTIPLE_FACES", "message": "检测到多张人脸"},
-        )
+        self.assert_error_detail(exc_info.exception.detail, "MULTIPLE_FACES", "检测到多张人脸")
 
     def test_face_login_returns_no_match_failure_payload(self):
         module = load_main_module(api_key="secret")
@@ -402,10 +403,7 @@ class MainApiContractTests(unittest.TestCase):
             module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
 
         self.assertEqual(exc_info.exception.status_code, 403)
-        self.assertEqual(
-            exc_info.exception.detail,
-            {"code": "NO_MATCH", "message": "身份验证失败，未匹配到有效用户"},
-        )
+        self.assert_error_detail(exc_info.exception.detail, "NO_MATCH", "身份验证失败，未匹配到有效用户")
 
     def test_compare_returns_structured_no_face_failure(self):
         module = load_main_module()
@@ -425,10 +423,7 @@ class MainApiContractTests(unittest.TestCase):
             module.compare(module.CompareReq(image1="img-1", image2="img-2", threshold=0.5))
 
         self.assertEqual(exc_info.exception.status_code, 400)
-        self.assertEqual(
-            exc_info.exception.detail,
-            {"code": "NO_FACE", "message": "至少一张图未检测到人脸"},
-        )
+        self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "至少一张图未检测到人脸")
 
     def test_search_returns_structured_no_face_failure(self):
         module = load_main_module()
@@ -439,10 +434,7 @@ class MainApiContractTests(unittest.TestCase):
             module.search(module.SearchReq(image="dummy", top_k=5, threshold=0.5))
 
         self.assertEqual(exc_info.exception.status_code, 400)
-        self.assertEqual(
-            exc_info.exception.detail,
-            {"code": "NO_FACE", "message": "未检测到人脸"},
-        )
+        self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸")
 
     def test_face_login_writes_success_audit(self):
         module = load_main_module(api_key="secret")
@@ -528,7 +520,7 @@ class MainApiContractTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as exc_info:
                 await module.require_api_key(None)
             self.assertEqual(exc_info.exception.status_code, 401)
-            self.assertEqual(exc_info.exception.detail, "Invalid or missing X-API-Key")
+            self.assert_auth_error_detail(exc_info.exception.detail)
 
         import asyncio
         asyncio.run(run_check())
