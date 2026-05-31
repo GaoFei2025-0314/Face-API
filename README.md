@@ -239,6 +239,9 @@ set FACE_FORCE_CPU=1
 | `FACE_DB_PATH` | `faces.db` | SQLite 数据库路径 |
 | `FACE_FORCE_CPU` | `0` | 设为 `1` 时强制 CPU |
 | `FACE_API_KEY` | 空 | 启用 API Key 鉴权 |
+| `FACE_MAX_BASE64_CHARS` | `11185068` | Base64 图片正文最大字符数 |
+| `FACE_MAX_IMAGE_BYTES` | `8388608` | 解码前图片最大字节数 |
+| `FACE_MAX_IMAGE_PIXELS` | `4096000` | 解码后图片最大像素数 |
 
 ---
 

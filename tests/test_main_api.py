@@ -106,6 +106,23 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(exc_info.exception.detail["code"], "IMAGE_TOO_LARGE")
         self.assertIn("超过服务允许", exc_info.exception.detail["reason"])
 
+    def test_decode_base64_ignores_data_url_prefix_for_length_check(self):
+        module = load_main_module()
+        module.MAX_BASE64_IMAGE_CHARS = 8
+        module.MAX_IMAGE_BYTES = 1024
+        seen = []
+
+        def capture_image_bytes(image_bytes):
+            seen.append(image_bytes)
+            return object()
+
+        module.decode_image_bytes = capture_image_bytes
+
+        image = module.decode_base64("data:image/png;base64,YWJjZA==")
+
+        self.assertIsNotNone(image)
+        self.assertEqual(seen, [b"abcd"])
+
     def test_decode_image_bytes_rejects_raw_upload_over_limit(self):
         module = load_main_module()
         module.MAX_IMAGE_BYTES = 3

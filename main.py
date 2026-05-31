@@ -71,8 +71,10 @@ app.add_middleware(
 FORCE_CPU = os.getenv("FACE_FORCE_CPU", "0") == "1"
 FACE_MODEL = os.getenv("FACE_MODEL", "buffalo_l")
 FACE_DET_SIZE = int(os.getenv("FACE_DET_SIZE", "640"))
-MAX_BASE64_IMAGE_CHARS = int(os.getenv("FACE_MAX_BASE64_CHARS", str(10 * 1024 * 1024)))
-MAX_IMAGE_BYTES = int(os.getenv("FACE_MAX_IMAGE_BYTES", str(8 * 1024 * 1024)))
+DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+DEFAULT_MAX_BASE64_IMAGE_CHARS = ((DEFAULT_MAX_IMAGE_BYTES + 2) // 3) * 4 + 256
+MAX_BASE64_IMAGE_CHARS = int(os.getenv("FACE_MAX_BASE64_CHARS", str(DEFAULT_MAX_BASE64_IMAGE_CHARS)))
+MAX_IMAGE_BYTES = int(os.getenv("FACE_MAX_IMAGE_BYTES", str(DEFAULT_MAX_IMAGE_BYTES)))
 MAX_IMAGE_PIXELS = int(os.getenv("FACE_MAX_IMAGE_PIXELS", str(4_096_000)))
 engine = FaceEngine(force_cpu=FORCE_CPU)
 db = FaceDB()  # 自动读 FACE_DB_PATH 环境变量
@@ -117,10 +119,10 @@ def decode_image_bytes(image_bytes: bytes) -> np.ndarray:
 
 
 def decode_base64(b64_str: str) -> np.ndarray:
-    if len(b64_str) > MAX_BASE64_IMAGE_CHARS:
-        raise_api_error(413, "IMAGE_TOO_LARGE")
     if "," in b64_str:
         b64_str = b64_str.split(",", 1)[1]
+    if len(b64_str) > MAX_BASE64_IMAGE_CHARS:
+        raise_api_error(413, "IMAGE_TOO_LARGE")
     try:
         image_bytes = base64.b64decode(b64_str)
     except Exception:
