@@ -4,6 +4,14 @@
 > Date: 2026-06-05  
 > Scope: Overall product direction for the local face recognition REST API
 
+## Spec Kit Working Artifact
+
+This PRD is the product source document. The Spec Kit planning artifact derived from it is:
+
+- `specs/001-face-api-product/spec.md`
+
+Use the Spec Kit artifact when creating implementation plans and task lists. Use this PRD when reviewing product direction, scope boundaries, and roadmap intent.
+
 ## 1. Project Positioning
 
 `face_api` is a local Windows workstation REST API for face recognition.
@@ -482,4 +490,3 @@ These decisions should be resolved before related development begins:
 5. What face database size should trigger memory cache work.
 6. Whether liveness detection is required for the target business scenario.
 7. Whether `/extract/base64` should remain trusted-backend-only because it returns embeddings.
-

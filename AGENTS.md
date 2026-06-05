@@ -141,3 +141,8 @@ When API behavior, request/response models, environment variables, setup, or fro
 For new endpoints, follow the existing `main.py` pattern: define Pydantic request/response models near the other schemas, add a route with a Chinese Swagger summary/docstring, include `dependencies=[Depends(verify_api_key)]` unless it is intentionally public, decode images through existing helpers, call the module-level `engine`, and return `elapsed_ms` for compute-heavy work.
 
 If an endpoint accepts images, preserve both upload and Base64 support when it is part of the public API contract.
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
