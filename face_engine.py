@@ -16,6 +16,7 @@ class FaceEngine:
         model_name: str = None,
         det_size: tuple = None,
         force_cpu: bool = False,
+        use_gpu: bool = False,
     ):
         # 支持环境变量配置（方便部署时调整）
         model_name = model_name or os.getenv("FACE_MODEL", "buffalo_l")
@@ -25,7 +26,7 @@ class FaceEngine:
 
         # 检测可用的推理后端
         available = ort.get_available_providers()
-        if "CUDAExecutionProvider" in available and not force_cpu:
+        if use_gpu and "CUDAExecutionProvider" in available and not force_cpu:
             providers = [
                 ("CUDAExecutionProvider", {
                     "device_id": 0,
@@ -47,6 +48,7 @@ class FaceEngine:
         self.model_name = model_name
         self.det_size = det_size
         self.force_cpu = force_cpu
+        self.use_gpu = use_gpu
         self.available_providers = available
         self.selected_provider_names = [p if isinstance(p, str) else p[0] for p in providers]
 
@@ -60,7 +62,7 @@ class FaceEngine:
         except Exception as exc:
             raise RuntimeError(
                 "FaceEngine initialization failed: "
-                f"model={model_name}, det_size={det_size}, force_cpu={force_cpu}, "
+                f"model={model_name}, det_size={det_size}, force_cpu={force_cpu}, use_gpu={use_gpu}, "
                 f"available_providers={available}, selected_providers={self.selected_provider_names}. "
                 f"Original error: {exc}"
             ) from exc

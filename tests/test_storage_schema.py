@@ -18,6 +18,18 @@ class FaceDBSchemaTests(unittest.TestCase):
                 rows = db.list_all()
                 self.assertEqual(len(rows), 1)
                 self.assertEqual(rows[0]["username"], "zhangsan")
+
+                by_user = db.list_by_user_id(1)
+                self.assertEqual(len(by_user), 1)
+                self.assertEqual(by_user[0]["id"], face_id)
+
+                cache_status = db.get_search_cache_status()
+                self.assertEqual(cache_status["record_count"], 1)
+                self.assertTrue(cache_status["ready"])
+
+                removed = db.remove_by_user_id(1)
+                self.assertEqual(removed, 1)
+                self.assertEqual(db.count(), 0)
             finally:
                 db.close()
 

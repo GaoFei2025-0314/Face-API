@@ -399,7 +399,18 @@ X-API-Key: <你的密钥>
   "model": "buffalo_l",
   "det_size": [640, 640],
   "auth_enabled": true,
-  "force_cpu": false,
+  "force_cpu": true,
+  "use_gpu": false,
+  "environment": "production",
+  "cors_origins": ["http://localhost:3000"],
+  "db_path": "faces.db",
+  "log_path": "logs/face_api.log",
+  "duplicate_policy": "allow",
+  "search_cache": {
+    "ready": true,
+    "dirty": false,
+    "record_count": 12
+  },
   "faces_count": 12
 }
 ```
@@ -423,7 +434,12 @@ X-API-Key: <你的密钥>
 {
   "face_login_threshold": 0.55,
   "auth_enabled": true,
-  "force_cpu": false,
+  "force_cpu": true,
+  "use_gpu": false,
+  "environment": "production",
+  "cors_origins": ["http://localhost:3000"],
+  "log_path": "logs/face_api.log",
+  "duplicate_policy": "allow",
   "model": "buffalo_l",
   "det_size": [640, 640],
   "db_path": "faces.db",
@@ -440,6 +456,12 @@ X-API-Key: <你的密钥>
 ### `GET /audit/login/recent`
 用途：
 - 查看最近登录尝试记录
+
+可选查询参数：
+
+- `limit`：返回条数，范围由后端保护
+- `success`：按成功或失败筛选，例如 `true` / `false`
+- `terminal_id`：按终端标识筛选
 
 ### `GET /audit/login/summary`
 用途：

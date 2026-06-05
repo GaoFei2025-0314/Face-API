@@ -12,6 +12,7 @@ faces.db
 *.db
 *.db-shm
 *.db-wal
+logs/
 
 # Environment files
 .env

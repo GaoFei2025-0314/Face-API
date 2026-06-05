@@ -3,6 +3,7 @@ import os
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -11,8 +12,13 @@ EMBEDDING = [0.1] * 512
 
 
 class FakeFaceEngine:
-    def __init__(self, force_cpu=False):
+    instances = []
+
+    def __init__(self, force_cpu=False, use_gpu=False):
+        self.force_cpu = force_cpu
+        self.use_gpu = use_gpu
         self.device = "CPU"
+        self.__class__.instances.append(self)
 
     def analyze(self, image):
         return []
@@ -41,16 +47,27 @@ class FakeFaceDB:
     def list_all(self):
         return []
 
+    def list_by_user_id(self, user_id):
+        return []
+
+    def remove_by_user_id(self, user_id):
+        return 0
+
     def add_login_audit(self, **entry):
         stored = {"id": f"audit-{len(self.audit_entries) + 1}", **entry}
         self.audit_entries.append(stored)
         return stored["id"]
 
-    def list_login_audits(self, limit=20):
-        return self.audit_entries[:limit]
+    def list_login_audits(self, limit=20, success=None, terminal_id=None):
+        entries = self.audit_entries
+        if success is not None:
+            entries = [entry for entry in entries if bool(entry.get("success")) == success]
+        if terminal_id is not None:
+            entries = [entry for entry in entries if entry.get("terminal_id") == terminal_id]
+        return entries[:limit]
 
-    def get_login_audit_summary(self, limit=100):
-        entries = self.audit_entries[:limit]
+    def get_login_audit_summary(self, limit=100, terminal_id=None):
+        entries = self.list_login_audits(limit=limit, terminal_id=terminal_id)
         total = len(entries)
         success_count = sum(1 for entry in entries if entry.get("success"))
         failure_count = total - success_count
@@ -61,13 +78,43 @@ class FakeFaceDB:
             "success_rate": success_count / total if total else 0,
         }
 
+    def get_search_cache_status(self):
+        return {"ready": True, "dirty": False, "record_count": 0}
 
-def load_main_module(api_key=""):
+
+def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None):
+    for key in [
+        "FACE_ENV",
+        "FACE_REQUIRE_API_KEY",
+        "FACE_CORS_ORIGINS",
+        "FACE_LOG_PATH",
+        "FACE_DB_PATH",
+        "FACE_DUPLICATE_POLICY",
+        "FACE_MIN_REGISTER_DET_SCORE",
+        "FACE_MIN_REGISTER_FACE_PIXELS",
+        "FACE_MIN_REGISTER_BRIGHTNESS",
+        "FACE_MAX_REGISTER_BRIGHTNESS",
+        "FACE_MAX_IMAGE_BYTES",
+        "FACE_MAX_BASE64_CHARS",
+        "FACE_MAX_IMAGE_PIXELS",
+        "FACE_DET_SIZE",
+    ]:
+        os.environ.pop(key, None)
     if api_key:
         os.environ["FACE_API_KEY"] = api_key
     else:
         os.environ.pop("FACE_API_KEY", None)
-    os.environ["FACE_FORCE_CPU"] = "0"
+    if use_gpu is None:
+        os.environ.pop("FACE_USE_GPU", None)
+    else:
+        os.environ["FACE_USE_GPU"] = use_gpu
+    if force_cpu is None:
+        os.environ.pop("FACE_FORCE_CPU", None)
+    else:
+        os.environ["FACE_FORCE_CPU"] = force_cpu
+    if extra_env:
+        os.environ.update(extra_env)
+    FakeFaceEngine.instances = []
 
     fake_face_engine = types.ModuleType("face_engine")
     fake_face_engine.FaceEngine = FakeFaceEngine
@@ -122,6 +169,85 @@ class MainApiContractTests(unittest.TestCase):
             "认证失败",
             "请求缺少有效的 X-API-Key，请检查前端或业务系统的接口配置",
         )
+
+    def test_runtime_defaults_to_cpu_inference(self):
+        module = load_main_module()
+
+        self.assertTrue(module.FORCE_CPU)
+        self.assertFalse(module.USE_GPU)
+        self.assertEqual(module.engine.force_cpu, True)
+        self.assertEqual(module.engine.use_gpu, False)
+
+    def test_face_use_gpu_switches_runtime_to_gpu_mode(self):
+        module = load_main_module(use_gpu="1")
+
+        self.assertFalse(module.FORCE_CPU)
+        self.assertTrue(module.USE_GPU)
+        self.assertEqual(module.engine.force_cpu, False)
+        self.assertEqual(module.engine.use_gpu, True)
+
+    def test_face_force_cpu_overrides_face_use_gpu(self):
+        module = load_main_module(use_gpu="1", force_cpu="1")
+
+        self.assertTrue(module.FORCE_CPU)
+        self.assertTrue(module.USE_GPU)
+        self.assertEqual(module.engine.force_cpu, True)
+        self.assertEqual(module.engine.use_gpu, True)
+
+    def test_startup_validation_rejects_production_without_api_key(self):
+        with self.assertRaises(RuntimeError) as exc_info:
+            load_main_module(extra_env={"FACE_ENV": "production"})
+
+        self.assertIn("FACE_API_KEY", str(exc_info.exception))
+
+    def test_startup_validation_rejects_invalid_image_limit(self):
+        with self.assertRaises(RuntimeError) as exc_info:
+            load_main_module(extra_env={"FACE_MAX_IMAGE_BYTES": "not-a-number"})
+
+        self.assertIn("FACE_MAX_IMAGE_BYTES", str(exc_info.exception))
+
+    def test_effective_config_includes_runtime_v1_fields(self):
+        module = load_main_module(
+            api_key="secret",
+            extra_env={
+                "FACE_ENV": "production",
+                "FACE_CORS_ORIGINS": "http://localhost:3000,http://127.0.0.1:3000",
+                "FACE_LOG_PATH": "logs/custom.log",
+                "FACE_DUPLICATE_POLICY": "reject",
+            },
+        )
+
+        body = module.effective_config()
+
+        self.assertEqual(body["environment"], "production")
+        self.assertEqual(body["cors_origins"], ["http://localhost:3000", "http://127.0.0.1:3000"])
+        self.assertEqual(body["log_path"], "logs/custom.log")
+        self.assertEqual(body["duplicate_policy"], "reject")
+
+    def test_configure_cors_uses_configured_origins(self):
+        module = load_main_module(
+            api_key="secret",
+            extra_env={"FACE_ENV": "production", "FACE_CORS_ORIGINS": "http://app.local"},
+        )
+
+        self.assertEqual(module.CORS_ORIGINS, ["http://app.local"])
+
+    def test_structured_log_event_masks_sensitive_fields(self):
+        module = load_main_module()
+        events = []
+
+        with patch.object(module.app_logger, "info", lambda payload: events.append(payload)):
+            safe = module.log_event(
+                "test_event",
+                api_key="secret",
+                embedding=[0.1, 0.2],
+                route="/extract/base64",
+            )
+
+        self.assertEqual(safe["event"], "test_event")
+        self.assertEqual(safe["api_key"], "***")
+        self.assertEqual(safe["embedding"], "***")
+        self.assertIn('"api_key": "***"', events[0])
 
     def test_decode_base64_rejects_decoded_bytes_over_limit(self):
         module = load_main_module()
@@ -282,6 +408,33 @@ class MainApiContractTests(unittest.TestCase):
 
         self.assertEqual(exc_info.exception.status_code, 400)
         self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸")
+
+    def test_register_rejects_duplicate_user_when_policy_is_reject(self):
+        module = load_main_module(api_key="secret", extra_env={"FACE_DUPLICATE_POLICY": "reject"})
+        module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
+        module.engine.analyze = lambda _: [
+            {"bbox": [0, 0, 80, 80], "det_score": 0.9, "embedding": EMBEDDING, "gender": "M", "age": 20}
+        ]
+        module.db.list_by_user_id = lambda _user_id: [{"id": "existing"}]
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.register(module.RegisterReq(user_id=1, username="zhangsan", image="dummy"))
+
+        self.assertEqual(exc_info.exception.status_code, 409)
+        self.assert_error_detail(exc_info.exception.detail, "DUPLICATE_FACE_USER", "该用户已注册人脸")
+
+    def test_register_rejects_low_quality_face(self):
+        module = load_main_module(api_key="secret", extra_env={"FACE_MIN_REGISTER_DET_SCORE": "0.8"})
+        module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
+        module.engine.analyze = lambda _: [
+            {"bbox": [0, 0, 80, 80], "det_score": 0.5, "embedding": EMBEDDING, "gender": "M", "age": 20}
+        ]
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.register(module.RegisterReq(user_id=1, username="zhangsan", image="dummy"))
+
+        self.assertEqual(exc_info.exception.status_code, 400)
+        self.assert_error_detail(exc_info.exception.detail, "FACE_QUALITY_LOW", "人脸质量不符合注册要求")
 
     def test_delete_face_returns_structured_not_found(self):
         module = load_main_module(api_key="secret")
@@ -549,7 +702,18 @@ class MainApiContractTests(unittest.TestCase):
         body = module.list_login_audits(limit=10)
 
         self.assertEqual(len(body["items"]), 2)
-        self.assertEqual(body["items"][0]["matched_username"], "alice")
+
+    def test_list_login_audits_supports_success_and_terminal_filters(self):
+        module = load_main_module(api_key="secret")
+        module.db.add_login_audit(success=True, terminal_id="door-1")
+        module.db.add_login_audit(success=False, terminal_id="door-1")
+        module.db.add_login_audit(success=False, terminal_id="door-2")
+
+        body = module.list_login_audits(limit=10, success=False, terminal_id="door-1")
+
+        self.assertEqual(len(body["items"]), 1)
+        self.assertFalse(body["items"][0]["success"])
+        self.assertEqual(body["items"][0]["terminal_id"], "door-1")
 
     def test_login_audit_summary_returns_counts(self):
         module = load_main_module(api_key="secret")
@@ -572,7 +736,12 @@ class MainApiContractTests(unittest.TestCase):
             {
                 "face_login_threshold": 0.55,
                 "auth_enabled": False,
-                "force_cpu": False,
+                "force_cpu": True,
+                "use_gpu": False,
+                "environment": "development",
+                "cors_origins": ["*"],
+                "log_path": "logs/face_api.log",
+                "duplicate_policy": "allow",
                 "model": "buffalo_l",
                 "det_size": [640, 640],
                 "db_path": "faces.db",
@@ -608,7 +777,14 @@ class MainApiContractTests(unittest.TestCase):
                 "model": "buffalo_l",
                 "det_size": [640, 640],
                 "auth_enabled": False,
-                "force_cpu": False,
+                "force_cpu": True,
+                "use_gpu": False,
+                "environment": "development",
+                "cors_origins": ["*"],
+                "db_path": "faces.db",
+                "log_path": "logs/face_api.log",
+                "duplicate_policy": "allow",
+                "search_cache": {"ready": True, "dirty": False, "record_count": 0},
                 "faces_count": 0,
             },
         )

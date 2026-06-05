@@ -124,7 +124,7 @@
 负责：
 - 读取模型与检测尺寸配置
 - 检测 ONNX Runtime provider
-- 决定走 GPU 还是 CPU
+- 默认走 CPU；仅在 `FACE_USE_GPU=1` 且未强制 CPU 时尝试 GPU
 - 初始化 `FaceAnalysis`
 - 整理 InsightFace 输出
 - 提供余弦相似度计算
@@ -166,10 +166,24 @@
 不要随手改成 RGB 再送进 InsightFace。
 
 ### 5.3 GPU / CPU 理解
+- 默认推理设备是 CPU，避免 Windows 工作站启动时主动占用 GPU
+- 需要 GPU 推理时设置 `FACE_USE_GPU=1`
+- `FACE_FORCE_CPU=1` 优先级最高，会覆盖 `FACE_USE_GPU=1`
 - provider 可见，不等于实际稳定跑在 GPU 上
 - 判断要结合：provider、启动日志、接口耗时
 
-### 5.4 环境口径
+### 5.4 V1.0 运行保护
+
+V1.0 增加了生产类运行保护：
+
+- `FACE_ENV=production` 时必须配置 `FACE_API_KEY`
+- 环境变量中的数字配置会在启动时校验
+- `FACE_DB_PATH` 所在目录必须可写
+- `FACE_CORS_ORIGINS` 用于配置允许跨域的前端来源
+- `FACE_LOG_PATH` 控制日志落盘位置
+- 请求日志会记录路由、状态码和耗时，但不记录 API Key、图片或 embedding
+
+### 5.5 环境口径
 当前推荐：
 - **conda 主路径**
 - **venv 备选路径**
@@ -239,20 +253,41 @@ helper judgment result
 - `metadata`
 - `created_at`
 
-### 7.2 `face_login_audit` 表
+### 7.2 人脸库治理
+
+注册人脸时会执行基础治理：
+
+- 图片必须恰好一张脸
+- `username` 不能为空
+- 注册人脸必须达到最低检测置信度、人脸框面积和亮度要求
+- `FACE_DUPLICATE_POLICY` 控制同一 `user_id` 重复注册策略：
+  - `allow`：允许多条记录
+  - `reject`：已有记录时拒绝
+  - `replace`：先删除旧记录再注册新记录
+
+### 7.3 搜索缓存
+
+`FaceDB.search()` 会使用内存中的归一化 embedding 矩阵作为搜索缓存。
+
+- SQLite 仍然是持久化来源
+- 注册、删除、按 `user_id` 删除后会标记缓存失效
+- 下一次搜索或缓存状态查询会重新加载缓存
+- `/system/status` 会返回 `search_cache` 状态
+
+### 7.4 `face_login_audit` 表
 用途：
 - 记录登录尝试
 - 支撑 recent/summary
 - 为后续阈值调优和排障留数据基础
 
-### 7.3 embedding 存储方式
+### 7.5 embedding 存储方式
 embedding 使用 `float32 BLOB`，不是 JSON 数组。
 
 原因：
 - 更省空间
 - 更适合 NumPy 直接还原和计算
 
-### 7.4 搜索策略
+### 7.6 搜索策略
 当前 `search()` 采用：
 - 全表读取 embedding
 - NumPy 矩阵化余弦相似度计算

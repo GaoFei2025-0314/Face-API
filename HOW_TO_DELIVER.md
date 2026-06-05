@@ -7,6 +7,10 @@
 2. Swagger 文档链接：`http://<后端机器IP>:8000/docs`
 3. 附件 `docs/usage/API_INTEGRATION.md`
 
+生产类运行和交付排障优先看：
+
+- `docs/deployment/RUNBOOK.md`
+
 ---
 
 ## 一、本机开发：前后端都在一台机器
@@ -14,6 +18,13 @@
 启动后端：
 ```bash
 run.bat
+```
+
+生产类运行不要长期使用 `--reload`，改用：
+
+```bat
+set FACE_API_KEY=your-secret
+run-prod.bat
 ```
 
 前端代码用：
@@ -118,12 +129,32 @@ X-API-Key: your-secret-key-2026
 ```python
 allow_origins=["*"]
 ```
-改成具体域名：
-```python
-allow_origins=[
-    "https://your-frontend.com",
-    "https://admin.your-frontend.com",
-]
+改为生产允许的前端地址。
+
+V1.0 以后也可以通过环境变量配置：
+
+```bat
+set FACE_CORS_ORIGINS=http://localhost:3000,http://192.168.1.100:3000
+```
+
+### 6. 健康检查脚本
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\health-check.ps1
+```
+
+### 7. 备份和恢复
+
+备份：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\backup-db.ps1
+```
+
+恢复前先停止服务：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\restore-db.ps1 -BackupDir backups\20260605-120000
 ```
 
 ---

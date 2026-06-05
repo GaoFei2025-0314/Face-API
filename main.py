@@ -7,11 +7,15 @@
 - FACE_MODEL: 模型名（默认 buffalo_l）
 - FACE_DET_SIZE: 检测尺寸（默认 640）
 - FACE_DB_PATH: 数据库路径（默认 faces.db）
-- FACE_FORCE_CPU: 强制 CPU（设为 1 时启用，调试用）
+- FACE_USE_GPU: 启用 GPU 推理（设为 1 时优先使用 CUDA）
+- FACE_FORCE_CPU: 强制 CPU（设为 1 时覆盖 FACE_USE_GPU）
 - FACE_API_KEY: API 鉴权密钥（不设则不鉴权）
 """
 import base64
+import json
+import logging
 import os
+from pathlib import Path
 import time
 from typing import Optional
 
@@ -20,6 +24,7 @@ import numpy as np
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -60,30 +65,120 @@ app = FastAPI(
     contact={"name": "API 维护", "email": "you@example.com"},
 )
 
-# CORS：开发期全开放，生产环境收敛
+SENSITIVE_LOG_FIELDS = {"api_key", "x_api_key", "embedding", "image", "image1", "image2"}
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name: str, default: int, minimum: int = 1) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} 必须是整数，当前值为 {raw!r}") from exc
+    if value < minimum:
+        raise RuntimeError(f"{name} 必须大于等于 {minimum}，当前值为 {value}")
+    return value
+
+
+def env_list(name: str, default: list[str]) -> list[str]:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def setup_app_logger(log_path: str) -> logging.Logger:
+    logger = logging.getLogger("face_api")
+    logger.setLevel(logging.INFO)
+    for handler in logger.handlers:
+        handler.close()
+    logger.handlers.clear()
+    logger.propagate = False
+    path = Path(log_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+    return logger
+
+
+def sanitize_log_payload(payload: dict) -> dict:
+    safe = {}
+    for key, value in payload.items():
+        if key.lower() in SENSITIVE_LOG_FIELDS:
+            safe[key] = "***"
+        else:
+            safe[key] = value
+    return safe
+
+
+def log_event(event: str, **payload) -> dict:
+    safe = sanitize_log_payload({"event": event, "ts": round(time.time(), 3), **payload})
+    try:
+        app_logger.info(json.dumps(safe, ensure_ascii=False, default=str))
+    except NameError:
+        pass
+    return safe
+
+# ---------- 启动时加载（模块级单例）----------
+ENVIRONMENT = os.getenv("FACE_ENV", "development").strip().lower() or "development"
+PRODUCTION_LIKE = ENVIRONMENT in {"prod", "production"}
+API_KEY = os.getenv("FACE_API_KEY", "")
+USE_GPU = env_bool("FACE_USE_GPU", False)
+FORCE_CPU = env_bool("FACE_FORCE_CPU", False) or not USE_GPU
+FACE_MODEL = os.getenv("FACE_MODEL", "buffalo_l")
+FACE_DET_SIZE = env_int("FACE_DET_SIZE", 640, 1)
+DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+DEFAULT_MAX_BASE64_IMAGE_CHARS = ((DEFAULT_MAX_IMAGE_BYTES + 2) // 3) * 4 + 256
+MAX_BASE64_IMAGE_CHARS = env_int("FACE_MAX_BASE64_CHARS", DEFAULT_MAX_BASE64_IMAGE_CHARS, 1)
+MAX_IMAGE_BYTES = env_int("FACE_MAX_IMAGE_BYTES", DEFAULT_MAX_IMAGE_BYTES, 1)
+MAX_IMAGE_PIXELS = env_int("FACE_MAX_IMAGE_PIXELS", 4_096_000, 1)
+DB_PATH = os.getenv("FACE_DB_PATH", "faces.db")
+LOG_PATH = os.getenv("FACE_LOG_PATH", "logs/face_api.log")
+CORS_ORIGINS = env_list("FACE_CORS_ORIGINS", ["*"])
+DUPLICATE_POLICY = os.getenv("FACE_DUPLICATE_POLICY", "allow").strip().lower() or "allow"
+MIN_REGISTER_DET_SCORE = float(os.getenv("FACE_MIN_REGISTER_DET_SCORE", "0.5"))
+MIN_REGISTER_FACE_PIXELS = env_int("FACE_MIN_REGISTER_FACE_PIXELS", 2500, 1)
+MIN_REGISTER_BRIGHTNESS = float(os.getenv("FACE_MIN_REGISTER_BRIGHTNESS", "30"))
+MAX_REGISTER_BRIGHTNESS = float(os.getenv("FACE_MAX_REGISTER_BRIGHTNESS", "225"))
+if PRODUCTION_LIKE and not API_KEY:
+    raise RuntimeError("FACE_API_KEY 在 production 环境不能为空")
+if DUPLICATE_POLICY not in {"allow", "reject", "replace"}:
+    raise RuntimeError("FACE_DUPLICATE_POLICY 必须是 allow、reject 或 replace")
+db_dir = Path(DB_PATH).expanduser().resolve().parent
+if not db_dir.exists() or not os.access(db_dir, os.W_OK):
+    raise RuntimeError(f"FACE_DB_PATH 目录不可写：{db_dir}")
+app_logger = setup_app_logger(LOG_PATH)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ---------- 启动时加载（模块级单例）----------
-FORCE_CPU = os.getenv("FACE_FORCE_CPU", "0") == "1"
-FACE_MODEL = os.getenv("FACE_MODEL", "buffalo_l")
-FACE_DET_SIZE = int(os.getenv("FACE_DET_SIZE", "640"))
-DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
-DEFAULT_MAX_BASE64_IMAGE_CHARS = ((DEFAULT_MAX_IMAGE_BYTES + 2) // 3) * 4 + 256
-MAX_BASE64_IMAGE_CHARS = int(os.getenv("FACE_MAX_BASE64_CHARS", str(DEFAULT_MAX_BASE64_IMAGE_CHARS)))
-MAX_IMAGE_BYTES = int(os.getenv("FACE_MAX_IMAGE_BYTES", str(DEFAULT_MAX_IMAGE_BYTES)))
-MAX_IMAGE_PIXELS = int(os.getenv("FACE_MAX_IMAGE_PIXELS", str(4_096_000)))
-engine = FaceEngine(force_cpu=FORCE_CPU)
+log_event(
+    "startup_config",
+    environment=ENVIRONMENT,
+    use_gpu=USE_GPU,
+    force_cpu=FORCE_CPU,
+    model=FACE_MODEL,
+    det_size=FACE_DET_SIZE,
+    db_path=DB_PATH,
+    cors_origins=CORS_ORIGINS,
+)
+engine = FaceEngine(force_cpu=FORCE_CPU, use_gpu=USE_GPU)
 db = FaceDB()  # 自动读 FACE_DB_PATH 环境变量
 
 
 # ---------- 可选鉴权 ----------
-API_KEY = os.getenv("FACE_API_KEY", "")
 
 
 async def verify_api_key(x_api_key: Optional[str] = Header(None)):
@@ -169,6 +264,14 @@ ERROR_DEFINITIONS = {
         "message": "username 不能为空",
         "reason": "注册人脸时必须传入非空 username，用于和业务系统用户记录对应",
     },
+    "FACE_QUALITY_LOW": {
+        "message": "人脸质量不符合注册要求",
+        "reason": "注册照片的人脸置信度、大小或亮度不符合要求，请重新拍摄清晰的单人正脸照片",
+    },
+    "DUPLICATE_FACE_USER": {
+        "message": "该用户已注册人脸",
+        "reason": "当前重复注册策略不允许同一 user_id 注册多条人脸记录，请先删除或调整重复注册策略",
+    },
     "FACE_ID_NOT_FOUND": {
         "message": "该 ID 不存在",
         "reason": "请求删除的人脸 ID 不在当前本地人脸库中",
@@ -202,6 +305,25 @@ async def request_validation_exception_handler(_request, _exc):
     return JSONResponse(status_code=422, content={"detail": error_detail("VALIDATION_ERROR")})
 
 
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    t0 = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        elapsed = round((time.perf_counter() - t0) * 1000, 2)
+        log_event(
+            "request",
+            method=request.method,
+            route=request.url.path,
+            status_code=status_code,
+            elapsed_ms=elapsed,
+        )
+
+
 def normalize_auth_threshold(threshold: float) -> float:
     """认证场景收紧最低阈值，允许业务侧传入更严格的值。"""
     return max(threshold, 0.55)
@@ -223,6 +345,22 @@ def get_single_face_or_raise(image: np.ndarray) -> dict:
 
 def strip_embedding(face: dict) -> dict:
     return {k: v for k, v in face.items() if k != "embedding"}
+
+
+def validate_register_quality(face: dict, image: np.ndarray) -> None:
+    det_score = float(face.get("det_score") or 0)
+    bbox = face.get("bbox") or [0, 0, 0, 0]
+    width = max(float(bbox[2]) - float(bbox[0]), 0)
+    height = max(float(bbox[3]) - float(bbox[1]), 0)
+    face_pixels = width * height
+    brightness = float(np.mean(image)) if image.size else 0
+    if (
+        det_score < MIN_REGISTER_DET_SCORE
+        or face_pixels < MIN_REGISTER_FACE_PIXELS
+        or brightness < MIN_REGISTER_BRIGHTNESS
+        or brightness > MAX_REGISTER_BRIGHTNESS
+    ):
+        raise_api_error(400, "FACE_QUALITY_LOW")
 
 
 def get_available_providers() -> list[str]:
@@ -292,6 +430,13 @@ def get_system_status() -> dict:
         "det_size": [FACE_DET_SIZE, FACE_DET_SIZE],
         "auth_enabled": bool(API_KEY),
         "force_cpu": FORCE_CPU,
+        "use_gpu": USE_GPU,
+        "environment": ENVIRONMENT,
+        "cors_origins": CORS_ORIGINS,
+        "db_path": DB_PATH,
+        "log_path": LOG_PATH,
+        "duplicate_policy": DUPLICATE_POLICY,
+        "search_cache": db.get_search_cache_status(),
         "faces_count": db.count(),
     }
 
@@ -409,6 +554,13 @@ class SystemStatusResp(BaseModel):
     det_size: list[int]
     auth_enabled: bool
     force_cpu: bool
+    use_gpu: bool
+    environment: str
+    cors_origins: list[str]
+    db_path: str
+    log_path: str
+    duplicate_policy: str
+    search_cache: dict
     faces_count: int
 
 
@@ -416,6 +568,11 @@ class EffectiveConfigResp(BaseModel):
     face_login_threshold: float
     auth_enabled: bool
     force_cpu: bool
+    use_gpu: bool
+    environment: str
+    cors_origins: list[str]
+    log_path: str
+    duplicate_policy: str
     model: str
     det_size: list[int]
     db_path: str
@@ -498,9 +655,14 @@ def effective_config():
         "face_login_threshold": 0.55,
         "auth_enabled": bool(API_KEY),
         "force_cpu": FORCE_CPU,
+        "use_gpu": USE_GPU,
+        "environment": ENVIRONMENT,
+        "cors_origins": CORS_ORIGINS,
+        "log_path": LOG_PATH,
+        "duplicate_policy": DUPLICATE_POLICY,
         "model": FACE_MODEL,
         "det_size": [FACE_DET_SIZE, FACE_DET_SIZE],
-        "db_path": os.getenv("FACE_DB_PATH", "faces.db"),
+        "db_path": DB_PATH,
         "max_base64_image_chars": MAX_BASE64_IMAGE_CHARS,
         "max_image_bytes": MAX_IMAGE_BYTES,
         "max_image_pixels": MAX_IMAGE_PIXELS,
@@ -627,7 +789,16 @@ def register(req: RegisterReq):
     if not username:
         raise_api_error(400, "INVALID_USERNAME")
 
+    validate_register_quality(faces[0], img)
+    if req.user_id is not None and DUPLICATE_POLICY != "allow":
+        existing = db.list_by_user_id(req.user_id)
+        if existing and DUPLICATE_POLICY == "reject":
+            raise_api_error(409, "DUPLICATE_FACE_USER")
+        if existing and DUPLICATE_POLICY == "replace":
+            db.remove_by_user_id(req.user_id)
+
     face_id = db.add(username, faces[0]["embedding"], req.metadata, req.user_id)
+    log_event("face_registered", user_id=req.user_id, username=username, face_id=face_id)
     return {
         "id": face_id,
         "user_id": req.user_id,
@@ -644,6 +815,17 @@ def register(req: RegisterReq):
 )
 def list_faces():
     return {"count": db.count(), "faces": db.list_all()}
+
+
+@app.get(
+    "/faces/by-user/{user_id}",
+    tags=[TAG_DB],
+    summary="按业务用户 ID 查询人脸",
+    dependencies=[Depends(verify_api_key)],
+)
+def list_faces_by_user(user_id: int):
+    faces = db.list_by_user_id(user_id)
+    return {"count": len(faces), "faces": faces}
 
 
 @app.delete(
@@ -770,8 +952,8 @@ def face_login(req: FaceLoginReq):
     response_model=LoginAuditListResp,
     dependencies=[Depends(require_api_key)],
 )
-def list_login_audits(limit: int = 20):
-    return {"items": db.list_login_audits(limit)}
+def list_login_audits(limit: int = 20, success: Optional[bool] = None, terminal_id: Optional[str] = None):
+    return {"items": db.list_login_audits(limit, success=success, terminal_id=terminal_id)}
 
 
 @app.get(
@@ -781,8 +963,8 @@ def list_login_audits(limit: int = 20):
     response_model=LoginAuditSummaryResp,
     dependencies=[Depends(require_api_key)],
 )
-def login_audit_summary(limit: int = 100):
-    return db.get_login_audit_summary(limit)
+def login_audit_summary(limit: int = 100, terminal_id: Optional[str] = None):
+    return db.get_login_audit_summary(limit, terminal_id=terminal_id)
 
 
 if __name__ == "__main__":

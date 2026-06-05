@@ -24,6 +24,8 @@ class FaceDB:
         # 写入计数，每 N 次写入做一次 checkpoint
         self._write_count = 0
         self._checkpoint_threshold = 100
+        self._search_cache = None
+        self._search_cache_dirty = True
 
         self._init_schema()
         print(f"[FaceDB-SQLite] Ready at {os.path.abspath(self.db_path)}, {self.count()} faces loaded")
@@ -87,7 +89,11 @@ class FaceDB:
                 c.execute("ALTER TABLE faces ADD COLUMN user_id INTEGER")
             c.execute("DROP INDEX IF EXISTS idx_name")
             c.execute("CREATE INDEX IF NOT EXISTS idx_username ON faces(username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON faces(user_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON faces(created_at)")
+
+    def _mark_search_cache_dirty(self):
+        self._search_cache_dirty = True
 
     # ---------- 序列化辅助 ----------
     @staticmethod
@@ -132,6 +138,7 @@ class FaceDB:
                 ),
             )
         self._maybe_checkpoint()
+        self._mark_search_cache_dirty()
         return face_id
 
     def remove(self, face_id: str) -> bool:
@@ -140,6 +147,16 @@ class FaceDB:
             removed = cur.rowcount > 0
         if removed:
             self._maybe_checkpoint()
+            self._mark_search_cache_dirty()
+        return removed
+
+    def remove_by_user_id(self, user_id: int) -> int:
+        with self._conn() as c:
+            cur = c.execute("DELETE FROM faces WHERE user_id = ?", (user_id,))
+            removed = cur.rowcount
+        if removed:
+            self._maybe_checkpoint()
+            self._mark_search_cache_dirty()
         return removed
 
     def list_all(self) -> list:
@@ -161,10 +178,70 @@ class FaceDB:
             for r in rows
         ]
 
+    def list_by_user_id(self, user_id: int) -> list:
+        rows = self._conn().execute(
+            """
+            SELECT id, user_id, username, metadata, created_at
+            FROM faces
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "user_id": r["user_id"],
+                "username": r["username"],
+                "metadata": json.loads(r["metadata"] or "{}"),
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
     def count(self) -> int:
         return self._conn().execute("SELECT COUNT(*) FROM faces").fetchone()[0]
 
     # ---------- 1:N 搜索 ----------
+    def _load_search_cache(self):
+        if self._search_cache is not None and not self._search_cache_dirty:
+            return self._search_cache
+
+        rows = self._conn().execute(
+            "SELECT id, user_id, username, embedding, metadata FROM faces"
+        ).fetchall()
+
+        if not rows:
+            self._search_cache = {
+                "ids": [],
+                "user_ids": [],
+                "usernames": [],
+                "metas": [],
+                "emb_matrix": None,
+            }
+            self._search_cache_dirty = False
+            return self._search_cache
+
+        emb_matrix = np.stack([self._blob_to_emb(r["embedding"]) for r in rows])
+        emb_matrix = emb_matrix / (np.linalg.norm(emb_matrix, axis=1, keepdims=True) + 1e-8)
+        self._search_cache = {
+            "ids": [r["id"] for r in rows],
+            "user_ids": [r["user_id"] for r in rows],
+            "usernames": [r["username"] for r in rows],
+            "metas": [json.loads(r["metadata"] or "{}") for r in rows],
+            "emb_matrix": emb_matrix,
+        }
+        self._search_cache_dirty = False
+        return self._search_cache
+
+    def get_search_cache_status(self) -> dict:
+        cache = self._load_search_cache()
+        return {
+            "ready": cache["emb_matrix"] is not None or len(cache["ids"]) == 0,
+            "dirty": self._search_cache_dirty,
+            "record_count": len(cache["ids"]),
+        }
+
     def search(self, query_embedding: list, top_k: int = 5, threshold: float = 0.5) -> list:
         """
         线性扫描全表 + 矩阵化余弦相似度
@@ -172,31 +249,20 @@ class FaceDB:
         - 1w 人：~20ms
         - 10w 人：~200ms（建议接 Faiss）
         """
-        rows = self._conn().execute(
-            "SELECT id, user_id, username, embedding, metadata FROM faces"
-        ).fetchall()
-
-        if not rows:
+        cache = self._load_search_cache()
+        if not cache["ids"]:
             return []
 
-        ids = [r["id"] for r in rows]
-        user_ids = [r["user_id"] for r in rows]
-        usernames = [r["username"] for r in rows]
-        metas = [json.loads(r["metadata"] or "{}") for r in rows]
-        emb_matrix = np.stack([self._blob_to_emb(r["embedding"]) for r in rows])
-
-        # 归一化
-        emb_matrix = emb_matrix / (np.linalg.norm(emb_matrix, axis=1, keepdims=True) + 1e-8)
         q = np.asarray(query_embedding, dtype=np.float32)
         q = q / (np.linalg.norm(q) + 1e-8)
 
         # 一次矩阵乘法搞定所有相似度
-        sims = emb_matrix @ q
+        sims = cache["emb_matrix"] @ q
 
         # 过滤 + 排序 + 取 top_k
         mask = sims >= threshold
         candidates = [
-            (sims[i], ids[i], user_ids[i], usernames[i], metas[i])
+            (sims[i], cache["ids"][i], cache["user_ids"][i], cache["usernames"][i], cache["metas"][i])
             for i in np.where(mask)[0]
         ]
         candidates.sort(key=lambda x: x[0], reverse=True)
@@ -250,17 +316,27 @@ class FaceDB:
         self._maybe_checkpoint()
         return audit_id
 
-    def list_login_audits(self, limit: int = 20) -> list:
+    def list_login_audits(self, limit: int = 20, success: Optional[bool] = None, terminal_id: Optional[str] = None) -> list:
         safe_limit = min(max(int(limit), 1), 100)
+        where = []
+        params = []
+        if success is not None:
+            where.append("success = ?")
+            params.append(1 if success else 0)
+        if terminal_id:
+            where.append("terminal_id = ?")
+            params.append(terminal_id)
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
         rows = self._conn().execute(
-            """
+            f"""
             SELECT id, success, matched_user_id, matched_username, similarity,
                    threshold, failure_reason, terminal_id, state, elapsed_ms, created_at
             FROM face_login_audit
+            {where_sql}
             ORDER BY created_at DESC
             LIMIT ?
             """,
-            (safe_limit,),
+            (*params, safe_limit),
         ).fetchall()
         return [
             {
@@ -279,8 +355,8 @@ class FaceDB:
             for r in rows
         ]
 
-    def get_login_audit_summary(self, limit: int = 100) -> dict:
-        items = self.list_login_audits(limit)
+    def get_login_audit_summary(self, limit: int = 100, terminal_id: Optional[str] = None) -> dict:
+        items = self.list_login_audits(limit, terminal_id=terminal_id)
         total = len(items)
         success_count = sum(1 for item in items if item["success"])
         failure_count = total - success_count

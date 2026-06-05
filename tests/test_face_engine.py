@@ -49,6 +49,22 @@ class FaceEngineInitializationTests(unittest.TestCase):
 
         return importlib.import_module("face_engine")
 
+    def test_engine_defaults_to_cpu_even_when_cuda_is_available(self):
+        module = self.load_face_engine_module(providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+
+        engine = module.FaceEngine(model_name="buffalo_l", det_size=(640, 640))
+
+        self.assertEqual(engine.selected_provider_names, ["CPUExecutionProvider"])
+        self.assertEqual(engine.device, "CPU")
+
+    def test_engine_uses_gpu_when_explicitly_allowed(self):
+        module = self.load_face_engine_module(providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+
+        engine = module.FaceEngine(model_name="buffalo_l", det_size=(640, 640), use_gpu=True)
+
+        self.assertEqual(engine.selected_provider_names, ["CUDAExecutionProvider", "CPUExecutionProvider"])
+        self.assertEqual(engine.device, "GPU (CUDA)")
+
     def test_initialization_failure_includes_runtime_context(self):
         module = self.load_face_engine_module(prepare_error=RuntimeError("prepare failed"))
 
@@ -66,7 +82,7 @@ class FaceEngineInitializationTests(unittest.TestCase):
     def test_engine_exposes_provider_context_after_success(self):
         module = self.load_face_engine_module(providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 
-        engine = module.FaceEngine(model_name="buffalo_l", det_size=(640, 640), force_cpu=False)
+        engine = module.FaceEngine(model_name="buffalo_l", det_size=(640, 640), force_cpu=False, use_gpu=True)
 
         self.assertEqual(engine.model_name, "buffalo_l")
         self.assertEqual(engine.det_size, (640, 640))

@@ -210,10 +210,21 @@ curl http://localhost:8000/openapi.json
 
 ### 默认行为
 系统默认：
-- 优先尝试 `CUDAExecutionProvider`
-- 不可用时回退 `CPUExecutionProvider`
+- 使用 `CPUExecutionProvider`
+- 不主动占用 GPU，适合 Windows 工作站稳定运行
 
-### 强制 CPU
+### 启用 GPU
+需要 GPU 推理时显式设置：
+
+```bat
+set FACE_USE_GPU=1
+```
+
+此时如果 `CUDAExecutionProvider` 可用，服务会优先使用 GPU，并保留 CPU 作为回退 provider。
+
+### 强制 CPU 覆盖
+如果同时配置了 GPU 开关，但临时想强制回到 CPU：
+
 ```bat
 set FACE_FORCE_CPU=1
 ```
@@ -234,6 +245,7 @@ set FACE_FORCE_CPU=1
 - `model`
 - `det_size`
 - `force_cpu`
+- `use_gpu`
 - `available_providers`
 - `selected_providers`
 - `Original error`
@@ -249,15 +261,47 @@ set FACE_FORCE_CPU=1
 | `FACE_MODEL` | `buffalo_l` | 模型名 |
 | `FACE_DET_SIZE` | `640` | 检测输入尺寸 |
 | `FACE_DB_PATH` | `faces.db` | SQLite 数据库路径 |
-| `FACE_FORCE_CPU` | `0` | 设为 `1` 时强制 CPU |
+| `FACE_ENV` | `development` | 运行环境；`production` 会启用更严格启动校验 |
+| `FACE_USE_GPU` | `0` | 设为 `1` 时允许优先使用 GPU |
+| `FACE_FORCE_CPU` | `0` | 设为 `1` 时强制 CPU，并覆盖 `FACE_USE_GPU` |
 | `FACE_API_KEY` | 空 | 启用 API Key 鉴权 |
+| `FACE_CORS_ORIGINS` | `*` | 允许跨域访问的前端来源，多个用英文逗号分隔 |
+| `FACE_LOG_PATH` | `logs/face_api.log` | 服务日志文件路径 |
+| `FACE_DUPLICATE_POLICY` | `allow` | 同一 `user_id` 重复注册策略：`allow` / `reject` / `replace` |
+| `FACE_MIN_REGISTER_DET_SCORE` | `0.5` | 注册人脸最低检测置信度 |
+| `FACE_MIN_REGISTER_FACE_PIXELS` | `2500` | 注册人脸框最小像素面积 |
+| `FACE_MIN_REGISTER_BRIGHTNESS` | `30` | 注册图片最低平均亮度 |
+| `FACE_MAX_REGISTER_BRIGHTNESS` | `225` | 注册图片最高平均亮度 |
 | `FACE_MAX_BASE64_CHARS` | `11185068` | Base64 图片字符串最大长度 |
 | `FACE_MAX_IMAGE_BYTES` | `8388608` | 解码后图片字节最大值 |
 | `FACE_MAX_IMAGE_PIXELS` | `4096000` | 解码后图片最大像素数 |
 
 ---
 
-## 9. 数据库文件说明
+## 9. 生产运行
+
+生产类运行使用：
+
+```bat
+set FACE_API_KEY=your-secret
+run-prod.bat
+```
+
+`run-prod.bat` 会设置 `FACE_ENV=production`，并且不使用 `--reload`。
+
+启动后建议运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\health-check.ps1
+```
+
+详细运行、备份、恢复和排障说明见：
+
+- `docs/deployment/RUNBOOK.md`
+
+---
+
+## 10. 数据库文件说明
 
 运行过程中通常会看到：
 - `faces.db`
@@ -268,6 +312,13 @@ set FACE_FORCE_CPU=1
 
 ### 备份
 - **停服务后** 复制数据库文件
+- 或运行 `scripts\backup-db.ps1`
+
+### 恢复
+- 停服务
+- 运行 `scripts\restore-db.ps1 -BackupDir <备份目录>`
+- 重启服务
+- 运行 `scripts\health-check.ps1`
 
 ### 清空底库
 - 停服务
@@ -276,7 +327,7 @@ set FACE_FORCE_CPU=1
 
 ---
 
-## 10. 常见问题
+## 11. 常见问题
 
 ### Q1：我该先看哪份文档？
 
@@ -309,7 +360,7 @@ set FACE_FORCE_CPU=1
 
 ---
 
-## 11. 其他文档分别干什么
+## 12. 其他文档分别干什么
 
 ### `docs/usage/API_INTEGRATION.md`
 适合：
