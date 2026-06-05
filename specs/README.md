@@ -7,6 +7,7 @@
 - `001-face-api-product` - face_api 产品整体基线和范围边界
 - `ROADMAP-v1.0.md` - V1.0 后续 `/goal` 的版本化执行顺序
 - `ROADMAP-v1.1.md` - V1.0 加固完成后的版本化功能路线图
+- `ROADMAP-v1.2.md` - V1.1 完成后的 A/B/C/D 四条产品线总规划
 
 ## 已规划开发阶段
 
@@ -35,6 +36,15 @@ Roadmap v1.1 已确认主定位为“现场安全可用版”。关键决策包�
 - 注册和 login 都必须携带 `terminal_id`。
 - 搜索扩展目标为 5 万人脸记录，login/search 1 秒内返回。
 - 控制台第一版包含查看、删除、备份、恢复，并复用 `FACE_API_KEY`。
+
+Roadmap v1.2+ 建议版本线：
+
+1. `014-production-runtime-monitoring` - 生产运行、启动停止、监控和恢复
+2. `015-recognition-security-accuracy` - 识别安全、准确率、质量评分和调参
+3. `016-frontend-business-integration` - 摄像头前端示例、业务接入和错误映射
+4. `017-performance-scale` - 5 万人脸 benchmark、批量数据和搜索扩展
+
+Roadmap v1.2 是规划版，只建立总 PRD/specs；后续建议从 V1.3 开始逐版本实施。
 
 ## 推荐流程
 
