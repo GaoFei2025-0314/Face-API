@@ -1,6 +1,7 @@
-import importlib
+﻿import importlib
 import os
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
@@ -25,12 +26,18 @@ class FakeFaceEngine:
 
     @staticmethod
     def cosine_similarity(left, right):
-        return 0.0
+        dot = sum(float(a) * float(b) for a, b in zip(left, right))
+        left_norm = sum(float(a) * float(a) for a in left) ** 0.5
+        right_norm = sum(float(b) * float(b) for b in right) ** 0.5
+        if left_norm == 0 or right_norm == 0:
+            return 0.0
+        return dot / (left_norm * right_norm)
 
 
 class FakeFaceDB:
     def __init__(self):
         self.audit_entries = []
+        self.challenges = {}
 
     def count(self):
         return 0
@@ -79,10 +86,83 @@ class FakeFaceDB:
         }
 
     def get_search_cache_status(self):
-        return {"ready": True, "dirty": False, "record_count": 0}
+        return {
+            "ready": True,
+            "dirty": False,
+            "record_count": 0,
+            "mode": "exact",
+            "target_record_count": 50000,
+            "target_latency_ms": 1000,
+        }
+
+    def get_search_benchmark_summary(self):
+        return {
+            "mode": "exact",
+            "record_count": 0,
+            "target_record_count": 50000,
+            "target_latency_ms": 1000,
+            "approximate_search_enabled": False,
+            "recommendation": "当前使用精确搜索",
+        }
+
+    def add_liveness_challenge(self, *, purpose, terminal_id, action, expires_at, action_window_seconds):
+        challenge_id = f"challenge-{len(self.challenges) + 1}"
+        self.challenges[challenge_id] = {
+            "id": challenge_id,
+            "purpose": purpose,
+            "terminal_id": terminal_id,
+            "action": action,
+            "status": "pending",
+            "result_reason": None,
+            "face_embedding": None,
+            "expires_at": expires_at,
+            "used_at": None,
+            "action_window_seconds": action_window_seconds,
+        }
+        return challenge_id
+
+    def get_liveness_challenge(self, challenge_id):
+        return self.challenges.get(challenge_id)
+
+    def mark_liveness_challenge_result(self, challenge_id, *, passed, result_reason, face_embedding=None):
+        challenge = self.challenges.get(challenge_id)
+        if not challenge or challenge["status"] != "pending":
+            return False
+        challenge["status"] = "passed" if passed else "failed"
+        challenge["result_reason"] = result_reason
+        challenge["face_embedding"] = face_embedding
+        return True
+
+    def consume_liveness_challenge(self, *, challenge_id, purpose, terminal_id, now):
+        challenge = self.challenges.get(challenge_id)
+        if not challenge:
+            return False, "not_found", None
+        if challenge.get("used_at") is not None or challenge["status"] == "used":
+            return False, "already_used", challenge
+        if now > challenge["expires_at"]:
+            challenge["status"] = "expired"
+            return False, "expired", challenge
+        if challenge["purpose"] != purpose:
+            return False, "purpose_mismatch", challenge
+        if challenge["terminal_id"] != terminal_id:
+            return False, "terminal_mismatch", challenge
+        if challenge["status"] != "passed":
+            return False, "not_passed", challenge
+        challenge["status"] = "used"
+        challenge["used_at"] = now
+        return True, "ok", challenge
+
+    def backup_to(self, target_path):
+        return str(target_path)
+
+    def invalidate_search_cache(self):
+        self.search_cache_invalidated = True
+
+    def close(self):
+        return None
 
 
-def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None):
+def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None, disable_login_liveness=True):
     for key in [
         "FACE_ENV",
         "FACE_REQUIRE_API_KEY",
@@ -98,6 +178,17 @@ def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None):
         "FACE_MAX_BASE64_CHARS",
         "FACE_MAX_IMAGE_PIXELS",
         "FACE_DET_SIZE",
+        "FACE_LOGIN_LIVENESS_ENABLED",
+        "FACE_REGISTER_LIVENESS_ENABLED",
+        "FACE_CHALLENGE_TTL_SECONDS",
+        "FACE_CHALLENGE_ACTION_SECONDS",
+        "FACE_CHALLENGE_MIN_FRAMES",
+        "FACE_CHALLENGE_MAX_FRAMES",
+        "FACE_CHALLENGE_ACTIONS",
+        "FACE_DEFAULT_POLICY_PROFILE",
+        "FACE_TERMINAL_POLICY_MAP",
+        "FACE_MAINTENANCE_FILE",
+        "FACE_ALLOW_ONLINE_RESTORE",
     ]:
         os.environ.pop(key, None)
     if api_key:
@@ -112,6 +203,8 @@ def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None):
         os.environ.pop("FACE_FORCE_CPU", None)
     else:
         os.environ["FACE_FORCE_CPU"] = force_cpu
+    if disable_login_liveness:
+        os.environ["FACE_LOGIN_LIVENESS_ENABLED"] = "0"
     if extra_env:
         os.environ.update(extra_env)
     FakeFaceEngine.instances = []
@@ -335,7 +428,7 @@ class MainApiContractTests(unittest.TestCase):
         module.engine.analyze = lambda _: []
 
         with self.assertRaises(HTTPException) as exc_info:
-            module.register(module.RegisterReq(username="zhangsan", image="dummy"))
+            module.register(module.RegisterReq(terminal_id="t-1", username="zhangsan", image="dummy"))
 
         self.assertEqual(exc_info.exception.status_code, 400)
         self.assertEqual(exc_info.exception.detail["code"], "NO_FACE")
@@ -382,6 +475,16 @@ class MainApiContractTests(unittest.TestCase):
             ("/auth/face-login", "POST"),
             ("/audit/login/recent", "GET"),
             ("/audit/login/summary", "GET"),
+            ("/liveness/challenges", "POST"),
+            ("/liveness/challenges/submit", "POST"),
+            ("/admin/overview", "GET"),
+            ("/admin/maintenance", "GET"),
+            ("/admin/maintenance", "POST"),
+            ("/admin/faces/{face_id}/delete", "POST"),
+            ("/admin/backup", "POST"),
+            ("/admin/restore", "POST"),
+            ("/policy/tuning-summary", "GET"),
+            ("/search/benchmark-summary", "GET"),
         ]
         conditional_auth = [
             ("/faces/register", "POST"),
@@ -404,7 +507,7 @@ class MainApiContractTests(unittest.TestCase):
         module.engine.analyze = lambda _: []
 
         with self.assertRaises(HTTPException) as exc_info:
-            module.register(module.RegisterReq(username="zhangsan", image="dummy"))
+            module.register(module.RegisterReq(terminal_id="t-1", username="zhangsan", image="dummy"))
 
         self.assertEqual(exc_info.exception.status_code, 400)
         self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸")
@@ -418,7 +521,7 @@ class MainApiContractTests(unittest.TestCase):
         module.db.list_by_user_id = lambda _user_id: [{"id": "existing"}]
 
         with self.assertRaises(HTTPException) as exc_info:
-            module.register(module.RegisterReq(user_id=1, username="zhangsan", image="dummy"))
+            module.register(module.RegisterReq(terminal_id="t-1", user_id=1, username="zhangsan", image="dummy"))
 
         self.assertEqual(exc_info.exception.status_code, 409)
         self.assert_error_detail(exc_info.exception.detail, "DUPLICATE_FACE_USER", "该用户已注册人脸")
@@ -431,7 +534,7 @@ class MainApiContractTests(unittest.TestCase):
         ]
 
         with self.assertRaises(HTTPException) as exc_info:
-            module.register(module.RegisterReq(user_id=1, username="zhangsan", image="dummy"))
+            module.register(module.RegisterReq(terminal_id="t-1", user_id=1, username="zhangsan", image="dummy"))
 
         self.assertEqual(exc_info.exception.status_code, 400)
         self.assert_error_detail(exc_info.exception.detail, "FACE_QUALITY_LOW", "人脸质量不符合注册要求")
@@ -472,7 +575,7 @@ class MainApiContractTests(unittest.TestCase):
         module.db.search = lambda *args, **kwargs: [{"user_id": 1, "username": "   "}]
 
         with self.assertRaises(HTTPException) as exc_info:
-            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
+            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1"))
 
         self.assertEqual(exc_info.exception.status_code, 403)
         self.assert_error_detail(exc_info.exception.detail, "INVALID_MATCH_RECORD", "身份验证失败，匹配记录无效")
@@ -567,7 +670,7 @@ class MainApiContractTests(unittest.TestCase):
         module.engine.analyze = lambda _: []
 
         with self.assertRaises(HTTPException) as exc_info:
-            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
+            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1"))
 
         self.assertEqual(exc_info.exception.status_code, 400)
         self.assert_error_detail(
@@ -587,7 +690,7 @@ class MainApiContractTests(unittest.TestCase):
         module.get_single_face_or_raise = raise_custom_error
 
         with self.assertRaises(HTTPException) as exc_info:
-            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
+            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1"))
 
         self.assertEqual(exc_info.exception.status_code, 400)
         self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸", "custom reason")
@@ -601,7 +704,7 @@ class MainApiContractTests(unittest.TestCase):
         ]
 
         with self.assertRaises(HTTPException) as exc_info:
-            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
+            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1"))
 
         self.assertEqual(exc_info.exception.status_code, 400)
         self.assert_error_detail(exc_info.exception.detail, "MULTIPLE_FACES", "检测到多张人脸")
@@ -622,7 +725,7 @@ class MainApiContractTests(unittest.TestCase):
         module.db.search = lambda *args, **kwargs: []
 
         with self.assertRaises(HTTPException) as exc_info:
-            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6))
+            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1"))
 
         self.assertEqual(exc_info.exception.status_code, 403)
         self.assert_error_detail(exc_info.exception.detail, "NO_MATCH", "身份验证失败，未匹配到有效用户")
@@ -726,30 +829,254 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(body["success_count"], 1)
         self.assertEqual(body["failure_count"], 1)
 
-    def test_config_effective_returns_runtime_defaults(self):
+    def test_liveness_challenge_create_and_submit_passes(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda image: module.np.ones((10, 10, 3), dtype=module.np.uint8) * (
+            120 if image == "bright" else 20
+        )
+        module.engine.analyze = lambda _: [{"embedding": EMBEDDING, "det_score": 0.9}]
+
+        created = module.create_liveness_challenge(
+            module.LivenessChallengeCreateReq(purpose="login", terminal_id="door-1")
+        )
+        body = module.submit_liveness_challenge(
+            module.LivenessChallengeSubmitReq(
+                challenge_id=created["challenge_id"],
+                purpose="login",
+                terminal_id="door-1",
+                frames=["dark"] * 10 + ["bright"] * 10,
+            )
+        )
+
+        self.assertTrue(body["passed"])
+        self.assertEqual(module.db.challenges[created["challenge_id"]]["status"], "passed")
+
+    def test_liveness_challenge_cannot_be_written_in_maintenance_mode(self):
+        module = load_main_module(api_key="secret")
+        module.set_maintenance_mode(True)
+        try:
+            with self.assertRaises(HTTPException) as create_exc:
+                module.create_liveness_challenge(module.LivenessChallengeCreateReq(purpose="login", terminal_id="door-1"))
+            self.assertEqual(create_exc.exception.status_code, 503)
+
+            with self.assertRaises(HTTPException) as submit_exc:
+                module.submit_liveness_challenge(
+                    module.LivenessChallengeSubmitReq(
+                        challenge_id="challenge-1",
+                        purpose="login",
+                        terminal_id="door-1",
+                        frames=["dark"] * 10 + ["bright"] * 10,
+                    )
+                )
+            self.assertEqual(submit_exc.exception.status_code, 503)
+        finally:
+            module.set_maintenance_mode(False)
+
+    def test_failed_liveness_challenge_requires_new_challenge(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda image: module.np.ones((10, 10, 3), dtype=module.np.uint8) * 80
+        created = module.create_liveness_challenge(
+            module.LivenessChallengeCreateReq(purpose="login", terminal_id="door-1")
+        )
+        failed = module.submit_liveness_challenge(
+            module.LivenessChallengeSubmitReq(
+                challenge_id=created["challenge_id"],
+                purpose="login",
+                terminal_id="door-1",
+                frames=["flat"] * 10,
+            )
+        )
+        self.assertFalse(failed["passed"])
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.submit_liveness_challenge(
+                module.LivenessChallengeSubmitReq(
+                    challenge_id=created["challenge_id"],
+                    purpose="login",
+                    terminal_id="door-1",
+                    frames=["dark"] * 10 + ["bright"] * 10,
+                )
+            )
+        self.assertEqual(exc_info.exception.status_code, 403)
+
+    def test_face_login_requires_liveness_challenge_when_enabled(self):
+        module = load_main_module(api_key="secret", disable_login_liveness=False)
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="door-1"))
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assert_error_detail(exc_info.exception.detail, "LIVENESS_CHALLENGE_REQUIRED", "需要先完成活体挑战")
+        self.assertEqual(module.db.audit_entries[0]["liveness_status"], "failed")
+
+    def test_face_login_consumes_liveness_challenge_once(self):
+        module = load_main_module(api_key="secret", disable_login_liveness=False)
+        challenge_id = module.db.add_liveness_challenge(
+            purpose="login",
+            terminal_id="door-1",
+            action="blink",
+            expires_at=module.time.time() + 60,
+            action_window_seconds=10,
+        )
+        module.db.mark_liveness_challenge_result(challenge_id, passed=True, result_reason="ok")
+        module.db.challenges[challenge_id]["face_embedding"] = EMBEDDING
+        module.decode_base64 = lambda _: module.np.zeros((10, 10, 3), dtype=module.np.uint8)
+        module.get_single_face_or_raise = lambda _: {"embedding": EMBEDDING}
+        module.db.search = lambda *args, **kwargs: [
+            {"user_id": 7, "username": "alice", "similarity": 0.91, "metadata": {}}
+        ]
+
+        body = module.face_login(
+            module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="door-1", challenge_id=challenge_id)
+        )
+
+        self.assertTrue(body["authenticated"])
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(
+                module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="door-1", challenge_id=challenge_id)
+            )
+        self.assertEqual(exc_info.exception.status_code, 403)
+
+    def test_face_login_rejects_liveness_face_mismatch(self):
+        module = load_main_module(api_key="secret", disable_login_liveness=False)
+        challenge_id = module.db.add_liveness_challenge(
+            purpose="login",
+            terminal_id="door-1",
+            action="blink",
+            expires_at=module.time.time() + 60,
+            action_window_seconds=10,
+        )
+        module.db.mark_liveness_challenge_result(
+            challenge_id,
+            passed=True,
+            result_reason="ok",
+            face_embedding=[0.1] * 512,
+        )
+        module.decode_base64 = lambda _: module.np.zeros((10, 10, 3), dtype=module.np.uint8)
+        module.get_single_face_or_raise = lambda _: {"embedding": [0.0] * 511 + [1.0]}
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(
+                module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="door-1", challenge_id=challenge_id)
+            )
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assert_error_detail(exc_info.exception.detail, "LIVENESS_CHALLENGE_INVALID", "活体挑战无效")
+
+    def test_admin_restore_requires_maintenance_and_confirmation(self):
+        module = load_main_module(api_key="secret")
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.admin_restore(module.RestoreReq(backup_dir="missing", confirm=True))
+        self.assertEqual(exc_info.exception.status_code, 503)
+        self.assert_error_detail(exc_info.exception.detail, "MAINTENANCE_MODE_REQUIRED", "需要先进入维护模式")
+
+        module.set_maintenance_mode(True)
+        try:
+            with self.assertRaises(HTTPException) as confirm_exc:
+                module.admin_restore(module.RestoreReq(backup_dir="missing", confirm=False))
+            self.assertEqual(confirm_exc.exception.status_code, 400)
+        finally:
+            module.set_maintenance_mode(False)
+
+    def test_admin_restore_invalidates_search_cache_after_restore(self):
+        module = load_main_module(api_key="secret")
+        module.set_maintenance_mode(True)
+        try:
+            module.restore_db_files = lambda backup_dir: ["faces.db"]
+            body = module.admin_restore(module.RestoreReq(backup_dir="backups/ok", confirm=True))
+            self.assertTrue(body["ok"])
+            self.assertTrue(module.db.search_cache_invalidated)
+        finally:
+            module.set_maintenance_mode(False)
+
+    def test_admin_restore_is_disabled_by_default_in_production(self):
+        module = load_main_module(api_key="secret", extra_env={"FACE_ENV": "production"})
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.admin_restore(module.RestoreReq(backup_dir="backups/ok", confirm=True))
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assert_error_detail(exc_info.exception.detail, "ONLINE_RESTORE_DISABLED", "当前环境不允许在线恢复")
+
+    def test_admin_restore_rejects_paths_outside_backups(self):
+        module = load_main_module(api_key="secret")
+        module.set_maintenance_mode(True)
+        try:
+            with self.assertRaises(HTTPException) as exc_info:
+                module.admin_restore(module.RestoreReq(backup_dir="../outside", confirm=True))
+            self.assertEqual(exc_info.exception.status_code, 400)
+            self.assert_error_detail(exc_info.exception.detail, "BACKUP_PATH_INVALID", "备份路径不合法")
+        finally:
+            module.set_maintenance_mode(False)
+
+    def test_restore_removes_stale_wal_when_backup_has_main_db_only(self):
+        module = load_main_module(api_key="secret")
+        os.makedirs("backups", exist_ok=True)
+        with tempfile.TemporaryDirectory(dir="backups") as backup_dir, tempfile.TemporaryDirectory() as db_dir:
+            db_path = os.path.join(db_dir, "faces.db")
+            module.DB_PATH = db_path
+            with open(db_path, "w", encoding="utf-8") as f:
+                f.write("old")
+            with open(db_path + "-wal", "w", encoding="utf-8") as f:
+                f.write("stale wal")
+            with open(os.path.join(backup_dir, "faces.db"), "w", encoding="utf-8") as f:
+                f.write("backup")
+
+            restored = module.restore_db_files(module.Path(backup_dir))
+
+            self.assertEqual(restored, [db_path])
+            with open(db_path, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "backup")
+            self.assertFalse(os.path.exists(db_path + "-wal"))
+
+    def test_public_health_is_minimal(self):
         module = load_main_module()
+
+        body = module.health()
+
+        self.assertEqual(body, {"status": "ok", "service": "face_api"})
+
+    def test_openapi_contains_v11_routes_and_key_fields(self):
+        module = load_main_module(api_key="secret")
+
+        schema = module.app.openapi()
+
+        self.assertIn("/liveness/challenges", schema["paths"])
+        self.assertIn("/admin/restore", schema["paths"])
+        register_props = schema["components"]["schemas"]["RegisterReq"]["properties"]
+        login_props = schema["components"]["schemas"]["FaceLoginReq"]["properties"]
+        self.assertIn("terminal_id", register_props)
+        self.assertIn("challenge_id", register_props)
+        self.assertIn("terminal_id", login_props)
+        self.assertIn("challenge_id", login_props)
+
+    def test_policy_and_search_v11_summaries_are_read_only(self):
+        module = load_main_module(api_key="secret")
+        module.db.add_login_audit(success=False, similarity=0.4, terminal_id="door-1")
+
+        tuning = module.policy_tuning_summary(limit=10, terminal_id="door-1")
+        search_status = module.search_benchmark_summary()
+
+        self.assertFalse(tuning["auto_apply"])
+        self.assertEqual(tuning["policy"]["profile"], "default")
+        self.assertEqual(search_status["mode"], "exact")
+        self.assertEqual(search_status["target_record_count"], 50000)
+
+    def test_config_effective_returns_runtime_defaults(self):
+        module = load_main_module(disable_login_liveness=False)
 
         body = module.effective_config()
 
-        self.assertEqual(
-            body,
-            {
-                "face_login_threshold": 0.55,
-                "auth_enabled": False,
-                "force_cpu": True,
-                "use_gpu": False,
-                "environment": "development",
-                "cors_origins": ["*"],
-                "log_path": "logs/face_api.log",
-                "duplicate_policy": "allow",
-                "model": "buffalo_l",
-                "det_size": [640, 640],
-                "db_path": "faces.db",
-                "max_base64_image_chars": 11185068,
-                "max_image_bytes": 8388608,
-                "max_image_pixels": 4096000,
-            },
-        )
+        self.assertEqual(body["face_login_threshold"], 0.55)
+        self.assertTrue(body["force_cpu"])
+        self.assertEqual(body["model"], "buffalo_l")
+        self.assertTrue(body["liveness"]["login_enabled"])
+        self.assertFalse(body["liveness"]["register_enabled"])
+        self.assertEqual(body["liveness"]["challenge_ttl_seconds"], 60)
+        self.assertEqual(body["liveness"]["action_window_seconds"], 10)
+        self.assertEqual(body["search_target"]["target_record_count"], 50000)
+        self.assertEqual(body["search_target"]["target_latency_ms"], 1000)
 
     def test_config_effective_requires_explicit_api_key(self):
         module = load_main_module()
@@ -768,26 +1095,14 @@ class MainApiContractTests(unittest.TestCase):
 
         body = module.system_status()
 
-        self.assertEqual(
-            body,
-            {
-                "status": "ok",
-                "device": "CPU",
-                "providers": ["CPUExecutionProvider"],
-                "model": "buffalo_l",
-                "det_size": [640, 640],
-                "auth_enabled": False,
-                "force_cpu": True,
-                "use_gpu": False,
-                "environment": "development",
-                "cors_origins": ["*"],
-                "db_path": "faces.db",
-                "log_path": "logs/face_api.log",
-                "duplicate_policy": "allow",
-                "search_cache": {"ready": True, "dirty": False, "record_count": 0},
-                "faces_count": 0,
-            },
-        )
+        self.assertEqual(body["status"], "ok")
+        self.assertEqual(body["device"], "CPU")
+        self.assertEqual(body["search_cache"]["mode"], "exact")
+        self.assertEqual(body["search_cache"]["target_record_count"], 50000)
+        self.assertFalse(body["liveness"]["login_enabled"])
+        self.assertEqual(body["recognition_policy"]["profile"], "default")
+        self.assertFalse(body["maintenance_mode"])
+        self.assertEqual(body["faces_count"], 0)
 
 
 if __name__ == "__main__":

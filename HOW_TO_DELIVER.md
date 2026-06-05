@@ -11,6 +11,12 @@
 
 - `docs/deployment/RUNBOOK.md`
 
+V1.1 运维控制台：
+
+- `http://<后端机器IP>:8000/admin.html`
+- 复用 `FACE_API_KEY`
+- 恢复数据库前必须进入维护模式并二次确认
+
 ---
 
 ## 一、本机开发：前后端都在一台机器
@@ -31,6 +37,8 @@ run-prod.bat
 ```javascript
 const API_BASE = "http://localhost:8000";
 ```
+
+V1.1 起，注册和 face login 请求都必须带 `terminal_id`，用于 audit、日志和现场排障。
 
 CORS 已开启，直接跨域调用即可。
 

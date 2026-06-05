@@ -2,7 +2,7 @@
 
 ## 1. 适用范围
 
-本文用于 `face_api Roadmap v1.0` 的生产类本地运行、交付、备份、恢复和排障。
+本文用于 `face_api Roadmap v1.0/v1.1` 的生产类本地运行、交付、备份、恢复和排障。
 
 目标环境是单台 Windows 工作站。
 
@@ -76,6 +76,12 @@ CORS 只控制浏览器跨域，不替代 `X-API-Key`。
 powershell -ExecutionPolicy Bypass -File scripts\backup-db.ps1
 ```
 
+V1.1 也可以通过运维控制台触发备份：
+
+```text
+http://localhost:8000/admin.html
+```
+
 需要关注的文件包括：
 
 - `faces.db`
@@ -93,6 +99,8 @@ powershell -ExecutionPolicy Bypass -File scripts\restore-db.ps1 -BackupDir backu
 ```
 
 恢复后重新启动服务，并运行健康检查。
+
+如果通过 V1.1 运维控制台恢复数据库，必须先进入维护模式，再二次确认恢复。production 默认禁用在线恢复；生产恢复建议先停止 API 服务，再运行 `scripts\restore-db.ps1` 离线恢复。恢复完成后退出维护模式，并运行健康检查。
 
 ## 8. 常见问题
 

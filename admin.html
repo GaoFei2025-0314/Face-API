@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>face_api 运维控制台</title>
+  <style>
+    body { font-family: Arial, "Microsoft YaHei", sans-serif; margin: 24px; color: #1f2937; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    input, button { padding: 8px 10px; font-size: 14px; }
+    button { cursor: pointer; }
+    section { border-top: 1px solid #d1d5db; margin-top: 20px; padding-top: 16px; }
+    pre { background: #f3f4f6; padding: 12px; overflow: auto; border-radius: 4px; }
+    .danger { color: #b91c1c; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>face_api 运维控制台</h1>
+    <label>API Key <input id="apiKey" type="password" placeholder="X-API-Key"></label>
+  </header>
+
+  <section>
+    <div class="grid">
+      <button onclick="loadOverview()">刷新概览</button>
+      <button onclick="setMaintenance(true)">进入维护模式</button>
+      <button onclick="setMaintenance(false)">退出维护模式</button>
+      <button onclick="backupDb()">备份数据库</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>删除人脸记录</h2>
+    <input id="faceId" placeholder="face_id">
+    <button class="danger" onclick="deleteFace()">二次确认删除</button>
+  </section>
+
+  <section>
+    <h2>恢复数据库</h2>
+    <p class="danger">恢复前必须进入维护模式，并确认备份目录正确。</p>
+    <input id="backupDir" placeholder="backups/20260605-120000">
+    <button class="danger" onclick="restoreDb()">二次确认恢复</button>
+  </section>
+
+  <section>
+    <h2>结果</h2>
+    <pre id="output">等待操作...</pre>
+  </section>
+
+  <script>
+    function headers() {
+      return { "Content-Type": "application/json", "X-API-Key": document.getElementById("apiKey").value };
+    }
+    async function call(path, options = {}) {
+      const res = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
+      const data = await res.json();
+      document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+    }
+    function loadOverview() { call("/admin/overview"); }
+    function setMaintenance(enabled) {
+      call("/admin/maintenance", { method: "POST", body: JSON.stringify({ enabled }) });
+    }
+    function backupDb() { call("/admin/backup", { method: "POST" }); }
+    function deleteFace() {
+      const faceId = document.getElementById("faceId").value.trim();
+      if (!faceId || !confirm("确认删除该人脸记录？")) return;
+      call(`/admin/faces/${encodeURIComponent(faceId)}/delete`, { method: "POST", body: JSON.stringify({ confirm: true }) });
+    }
+    function restoreDb() {
+      const backupDir = document.getElementById("backupDir").value.trim();
+      if (!backupDir || !confirm("确认恢复数据库？当前数据库会被覆盖。")) return;
+      call("/admin/restore", { method: "POST", body: JSON.stringify({ backup_dir: backupDir, confirm: true }) });
+    }
+  </script>
+</body>
+</html>

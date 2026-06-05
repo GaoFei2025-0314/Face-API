@@ -74,6 +74,11 @@
 | 强制鉴权 | `/auth/face-login` | 是 |
 | 强制鉴权 | `/audit/login/recent` | 是 |
 | 强制鉴权 | `/audit/login/summary` | 是 |
+| 强制鉴权 | `/liveness/challenges` | 是 |
+| 强制鉴权 | `/liveness/challenges/submit` | 是 |
+| 强制鉴权 | `/admin/overview` | 是 |
+| 强制鉴权 | `/admin/backup` | 是 |
+| 强制鉴权 | `/admin/restore` | 是 |
 | 条件鉴权 | `/detect` | 取决于后端是否配置 `FACE_API_KEY` |
 | 条件鉴权 | `/detect/base64` | 同上 |
 | 条件鉴权 | `/compare` | 同上 |
@@ -98,6 +103,8 @@ function buildHeaders(extra = {}) {
   };
 }
 ```
+
+V1.1 起，`/faces/register` 和 `/auth/face-login` 都必须传 `terminal_id`。业务系统主动调用 face_api，face_api 只返回识别、活体和失败原因结果，不主动 callback 业务系统。
 
 ---
 
@@ -293,6 +300,19 @@ X-API-Key: <你的密钥>
 
 ## 6.5 `POST /faces/register`
 
+V1.1 起请求体必须包含 `terminal_id`。如果注册启用了活体，还必须携带已通过且未使用的 `challenge_id`。
+
+```json
+{
+  "user_id": 10001,
+  "terminal_id": "door-1",
+  "challenge_id": "optional-passed-challenge-id",
+  "username": "zhangsan",
+  "image": "base64...",
+  "metadata": { "department": "研发部" }
+}
+```
+
 请求：
 
 ```json
@@ -355,8 +375,100 @@ X-API-Key: <你的密钥>
 请求体：
 
 ```json
-{ "image": "...", "terminal_id": "kiosk-01", "state": "trace-001", "threshold": 0.6 }
+{
+  "image": "...",
+  "terminal_id": "kiosk-01",
+  "challenge_id": "passed-login-challenge-id",
+  "state": "trace-001",
+  "threshold": 0.6
+}
 ```
+
+默认情况下 face login 启用活体检测。前端应先调用 `/liveness/challenges` 创建 challenge，再提交连续图片帧到 `/liveness/challenges/submit`。challenge 通过后，把一次性 `challenge_id` 带到 `/auth/face-login`。
+
+challenge 通过时，后端会抽样检测连续帧中的人脸并保存该活体人脸特征。后续 `/auth/face-login` 或启用活体的 `/faces/register` 必须使用同一个人的图片，否则会返回 `LIVENESS_CHALLENGE_INVALID`。
+
+### V1.1 活体 challenge
+
+创建：
+
+```json
+POST /liveness/challenges
+{ "purpose": "login", "terminal_id": "door-1", "action": "blink" }
+```
+
+提交：
+
+```json
+POST /liveness/challenges/submit
+{
+  "challenge_id": "...",
+  "purpose": "login",
+  "terminal_id": "door-1",
+  "frames": ["base64-frame-1", "base64-frame-2"]
+}
+```
+
+规则：
+
+- `challenge` 有效期 60 秒。
+- 动作窗口 10 秒。
+- 眨眼 challenge 提交 10 到 30 帧连续图片。
+- `challenge_id` 只能使用一次。
+- 用途和 `terminal_id` 必须与 login/注册请求一致。
+- challenge 通过时的人脸必须与最终 login/注册图片中的人脸一致。
+- 如果 challenge 提交失败，请重新创建 challenge；失败的 `challenge_id` 不能继续复用。
+- 维护模式下不能创建或提交 challenge。
+
+### V1.1 运维控制台 API
+
+- `GET /admin/overview`：控制台概览。
+- `POST /admin/maintenance`：进入或退出维护模式。
+- `POST /admin/faces/{face_id}/delete`：二次确认后删除人脸。
+- `POST /admin/backup`：备份数据库。
+- `POST /admin/restore`：维护模式 + 二次确认后恢复数据库。
+
+维护模式请求体：
+
+```json
+{ "enabled": true }
+```
+
+删除人脸请求体：
+
+```json
+{ "confirm": true }
+```
+
+恢复数据库请求体：
+
+```json
+{ "backup_dir": "backups/20260605-120000", "confirm": true }
+```
+
+恢复路径只能选择项目 `backups/` 目录下的备份。production 默认不允许在线恢复；多 worker 或生产恢复建议先停止 API 服务，再用恢复脚本执行。
+
+### V1.1 阈值调参说明
+
+`GET /policy/tuning-summary` 只提供建议，不会自动修改阈值。
+
+- false accept：不该通过的人通过了。阈值过低时风险更高。
+- false reject：应该通过的人被拒绝。阈值过高、光照差或摄像头角度差时更常见。
+- V1.1 建议按 `terminal_id` 绑定策略档案，因为不同摄像头和安装位置的现场条件不同。
+- 调整阈值前先看 audit 样本量和相似度分布；样本不足时不要调整。
+
+### V1.1 terminal 上线检查清单
+
+terminal 上线前至少验证：
+
+- `terminal_id` 固定且能在注册、login、audit 中看到。
+- 业务系统主动调用 face_api，不等待 face_api callback。
+- 注册流程能正确处理 `NO_FACE`、`MULTIPLE_FACES`、`FACE_QUALITY_LOW`。
+- face login 流程能先完成活体 challenge，再携带一次性 `challenge_id` 调用 `/auth/face-login`。
+- 活体失败时，用户端展示简短操作提示。
+- `NO_MATCH`、`LIVENESS_CHALLENGE_REQUIRED`、`LIVENESS_CHALLENGE_INVALID` 能映射到明确重试动作。
+- 现场网络异常时客户端有 timeout 和 retry 限制，避免无限重试。
+- 运维人员能在 `/audit/login/recent?terminal_id=<id>` 中看到该 terminal 的记录。
 
 成功返回：
 

@@ -15,6 +15,8 @@ import base64
 import json
 import logging
 import os
+import shutil
+import uuid
 from pathlib import Path
 import time
 from typing import Optional
@@ -25,7 +27,7 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from face_engine import FaceEngine
@@ -149,10 +151,23 @@ MIN_REGISTER_DET_SCORE = float(os.getenv("FACE_MIN_REGISTER_DET_SCORE", "0.5"))
 MIN_REGISTER_FACE_PIXELS = env_int("FACE_MIN_REGISTER_FACE_PIXELS", 2500, 1)
 MIN_REGISTER_BRIGHTNESS = float(os.getenv("FACE_MIN_REGISTER_BRIGHTNESS", "30"))
 MAX_REGISTER_BRIGHTNESS = float(os.getenv("FACE_MAX_REGISTER_BRIGHTNESS", "225"))
+FACE_LOGIN_LIVENESS_ENABLED = env_bool("FACE_LOGIN_LIVENESS_ENABLED", True)
+FACE_REGISTER_LIVENESS_ENABLED = env_bool("FACE_REGISTER_LIVENESS_ENABLED", False)
+FACE_CHALLENGE_TTL_SECONDS = env_int("FACE_CHALLENGE_TTL_SECONDS", 60, 1)
+FACE_CHALLENGE_ACTION_SECONDS = env_int("FACE_CHALLENGE_ACTION_SECONDS", 10, 1)
+FACE_CHALLENGE_MIN_FRAMES = env_int("FACE_CHALLENGE_MIN_FRAMES", 10, 1)
+FACE_CHALLENGE_MAX_FRAMES = env_int("FACE_CHALLENGE_MAX_FRAMES", 30, FACE_CHALLENGE_MIN_FRAMES)
+FACE_CHALLENGE_ACTIONS = env_list("FACE_CHALLENGE_ACTIONS", ["blink"])
+FACE_DEFAULT_POLICY_PROFILE = os.getenv("FACE_DEFAULT_POLICY_PROFILE", "default").strip() or "default"
+FACE_TERMINAL_POLICY_MAP = os.getenv("FACE_TERMINAL_POLICY_MAP", "").strip()
+MAINTENANCE_MODE_FILE = Path(os.getenv("FACE_MAINTENANCE_FILE", ".maintenance_mode"))
+ALLOW_ONLINE_RESTORE = env_bool("FACE_ALLOW_ONLINE_RESTORE", not PRODUCTION_LIKE)
 if PRODUCTION_LIKE and not API_KEY:
     raise RuntimeError("FACE_API_KEY 在 production 环境不能为空")
 if DUPLICATE_POLICY not in {"allow", "reject", "replace"}:
     raise RuntimeError("FACE_DUPLICATE_POLICY 必须是 allow、reject 或 replace")
+if "blink" not in FACE_CHALLENGE_ACTIONS:
+    raise RuntimeError("FACE_CHALLENGE_ACTIONS 第一版必须包含 blink")
 db_dir = Path(DB_PATH).expanduser().resolve().parent
 if not db_dir.exists() or not os.access(db_dir, os.W_OK):
     raise RuntimeError(f"FACE_DB_PATH 目录不可写：{db_dir}")
@@ -284,6 +299,54 @@ ERROR_DEFINITIONS = {
         "message": "身份验证失败，匹配记录无效",
         "reason": "底库命中了人脸记录，但该记录缺少有效 username 或 user_id，请检查人脸库数据",
     },
+    "TERMINAL_ID_REQUIRED": {
+        "message": "terminal_id 不能为空",
+        "reason": "注册和登录请求必须携带 terminal_id，便于现场审计和排障",
+    },
+    "LIVENESS_CHALLENGE_REQUIRED": {
+        "message": "需要先完成活体挑战",
+        "reason": "请面对摄像头并完成眨眼后重试",
+    },
+    "LIVENESS_CHALLENGE_INVALID": {
+        "message": "活体挑战无效",
+        "reason": "请面对摄像头并完成眨眼后重试",
+    },
+    "LIVENESS_CHALLENGE_FAILED": {
+        "message": "活体挑战失败",
+        "reason": "请面对摄像头并完成眨眼后重试",
+    },
+    "LIVENESS_FRAME_COUNT_INVALID": {
+        "message": "活体图片帧数量不符合要求",
+        "reason": "请面对摄像头并完成眨眼后重试",
+    },
+    "UNSUPPORTED_LIVENESS_ACTION": {
+        "message": "不支持的活体动作",
+        "reason": "第一版活体挑战至少稳定支持眨眼，请检查 action 参数",
+    },
+    "MAINTENANCE_MODE_ACTIVE": {
+        "message": "服务处于维护模式",
+        "reason": "当前正在维护数据库，请稍后再试",
+    },
+    "MAINTENANCE_CONFIRM_REQUIRED": {
+        "message": "需要二次确认",
+        "reason": "该操作风险较高，请确认后再执行",
+    },
+    "MAINTENANCE_MODE_REQUIRED": {
+        "message": "需要先进入维护模式",
+        "reason": "恢复数据库前必须进入维护模式，避免和正常请求并发执行",
+    },
+    "BACKUP_NOT_FOUND": {
+        "message": "备份目录不存在",
+        "reason": "指定的备份目录不存在，请检查路径",
+    },
+    "BACKUP_PATH_INVALID": {
+        "message": "备份路径不合法",
+        "reason": "恢复路径只能选择项目 backups 目录下的备份",
+    },
+    "ONLINE_RESTORE_DISABLED": {
+        "message": "当前环境不允许在线恢复",
+        "reason": "生产环境建议先停止 API 服务，再使用恢复脚本离线恢复数据库",
+    },
 }
 
 
@@ -363,6 +426,170 @@ def validate_register_quality(face: dict, image: np.ndarray) -> None:
         raise_api_error(400, "FACE_QUALITY_LOW")
 
 
+def require_terminal_id_value(terminal_id: Optional[str]) -> str:
+    value = (terminal_id or "").strip()
+    if not value:
+        raise_api_error(400, "TERMINAL_ID_REQUIRED")
+    return value
+
+
+def is_maintenance_mode() -> bool:
+    return MAINTENANCE_MODE_FILE.exists()
+
+
+def set_maintenance_mode(enabled: bool) -> None:
+    if enabled:
+        MAINTENANCE_MODE_FILE.write_text(str(round(time.time(), 3)), encoding="utf-8")
+    elif MAINTENANCE_MODE_FILE.exists():
+        MAINTENANCE_MODE_FILE.unlink()
+
+
+def ensure_not_maintenance():
+    if is_maintenance_mode():
+        raise_api_error(503, "MAINTENANCE_MODE_ACTIVE")
+
+
+def require_confirm(confirm: bool):
+    if not confirm:
+        raise_api_error(400, "MAINTENANCE_CONFIRM_REQUIRED")
+
+
+def parse_terminal_policy_map() -> dict[str, str]:
+    mapping = {}
+    if not FACE_TERMINAL_POLICY_MAP:
+        return mapping
+    for item in FACE_TERMINAL_POLICY_MAP.split(","):
+        if ":" not in item:
+            continue
+        terminal_id, profile = item.split(":", 1)
+        terminal_id = terminal_id.strip()
+        profile = profile.strip()
+        if terminal_id and profile:
+            mapping[terminal_id] = profile
+    return mapping
+
+
+def get_policy_for_terminal(terminal_id: Optional[str]) -> dict:
+    mapping = parse_terminal_policy_map()
+    profile = mapping.get((terminal_id or "").strip(), FACE_DEFAULT_POLICY_PROFILE)
+    return {
+        "profile": profile,
+        "terminal_id": terminal_id,
+        "threshold": 0.55,
+        "auto_apply": False,
+    }
+
+
+def get_liveness_policy() -> dict:
+    return {
+        "login_enabled": FACE_LOGIN_LIVENESS_ENABLED,
+        "register_enabled": FACE_REGISTER_LIVENESS_ENABLED,
+        "mode": "single-image-plus-challenge-bound-face",
+        "challenge_ttl_seconds": FACE_CHALLENGE_TTL_SECONDS,
+        "action_window_seconds": FACE_CHALLENGE_ACTION_SECONDS,
+        "supported_actions": FACE_CHALLENGE_ACTIONS,
+        "default_action": "blink",
+        "frame_count": {
+            "min": FACE_CHALLENGE_MIN_FRAMES,
+            "max": FACE_CHALLENGE_MAX_FRAMES,
+        },
+    }
+
+
+def evaluate_blink_frames(frames: list[str]) -> tuple[bool, str, Optional[list[float]]]:
+    if not (FACE_CHALLENGE_MIN_FRAMES <= len(frames) <= FACE_CHALLENGE_MAX_FRAMES):
+        raise_api_error(400, "LIVENESS_FRAME_COUNT_INVALID")
+    brightness_values = []
+    decoded_frames = []
+    for frame in frames:
+        img = decode_base64(frame)
+        decoded_frames.append(img)
+        brightness_values.append(float(np.mean(img)) if img.size else 0)
+    if not brightness_values:
+        return False, "no_frames", None
+    variation = max(brightness_values) - min(brightness_values)
+    if variation < 5.0:
+        return False, f"brightness_variation={round(variation, 2)}", None
+
+    sample_indexes = sorted({0, len(decoded_frames) // 2, len(decoded_frames) - 1})
+    sampled_faces = []
+    for index in sample_indexes:
+        faces = engine.analyze(decoded_frames[index])
+        if len(faces) != 1:
+            return False, f"sample_{index}_face_count={len(faces)}", None
+        sampled_faces.append(faces[0])
+
+    base_embedding = sampled_faces[0]["embedding"]
+    for face in sampled_faces[1:]:
+        if engine.cosine_similarity(base_embedding, face["embedding"]) < 0.5:
+            return False, "sample_face_mismatch", None
+    return True, f"brightness_variation={round(variation, 2)}", base_embedding
+
+
+def validate_liveness_for_flow(
+    purpose: str,
+    challenge_id: Optional[str],
+    terminal_id: str,
+    face_embedding,
+) -> dict:
+    enabled = FACE_LOGIN_LIVENESS_ENABLED if purpose == "login" else FACE_REGISTER_LIVENESS_ENABLED
+    if not enabled:
+        return {"status": "disabled", "reason": "disabled"}
+    if not challenge_id:
+        raise_api_error(403, "LIVENESS_CHALLENGE_REQUIRED")
+    ok, reason, challenge = db.consume_liveness_challenge(
+        challenge_id=challenge_id,
+        purpose=purpose,
+        terminal_id=terminal_id,
+        now=time.time(),
+    )
+    if not ok:
+        raise_api_error(403, "LIVENESS_CHALLENGE_INVALID", reason="请面对摄像头并完成眨眼后重试")
+    challenge_embedding = challenge.get("face_embedding") if challenge else None
+    if challenge_embedding is None:
+        raise_api_error(403, "LIVENESS_CHALLENGE_INVALID", reason="活体挑战缺少人脸绑定信息，请重新挑战")
+    if engine.cosine_similarity(challenge_embedding, face_embedding) < 0.5:
+        raise_api_error(403, "LIVENESS_CHALLENGE_INVALID", reason="活体挑战人脸与当前图片不一致，请重新挑战")
+    return {"status": "passed", "reason": reason, "challenge": challenge}
+
+
+def ensure_backup_subdir(backup_dir: Path) -> Path:
+    backup_root = Path("backups").resolve()
+    resolved = backup_dir.resolve()
+    try:
+        is_allowed = resolved.is_relative_to(backup_root)
+    except AttributeError:
+        is_allowed = str(resolved).startswith(str(backup_root) + os.sep)
+    if resolved == backup_root or not is_allowed:
+        raise_api_error(400, "BACKUP_PATH_INVALID")
+    return resolved
+
+
+def copy_existing_db_files(target_dir: Path) -> list[str]:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    backup_file = target_dir / Path(DB_PATH).name
+    return [db.backup_to(backup_file)]
+
+
+def restore_db_files(backup_dir: Path) -> list[str]:
+    backup_dir = ensure_backup_subdir(backup_dir)
+    if not backup_dir.exists():
+        raise_api_error(404, "BACKUP_NOT_FOUND")
+    restored = []
+    base_name = Path(DB_PATH).name
+    if not (backup_dir / base_name).exists():
+        raise_api_error(404, "BACKUP_NOT_FOUND")
+    for suffix in ("", "-wal", "-shm"):
+        src = backup_dir / f"{base_name}{suffix}"
+        dst = Path(f"{DB_PATH}{suffix}")
+        if src.exists():
+            shutil.copy2(src, dst)
+            restored.append(str(dst))
+        elif suffix and dst.exists():
+            dst.unlink()
+    return restored
+
+
 def get_available_providers() -> list[str]:
     try:
         import onnxruntime as ort
@@ -383,6 +610,8 @@ def write_login_audit(
     terminal_id: Optional[str] = None,
     state: Optional[str] = None,
     elapsed_ms: Optional[float] = None,
+    liveness_status: Optional[str] = None,
+    liveness_reason: Optional[str] = None,
 ) -> str:
     return db.add_login_audit(
         success=success,
@@ -394,6 +623,8 @@ def write_login_audit(
         terminal_id=terminal_id,
         state=state,
         elapsed_ms=elapsed_ms,
+        liveness_status=liveness_status,
+        liveness_reason=liveness_reason,
     )
 
 
@@ -408,6 +639,8 @@ def raise_with_audit(
     state: Optional[str] = None,
     similarity: Optional[float] = None,
     elapsed_ms: Optional[float] = None,
+    liveness_status: Optional[str] = None,
+    liveness_reason: Optional[str] = None,
 ) -> None:
     write_login_audit(
         success=False,
@@ -417,6 +650,8 @@ def raise_with_audit(
         terminal_id=terminal_id,
         state=state,
         elapsed_ms=elapsed_ms,
+        liveness_status=liveness_status,
+        liveness_reason=liveness_reason,
     )
     raise_api_error(status_code, code, message, reason)
 
@@ -437,6 +672,9 @@ def get_system_status() -> dict:
         "log_path": LOG_PATH,
         "duplicate_policy": DUPLICATE_POLICY,
         "search_cache": db.get_search_cache_status(),
+        "liveness": get_liveness_policy(),
+        "recognition_policy": get_policy_for_terminal(None),
+        "maintenance_mode": is_maintenance_mode(),
         "faces_count": db.count(),
     }
 
@@ -464,6 +702,8 @@ class SearchReq(BaseModel):
 
 class RegisterReq(BaseModel):
     user_id: Optional[int] = Field(None, description="外部用户表 users.id", examples=[10001])
+    terminal_id: str = Field(..., description="终端标识，用于审计和现场排障")
+    challenge_id: Optional[str] = Field(None, description="通过活体 challenge 后获得的一次性 ID")
     username: str = Field(..., description="外部用户表 users.username", examples=["zhangsan"])
     image: str = Field(..., description="单人人脸照片的 Base64")
     metadata: Optional[dict] = Field(
@@ -475,7 +715,8 @@ class RegisterReq(BaseModel):
 
 class FaceLoginReq(BaseModel):
     image: str = Field(..., description="摄像头截图或照片的 Base64")
-    terminal_id: Optional[str] = Field(None, description="终端标识，用于审计和业务侧追踪")
+    terminal_id: str = Field(..., description="终端标识，用于审计和业务侧追踪")
+    challenge_id: Optional[str] = Field(None, description="通过活体 challenge 后获得的一次性 ID")
     state: Optional[str] = Field(None, description="前端请求追踪标识")
     threshold: float = Field(0.6, ge=0.0, le=1.0, description="认证匹配阈值，默认 0.60")
 
@@ -561,6 +802,9 @@ class SystemStatusResp(BaseModel):
     log_path: str
     duplicate_policy: str
     search_cache: dict
+    liveness: dict
+    recognition_policy: dict
+    maintenance_mode: bool
     faces_count: int
 
 
@@ -579,6 +823,9 @@ class EffectiveConfigResp(BaseModel):
     max_base64_image_chars: int
     max_image_bytes: int
     max_image_pixels: int
+    liveness: dict
+    recognition_policy: dict
+    search_target: dict
 
 
 class LoginAuditItem(BaseModel):
@@ -592,6 +839,8 @@ class LoginAuditItem(BaseModel):
     terminal_id: Optional[str] = None
     state: Optional[str] = None
     elapsed_ms: Optional[float] = None
+    liveness_status: Optional[str] = None
+    liveness_reason: Optional[str] = None
     created_at: Optional[str] = None
 
 
@@ -604,6 +853,50 @@ class LoginAuditSummaryResp(BaseModel):
     success_count: int
     failure_count: int
     success_rate: float
+
+
+class LivenessChallengeCreateReq(BaseModel):
+    purpose: str = Field(..., description="用途：login 或 register")
+    terminal_id: str = Field(..., description="终端标识")
+    action: str = Field("blink", description="动作类型，第一版稳定支持 blink")
+
+
+class LivenessChallengeCreateResp(BaseModel):
+    challenge_id: str
+    purpose: str
+    terminal_id: str
+    action: str
+    expires_in_seconds: int
+    action_window_seconds: int
+    status: str
+
+
+class LivenessChallengeSubmitReq(BaseModel):
+    challenge_id: str
+    purpose: str = Field(..., description="用途：login 或 register")
+    terminal_id: str = Field(..., description="终端标识")
+    frames: list[str] = Field(..., description="连续图片帧 Base64，眨眼挑战要求 10 到 30 帧")
+
+
+class LivenessChallengeSubmitResp(BaseModel):
+    challenge_id: str
+    status: str
+    passed: bool
+    message: str
+    elapsed_ms: float
+
+
+class MaintenanceModeReq(BaseModel):
+    enabled: bool
+
+
+class ConfirmReq(BaseModel):
+    confirm: bool = Field(False, description="高风险操作必须传 true")
+
+
+class RestoreReq(BaseModel):
+    backup_dir: str
+    confirm: bool = Field(False, description="恢复数据库必须二次确认")
 
 
 # ---------- 路由分组 tag ----------
@@ -633,8 +926,7 @@ def health():
     """前端可以用这个接口判断后端是否可用，无需鉴权"""
     return {
         "status": "ok",
-        "device": engine.device,
-        "faces": db.count(),
+        "service": "face_api",
     }
 
 
@@ -666,6 +958,134 @@ def effective_config():
         "max_base64_image_chars": MAX_BASE64_IMAGE_CHARS,
         "max_image_bytes": MAX_IMAGE_BYTES,
         "max_image_pixels": MAX_IMAGE_PIXELS,
+        "liveness": get_liveness_policy(),
+        "recognition_policy": get_policy_for_terminal(None),
+        "search_target": {
+            "mode": "exact",
+            "target_record_count": 50000,
+            "target_latency_ms": 1000,
+        },
+    }
+
+
+@app.get("/admin.html", tags=[TAG_SYSTEM], summary="运维控制台页面")
+def admin_page():
+    return FileResponse("admin.html")
+
+
+@app.get(
+    "/policy/tuning-summary",
+    tags=[TAG_SYSTEM],
+    summary="识别策略调参建议",
+    dependencies=[Depends(require_api_key)],
+)
+def policy_tuning_summary(limit: int = 100, terminal_id: Optional[str] = None):
+    items = db.list_login_audits(limit, terminal_id=terminal_id)
+    similarities = [item["similarity"] for item in items if item.get("similarity") is not None]
+    if len(similarities) < 10:
+        recommendation = "样本不足，暂不建议调整阈值"
+    else:
+        avg_similarity = sum(similarities) / len(similarities)
+        recommendation = "保持当前阈值" if avg_similarity >= 0.7 else "建议人工复核阈值和现场采集质量"
+    return {
+        "policy": get_policy_for_terminal(terminal_id),
+        "sample_count": len(items),
+        "similarity_count": len(similarities),
+        "auto_apply": False,
+        "recommendation": recommendation,
+    }
+
+
+@app.get(
+    "/search/benchmark-summary",
+    tags=[TAG_SEARCH],
+    summary="搜索基准目标摘要",
+    dependencies=[Depends(require_api_key)],
+)
+def search_benchmark_summary():
+    return db.get_search_benchmark_summary()
+
+
+@app.post(
+    "/liveness/challenges",
+    tags=[TAG_AUTH],
+    summary="创建活体 challenge",
+    response_model=LivenessChallengeCreateResp,
+    dependencies=[Depends(require_api_key)],
+)
+def create_liveness_challenge(req: LivenessChallengeCreateReq):
+    ensure_not_maintenance()
+    terminal_id = require_terminal_id_value(req.terminal_id)
+    purpose = req.purpose.strip().lower()
+    action = req.action.strip().lower()
+    if purpose not in {"login", "register"}:
+        raise_api_error(422, "VALIDATION_ERROR")
+    if action not in FACE_CHALLENGE_ACTIONS:
+        raise_api_error(400, "UNSUPPORTED_LIVENESS_ACTION")
+    challenge_id = db.add_liveness_challenge(
+        purpose=purpose,
+        terminal_id=terminal_id,
+        action=action,
+        expires_at=time.time() + FACE_CHALLENGE_TTL_SECONDS,
+        action_window_seconds=FACE_CHALLENGE_ACTION_SECONDS,
+    )
+    return {
+        "challenge_id": challenge_id,
+        "purpose": purpose,
+        "terminal_id": terminal_id,
+        "action": action,
+        "expires_in_seconds": FACE_CHALLENGE_TTL_SECONDS,
+        "action_window_seconds": FACE_CHALLENGE_ACTION_SECONDS,
+        "status": "pending",
+    }
+
+
+@app.post(
+    "/liveness/challenges/submit",
+    tags=[TAG_AUTH],
+    summary="提交活体 challenge 连续帧",
+    response_model=LivenessChallengeSubmitResp,
+    dependencies=[Depends(require_api_key)],
+)
+def submit_liveness_challenge(req: LivenessChallengeSubmitReq):
+    ensure_not_maintenance()
+    t0 = time.perf_counter()
+    terminal_id = require_terminal_id_value(req.terminal_id)
+    challenge = db.get_liveness_challenge(req.challenge_id)
+    if not challenge:
+        raise_api_error(404, "LIVENESS_CHALLENGE_INVALID")
+    if challenge["purpose"] != req.purpose or challenge["terminal_id"] != terminal_id:
+        raise_api_error(403, "LIVENESS_CHALLENGE_INVALID")
+    if challenge["status"] != "pending":
+        raise_api_error(403, "LIVENESS_CHALLENGE_INVALID")
+    if time.time() > float(challenge["expires_at"]):
+        db.mark_liveness_challenge_result(req.challenge_id, passed=False, result_reason="expired")
+        raise_api_error(403, "LIVENESS_CHALLENGE_INVALID")
+    if challenge["action"] != "blink":
+        raise_api_error(400, "UNSUPPORTED_LIVENESS_ACTION")
+    passed, reason, face_embedding = evaluate_blink_frames(req.frames)
+    db.mark_liveness_challenge_result(
+        req.challenge_id,
+        passed=passed,
+        result_reason=reason,
+        face_embedding=face_embedding if passed else None,
+    )
+    elapsed = round((time.perf_counter() - t0) * 1000, 2)
+    if not passed:
+        log_event("liveness_failed", challenge_id=req.challenge_id, terminal_id=terminal_id, reason=reason)
+        return {
+            "challenge_id": req.challenge_id,
+            "status": "failed",
+            "passed": False,
+            "message": "请面对摄像头并完成眨眼后重试",
+            "elapsed_ms": elapsed,
+        }
+    return {
+        "challenge_id": req.challenge_id,
+        "status": "passed",
+        "passed": True,
+        "message": "活体挑战通过",
+        "elapsed_ms": elapsed,
     }
 
 
@@ -777,6 +1197,8 @@ def compare(req: CompareReq):
 )
 def register(req: RegisterReq):
     """图片中必须只有一张脸，username 必须对应外部用户表。"""
+    ensure_not_maintenance()
+    terminal_id = require_terminal_id_value(req.terminal_id)
     img = decode_base64(req.image)
     faces = engine.analyze(img)
 
@@ -790,6 +1212,16 @@ def register(req: RegisterReq):
         raise_api_error(400, "INVALID_USERNAME")
 
     validate_register_quality(faces[0], img)
+    try:
+        liveness_result = validate_liveness_for_flow("register", req.challenge_id, terminal_id, faces[0]["embedding"])
+    except HTTPException as exc:
+        log_event(
+            "face_register_liveness_failed",
+            terminal_id=terminal_id,
+            user_id=req.user_id,
+            code=exc.detail.get("code") if isinstance(exc.detail, dict) else None,
+        )
+        raise
     if req.user_id is not None and DUPLICATE_POLICY != "allow":
         existing = db.list_by_user_id(req.user_id)
         if existing and DUPLICATE_POLICY == "reject":
@@ -798,7 +1230,14 @@ def register(req: RegisterReq):
             db.remove_by_user_id(req.user_id)
 
     face_id = db.add(username, faces[0]["embedding"], req.metadata, req.user_id)
-    log_event("face_registered", user_id=req.user_id, username=username, face_id=face_id)
+    log_event(
+        "face_registered",
+        user_id=req.user_id,
+        username=username,
+        face_id=face_id,
+        terminal_id=terminal_id,
+        liveness_status=liveness_result["status"],
+    )
     return {
         "id": face_id,
         "user_id": req.user_id,
@@ -835,9 +1274,98 @@ def list_faces_by_user(user_id: int):
     dependencies=[Depends(verify_api_key)],
 )
 def delete_face(face_id: str):
+    ensure_not_maintenance()
     if db.remove(face_id):
         return {"deleted": face_id}
     raise_api_error(404, "FACE_ID_NOT_FOUND")
+
+
+@app.get(
+    "/admin/overview",
+    tags=[TAG_SYSTEM],
+    summary="运维控制台概览",
+    dependencies=[Depends(require_api_key)],
+)
+def admin_overview():
+    return {
+        "status": get_system_status(),
+        "faces": {"count": db.count(), "items": db.list_all()},
+        "audit_summary": db.get_login_audit_summary(100),
+        "maintenance_mode": is_maintenance_mode(),
+    }
+
+
+@app.get(
+    "/admin/maintenance",
+    tags=[TAG_SYSTEM],
+    summary="查看维护模式",
+    dependencies=[Depends(require_api_key)],
+)
+def get_maintenance_mode():
+    return {"enabled": is_maintenance_mode()}
+
+
+@app.post(
+    "/admin/maintenance",
+    tags=[TAG_SYSTEM],
+    summary="设置维护模式",
+    dependencies=[Depends(require_api_key)],
+)
+def update_maintenance_mode(req: MaintenanceModeReq):
+    set_maintenance_mode(req.enabled)
+    log_event("maintenance_mode_changed", enabled=req.enabled)
+    return {"enabled": is_maintenance_mode()}
+
+
+@app.post(
+    "/admin/faces/{face_id}/delete",
+    tags=[TAG_SYSTEM],
+    summary="控制台确认删除人脸",
+    dependencies=[Depends(require_api_key)],
+)
+def admin_delete_face(face_id: str, req: ConfirmReq):
+    ensure_not_maintenance()
+    require_confirm(req.confirm)
+    if db.remove(face_id):
+        log_event("admin_face_deleted", face_id=face_id)
+        return {"deleted": face_id}
+    raise_api_error(404, "FACE_ID_NOT_FOUND")
+
+
+@app.post(
+    "/admin/backup",
+    tags=[TAG_SYSTEM],
+    summary="控制台备份数据库",
+    dependencies=[Depends(require_api_key)],
+)
+def admin_backup():
+    t0 = time.perf_counter()
+    backup_dir = Path("backups") / time.strftime("%Y%m%d-%H%M%S")
+    files = copy_existing_db_files(backup_dir)
+    elapsed = round((time.perf_counter() - t0) * 1000, 2)
+    log_event("admin_backup_created", backup_dir=str(backup_dir), files=files, elapsed_ms=elapsed)
+    return {"ok": True, "backup_dir": str(backup_dir), "files": files, "elapsed_ms": elapsed}
+
+
+@app.post(
+    "/admin/restore",
+    tags=[TAG_SYSTEM],
+    summary="控制台恢复数据库",
+    dependencies=[Depends(require_api_key)],
+)
+def admin_restore(req: RestoreReq):
+    if not ALLOW_ONLINE_RESTORE:
+        raise_api_error(403, "ONLINE_RESTORE_DISABLED")
+    if not is_maintenance_mode():
+        raise_api_error(503, "MAINTENANCE_MODE_REQUIRED")
+    require_confirm(req.confirm)
+    t0 = time.perf_counter()
+    db.close()
+    restored = restore_db_files(Path(req.backup_dir))
+    db.invalidate_search_cache()
+    elapsed = round((time.perf_counter() - t0) * 1000, 2)
+    log_event("admin_db_restored", backup_dir=req.backup_dir, files=restored, elapsed_ms=elapsed)
+    return {"ok": True, "restored_files": restored, "elapsed_ms": elapsed}
 
 
 # ---------- 1:N 搜索 ----------
@@ -850,6 +1378,7 @@ def delete_face(face_id: str):
 )
 def search(req: SearchReq):
     """从底库中找出和传入图片最相似的 top_k 个人脸"""
+    ensure_not_maintenance()
     t0 = time.perf_counter()
     img = decode_base64(req.image)
     faces = engine.analyze(img)
@@ -878,7 +1407,21 @@ def search(req: SearchReq):
 )
 def face_login(req: FaceLoginReq):
     """执行单人脸校验和 top-1 检索，返回业务侧可继续处理的认证结果，不签发 token。"""
+    ensure_not_maintenance()
     t0 = time.perf_counter()
+    terminal_id = require_terminal_id_value(req.terminal_id)
+    if FACE_LOGIN_LIVENESS_ENABLED and not req.challenge_id:
+        raise_with_audit(
+            status_code=403,
+            code="LIVENESS_CHALLENGE_REQUIRED",
+            message="需要先完成活体挑战",
+            threshold=normalize_auth_threshold(req.threshold),
+            terminal_id=terminal_id,
+            state=req.state,
+            elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+            liveness_status="failed",
+            liveness_reason="LIVENESS_CHALLENGE_REQUIRED",
+        )
     img = decode_base64(req.image)
     try:
         face = get_single_face_or_raise(img)
@@ -890,12 +1433,32 @@ def face_login(req: FaceLoginReq):
             message=exc.detail["message"],
             reason=reason,
             threshold=normalize_auth_threshold(req.threshold),
-            terminal_id=req.terminal_id,
+            terminal_id=terminal_id,
             state=req.state,
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+            liveness_status="not_checked",
+            liveness_reason="face_invalid",
         )
 
-    threshold = normalize_auth_threshold(req.threshold)
+    try:
+        liveness_result = validate_liveness_for_flow("login", req.challenge_id, terminal_id, face["embedding"])
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        raise_with_audit(
+            status_code=exc.status_code,
+            code=detail.get("code", "LIVENESS_CHALLENGE_INVALID"),
+            message=detail.get("message", "活体挑战无效"),
+            reason=detail.get("reason"),
+            threshold=normalize_auth_threshold(req.threshold),
+            terminal_id=terminal_id,
+            state=req.state,
+            elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+            liveness_status="failed",
+            liveness_reason=detail.get("code"),
+        )
+
+    policy = get_policy_for_terminal(terminal_id)
+    threshold = max(normalize_auth_threshold(req.threshold), policy["threshold"])
     results = db.search(face["embedding"], top_k=1, threshold=threshold)
     if not results:
         raise_with_audit(
@@ -903,9 +1466,11 @@ def face_login(req: FaceLoginReq):
             code="NO_MATCH",
             message="身份验证失败，未匹配到有效用户",
             threshold=threshold,
-            terminal_id=req.terminal_id,
+            terminal_id=terminal_id,
             state=req.state,
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+            liveness_status=liveness_result["status"],
+            liveness_reason=liveness_result["reason"],
         )
 
     best_match = results[0]
@@ -916,10 +1481,12 @@ def face_login(req: FaceLoginReq):
             code="INVALID_MATCH_RECORD",
             message="身份验证失败，匹配记录无效",
             threshold=threshold,
-            terminal_id=req.terminal_id,
+            terminal_id=terminal_id,
             state=req.state,
             similarity=best_match.get("similarity"),
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+            liveness_status=liveness_result["status"],
+            liveness_reason=liveness_result["reason"],
         )
 
     elapsed = (time.perf_counter() - t0) * 1000
@@ -929,9 +1496,11 @@ def face_login(req: FaceLoginReq):
         matched_username=username,
         similarity=best_match.get("similarity"),
         threshold=threshold,
-        terminal_id=req.terminal_id,
+        terminal_id=terminal_id,
         state=req.state,
         elapsed_ms=round(elapsed, 2),
+        liveness_status=liveness_result["status"],
+        liveness_reason=liveness_result["reason"],
     )
     return {
         "authenticated": True,

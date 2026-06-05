@@ -10,6 +10,7 @@ import os
 import sqlite3
 import threading
 import uuid
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -70,11 +71,30 @@ class FaceDB:
                     terminal_id     TEXT,
                     state           TEXT,
                     elapsed_ms      REAL,
+                    liveness_status TEXT,
+                    liveness_reason TEXT,
                     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS liveness_challenges (
+                    id                    TEXT PRIMARY KEY,
+                    purpose               TEXT NOT NULL,
+                    terminal_id           TEXT NOT NULL,
+                    action                TEXT NOT NULL,
+                    status                TEXT NOT NULL,
+                    result_reason         TEXT,
+                    face_embedding        BLOB,
+                    action_window_seconds INTEGER NOT NULL,
+                    expires_at            REAL NOT NULL,
+                    used_at               REAL,
+                    created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             c.execute("CREATE INDEX IF NOT EXISTS idx_face_login_audit_created_at ON face_login_audit(created_at)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_face_login_audit_success ON face_login_audit(success)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_liveness_challenges_expires_at ON liveness_challenges(expires_at)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_liveness_challenges_terminal ON liveness_challenges(terminal_id)")
             columns = {row[1] for row in c.execute("PRAGMA table_info(faces)")}
             if "name" in columns and "username" not in columns:
                 c.execute("ALTER TABLE faces RENAME COLUMN name TO username")
@@ -87,6 +107,14 @@ class FaceDB:
                 """)
             if "user_id" not in columns:
                 c.execute("ALTER TABLE faces ADD COLUMN user_id INTEGER")
+            audit_columns = {row[1] for row in c.execute("PRAGMA table_info(face_login_audit)")}
+            if "liveness_status" not in audit_columns:
+                c.execute("ALTER TABLE face_login_audit ADD COLUMN liveness_status TEXT")
+            if "liveness_reason" not in audit_columns:
+                c.execute("ALTER TABLE face_login_audit ADD COLUMN liveness_reason TEXT")
+            challenge_columns = {row[1] for row in c.execute("PRAGMA table_info(liveness_challenges)")}
+            if "face_embedding" not in challenge_columns:
+                c.execute("ALTER TABLE liveness_challenges ADD COLUMN face_embedding BLOB")
             c.execute("DROP INDEX IF EXISTS idx_name")
             c.execute("CREATE INDEX IF NOT EXISTS idx_username ON faces(username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON faces(user_id)")
@@ -94,6 +122,10 @@ class FaceDB:
 
     def _mark_search_cache_dirty(self):
         self._search_cache_dirty = True
+
+    def invalidate_search_cache(self):
+        self._search_cache = None
+        self._mark_search_cache_dirty()
 
     # ---------- 序列化辅助 ----------
     @staticmethod
@@ -240,6 +272,20 @@ class FaceDB:
             "ready": cache["emb_matrix"] is not None or len(cache["ids"]) == 0,
             "dirty": self._search_cache_dirty,
             "record_count": len(cache["ids"]),
+            "mode": "exact",
+            "target_record_count": 50000,
+            "target_latency_ms": 1000,
+        }
+
+    def get_search_benchmark_summary(self) -> dict:
+        cache = self._load_search_cache()
+        return {
+            "mode": "exact",
+            "record_count": len(cache["ids"]),
+            "target_record_count": 50000,
+            "target_latency_ms": 1000,
+            "approximate_search_enabled": False,
+            "recommendation": "当前使用精确搜索；仅当 5 万人脸记录下超过 1 秒目标时，再评估近似搜索",
         }
 
     def search(self, query_embedding: list, top_k: int = 5, threshold: float = 0.5) -> list:
@@ -278,6 +324,169 @@ class FaceDB:
             for sim, cid, user_id, username, cmeta in candidates[:top_k]
         ]
 
+    # ---------- 活体 challenge ----------
+    def add_liveness_challenge(
+        self,
+        *,
+        purpose: str,
+        terminal_id: str,
+        action: str,
+        expires_at: float,
+        action_window_seconds: int,
+    ) -> str:
+        challenge_id = str(uuid.uuid4())
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO liveness_challenges (
+                    id, purpose, terminal_id, action, status,
+                    action_window_seconds, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    challenge_id,
+                    purpose,
+                    terminal_id,
+                    action,
+                    "pending",
+                    action_window_seconds,
+                    expires_at,
+                ),
+            )
+        return challenge_id
+
+    def get_liveness_challenge(self, challenge_id: str) -> Optional[dict]:
+        row = self._conn().execute(
+            """
+            SELECT id, purpose, terminal_id, action, status, result_reason,
+                   face_embedding, action_window_seconds, expires_at, used_at, created_at
+            FROM liveness_challenges
+            WHERE id = ?
+            """,
+            (challenge_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "purpose": row["purpose"],
+            "terminal_id": row["terminal_id"],
+            "action": row["action"],
+            "status": row["status"],
+            "result_reason": row["result_reason"],
+            "face_embedding": (
+                np.frombuffer(row["face_embedding"], dtype=np.float32).tolist()
+                if row["face_embedding"] is not None
+                else None
+            ),
+            "action_window_seconds": row["action_window_seconds"],
+            "expires_at": row["expires_at"],
+            "used_at": row["used_at"],
+            "created_at": row["created_at"],
+        }
+
+    def mark_liveness_challenge_result(
+        self,
+        challenge_id: str,
+        *,
+        passed: bool,
+        result_reason: str,
+        face_embedding=None,
+    ) -> bool:
+        status = "passed" if passed else "failed"
+        embedding_blob = None
+        if face_embedding is not None:
+            embedding_blob = np.asarray(face_embedding, dtype=np.float32).tobytes()
+        with self._conn() as c:
+            cur = c.execute(
+                """
+                UPDATE liveness_challenges
+                SET status = ?, result_reason = ?, face_embedding = ?
+                WHERE id = ? AND status = 'pending'
+                """,
+                (status, result_reason, embedding_blob, challenge_id),
+            )
+            return cur.rowcount > 0
+
+    def consume_liveness_challenge(
+        self,
+        *,
+        challenge_id: str,
+        purpose: str,
+        terminal_id: str,
+        now: float,
+    ) -> tuple[bool, str, Optional[dict]]:
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                """
+                SELECT id, purpose, terminal_id, action, status, result_reason,
+                       face_embedding, action_window_seconds, expires_at, used_at, created_at
+                FROM liveness_challenges
+                WHERE id = ?
+                """,
+                (challenge_id,),
+            ).fetchone()
+            if not row:
+                return False, "not_found", None
+            challenge = {
+                "id": row["id"],
+                "purpose": row["purpose"],
+                "terminal_id": row["terminal_id"],
+                "action": row["action"],
+                "status": row["status"],
+                "result_reason": row["result_reason"],
+                "face_embedding": (
+                    np.frombuffer(row["face_embedding"], dtype=np.float32).tolist()
+                    if row["face_embedding"] is not None
+                    else None
+                ),
+                "action_window_seconds": row["action_window_seconds"],
+                "expires_at": row["expires_at"],
+                "used_at": row["used_at"],
+                "created_at": row["created_at"],
+            }
+            if row["used_at"] is not None or row["status"] == "used":
+                return False, "already_used", challenge
+            if now > float(row["expires_at"]):
+                c.execute(
+                    "UPDATE liveness_challenges SET status = 'expired' WHERE id = ? AND status != 'used'",
+                    (challenge_id,),
+                )
+                return False, "expired", challenge
+            if row["purpose"] != purpose:
+                return False, "purpose_mismatch", challenge
+            if row["terminal_id"] != terminal_id:
+                return False, "terminal_mismatch", challenge
+            if row["status"] != "passed":
+                return False, "not_passed", challenge
+            cur = c.execute(
+                """
+                UPDATE liveness_challenges
+                SET status = 'used', used_at = ?
+                WHERE id = ?
+                  AND purpose = ?
+                  AND terminal_id = ?
+                  AND status = 'passed'
+                  AND used_at IS NULL
+                  AND expires_at >= ?
+                """,
+                (now, challenge_id, purpose, terminal_id, now),
+            )
+            if cur.rowcount != 1:
+                return False, "already_used", challenge
+            challenge["status"] = "used"
+            challenge["used_at"] = now
+            return True, "ok", challenge
+
+    def backup_to(self, target_path: str | Path) -> str:
+        target = Path(target_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source = self._conn()
+        with sqlite3.connect(target) as dest:
+            source.backup(dest)
+        return str(target)
+
     def add_login_audit(
         self,
         *,
@@ -290,6 +499,8 @@ class FaceDB:
         terminal_id: Optional[str] = None,
         state: Optional[str] = None,
         elapsed_ms: Optional[float] = None,
+        liveness_status: Optional[str] = None,
+        liveness_reason: Optional[str] = None,
     ) -> str:
         audit_id = str(uuid.uuid4())
         with self._conn() as c:
@@ -297,8 +508,9 @@ class FaceDB:
                 """
                 INSERT INTO face_login_audit (
                     id, success, matched_user_id, matched_username, similarity,
-                    threshold, failure_reason, terminal_id, state, elapsed_ms
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    threshold, failure_reason, terminal_id, state, elapsed_ms,
+                    liveness_status, liveness_reason
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     audit_id,
@@ -311,6 +523,8 @@ class FaceDB:
                     terminal_id,
                     state,
                     elapsed_ms,
+                    liveness_status,
+                    liveness_reason,
                 ),
             )
         self._maybe_checkpoint()
@@ -330,7 +544,8 @@ class FaceDB:
         rows = self._conn().execute(
             f"""
             SELECT id, success, matched_user_id, matched_username, similarity,
-                   threshold, failure_reason, terminal_id, state, elapsed_ms, created_at
+                   threshold, failure_reason, terminal_id, state, elapsed_ms,
+                   liveness_status, liveness_reason, created_at
             FROM face_login_audit
             {where_sql}
             ORDER BY created_at DESC
@@ -350,6 +565,8 @@ class FaceDB:
                 "terminal_id": r["terminal_id"],
                 "state": r["state"],
                 "elapsed_ms": r["elapsed_ms"],
+                "liveness_status": r["liveness_status"],
+                "liveness_reason": r["liveness_reason"],
                 "created_at": r["created_at"],
             }
             for r in rows

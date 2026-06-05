@@ -26,6 +26,47 @@ class FaceDBSchemaTests(unittest.TestCase):
                 cache_status = db.get_search_cache_status()
                 self.assertEqual(cache_status["record_count"], 1)
                 self.assertTrue(cache_status["ready"])
+                self.assertEqual(cache_status["mode"], "exact")
+                self.assertEqual(cache_status["target_record_count"], 50000)
+
+                challenge_id = db.add_liveness_challenge(
+                    purpose="login",
+                    terminal_id="door-1",
+                    action="blink",
+                    expires_at=9999999999,
+                    action_window_seconds=10,
+                )
+                self.assertTrue(challenge_id)
+                self.assertEqual(db.get_liveness_challenge(challenge_id)["status"], "pending")
+                self.assertTrue(db.mark_liveness_challenge_result(challenge_id, passed=True, result_reason="ok"))
+                ok, reason, challenge = db.consume_liveness_challenge(
+                    challenge_id=challenge_id,
+                    purpose="login",
+                    terminal_id="door-1",
+                    now=1,
+                )
+                self.assertTrue(ok)
+                self.assertEqual(reason, "ok")
+                self.assertEqual(challenge["status"], "used")
+
+                ok, reason, _challenge = db.consume_liveness_challenge(
+                    challenge_id=challenge_id,
+                    purpose="login",
+                    terminal_id="door-1",
+                    now=2,
+                )
+                self.assertFalse(ok)
+                self.assertEqual(reason, "already_used")
+
+                backup_path = os.path.join(temp_dir, "backup.db")
+                copied = db.backup_to(backup_path)
+                self.assertEqual(copied, backup_path)
+                backup_db = FaceDB(db_path=backup_path)
+                try:
+                    self.assertEqual(backup_db.count(), 1)
+                    self.assertEqual(backup_db.list_all()[0]["username"], "zhangsan")
+                finally:
+                    backup_db.close()
 
                 removed = db.remove_by_user_id(1)
                 self.assertEqual(removed, 1)

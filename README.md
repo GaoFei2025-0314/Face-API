@@ -267,11 +267,22 @@ set FACE_FORCE_CPU=1
 | `FACE_API_KEY` | 空 | 启用 API Key 鉴权 |
 | `FACE_CORS_ORIGINS` | `*` | 允许跨域访问的前端来源，多个用英文逗号分隔 |
 | `FACE_LOG_PATH` | `logs/face_api.log` | 服务日志文件路径 |
+| `FACE_MAINTENANCE_FILE` | `.maintenance_mode` | 运维控制台维护模式标记文件 |
+| `FACE_ALLOW_ONLINE_RESTORE` | 开发为 `1`，生产为 `0` | 是否允许通过 API 在线恢复数据库；生产建议停服务后离线恢复 |
 | `FACE_DUPLICATE_POLICY` | `allow` | 同一 `user_id` 重复注册策略：`allow` / `reject` / `replace` |
 | `FACE_MIN_REGISTER_DET_SCORE` | `0.5` | 注册人脸最低检测置信度 |
 | `FACE_MIN_REGISTER_FACE_PIXELS` | `2500` | 注册人脸框最小像素面积 |
 | `FACE_MIN_REGISTER_BRIGHTNESS` | `30` | 注册图片最低平均亮度 |
 | `FACE_MAX_REGISTER_BRIGHTNESS` | `225` | 注册图片最高平均亮度 |
+| `FACE_LOGIN_LIVENESS_ENABLED` | `1` | face login 是否启用活体检测 |
+| `FACE_REGISTER_LIVENESS_ENABLED` | `0` | 注册是否启用活体检测 |
+| `FACE_CHALLENGE_TTL_SECONDS` | `60` | 活体 challenge 有效期 |
+| `FACE_CHALLENGE_ACTION_SECONDS` | `10` | 活体动作完成窗口 |
+| `FACE_CHALLENGE_MIN_FRAMES` | `10` | 眨眼 challenge 最少连续帧 |
+| `FACE_CHALLENGE_MAX_FRAMES` | `30` | 眨眼 challenge 最多连续帧 |
+| `FACE_CHALLENGE_ACTIONS` | `blink` | 支持的活体动作，V1.1 稳定支持 `blink` |
+| `FACE_DEFAULT_POLICY_PROFILE` | `default` | 默认识别策略档案 |
+| `FACE_TERMINAL_POLICY_MAP` | 空 | terminal 到策略档案的绑定，如 `door-1:strict` |
 | `FACE_MAX_BASE64_CHARS` | `11185068` | Base64 图片字符串最大长度 |
 | `FACE_MAX_IMAGE_BYTES` | `8388608` | 解码后图片字节最大值 |
 | `FACE_MAX_IMAGE_PIXELS` | `4096000` | 解码后图片最大像素数 |
@@ -298,6 +309,25 @@ powershell -ExecutionPolicy Bypass -File scripts\health-check.ps1
 详细运行、备份、恢复和排障说明见：
 
 - `docs/deployment/RUNBOOK.md`
+
+### 运维控制台
+
+V1.1 提供本地运维控制台：
+
+```text
+http://localhost:8000/admin.html
+```
+
+控制台复用 `FACE_API_KEY`。支持查看状态、人脸记录、audit、删除记录、备份数据库和恢复数据库。
+
+高风险规则：
+
+- 删除人脸记录必须二次确认。
+- 恢复数据库必须先进入维护模式，再二次确认。
+- 在线恢复只适合单进程维护窗口；production 默认禁用在线恢复，多 worker 或生产恢复建议先停止 API 服务，再用恢复脚本执行。
+- 控制台、人脸库、搜索和登录接口不会展示 embedding 或 API secret；`/extract/base64` 仅用于受控服务侧特征提取，不建议暴露给普通页面。
+
+活体 challenge 通过后会绑定当次连续帧里检测到的人脸，后续 login 或启用活体的注册必须使用同一个人的图片。
 
 ---
 
