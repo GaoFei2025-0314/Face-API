@@ -102,7 +102,22 @@ class FakeFaceDB:
             "target_record_count": 50000,
             "target_latency_ms": 1000,
             "approximate_search_enabled": False,
+            "metrics": ["avg_ms", "p95_ms", "failure_count", "failure_reasons"],
+            "report_format": {"version": "1.0"},
+            "index_decision": self.get_search_index_status(),
             "recommendation": "当前使用精确搜索",
+        }
+
+    def get_search_index_status(self):
+        return {
+            "enabled": False,
+            "mode": "exact",
+            "record_count": 0,
+            "fresh": True,
+            "rebuild_required": False,
+            "fallback": {"enabled": True, "mode": "exact"},
+            "enter_conditions": ["5 万人脸 benchmark 的 search 或 login P95 连续超过 1000ms"],
+            "candidate_backends": ["faiss-cpu", "faiss-gpu"],
         }
 
     def add_liveness_challenge(self, *, purpose, terminal_id, action, expires_at, action_window_seconds):
@@ -118,6 +133,7 @@ class FakeFaceDB:
             "expires_at": expires_at,
             "used_at": None,
             "action_window_seconds": action_window_seconds,
+            "created_at_epoch": __import__("time").time(),
         }
         return challenge_id
 
@@ -168,12 +184,17 @@ def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None, d
         "FACE_REQUIRE_API_KEY",
         "FACE_CORS_ORIGINS",
         "FACE_LOG_PATH",
+        "FACE_LOG_MAX_BYTES",
+        "FACE_LOG_BACKUP_COUNT",
         "FACE_DB_PATH",
         "FACE_DUPLICATE_POLICY",
         "FACE_MIN_REGISTER_DET_SCORE",
         "FACE_MIN_REGISTER_FACE_PIXELS",
         "FACE_MIN_REGISTER_BRIGHTNESS",
         "FACE_MAX_REGISTER_BRIGHTNESS",
+        "FACE_MIN_LOGIN_DET_SCORE",
+        "FACE_MIN_LOGIN_FACE_PIXELS",
+        "FACE_MIN_FACE_SHARPNESS",
         "FACE_MAX_IMAGE_BYTES",
         "FACE_MAX_BASE64_CHARS",
         "FACE_MAX_IMAGE_PIXELS",
@@ -326,7 +347,7 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(module.CORS_ORIGINS, ["http://app.local"])
 
     def test_structured_log_event_masks_sensitive_fields(self):
-        module = load_main_module()
+        module = load_main_module(extra_env={"FACE_LOG_MAX_BYTES": "2048", "FACE_LOG_BACKUP_COUNT": "3"})
         events = []
 
         with patch.object(module.app_logger, "info", lambda payload: events.append(payload)):
@@ -341,6 +362,10 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(safe["api_key"], "***")
         self.assertEqual(safe["embedding"], "***")
         self.assertIn('"api_key": "***"', events[0])
+        self.assertEqual(module.LOG_MAX_BYTES, 2048)
+        self.assertEqual(module.LOG_BACKUP_COUNT, 3)
+        self.assertEqual(module.app_logger.handlers[0].maxBytes, 2048)
+        self.assertEqual(module.app_logger.handlers[0].backupCount, 3)
 
     def test_decode_base64_rejects_decoded_bytes_over_limit(self):
         module = load_main_module()
@@ -485,6 +510,8 @@ class MainApiContractTests(unittest.TestCase):
             ("/admin/restore", "POST"),
             ("/policy/tuning-summary", "GET"),
             ("/search/benchmark-summary", "GET"),
+            ("/search/index-status", "GET"),
+            ("/performance/scale-plan", "GET"),
         ]
         conditional_auth = [
             ("/faces/register", "POST"),
@@ -513,7 +540,10 @@ class MainApiContractTests(unittest.TestCase):
         self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸")
 
     def test_register_rejects_duplicate_user_when_policy_is_reject(self):
-        module = load_main_module(api_key="secret", extra_env={"FACE_DUPLICATE_POLICY": "reject"})
+        module = load_main_module(
+            api_key="secret",
+            extra_env={"FACE_DUPLICATE_POLICY": "reject", "FACE_MIN_FACE_SHARPNESS": "0"},
+        )
         module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
         module.engine.analyze = lambda _: [
             {"bbox": [0, 0, 80, 80], "det_score": 0.9, "embedding": EMBEDDING, "gender": "M", "age": 20}
@@ -527,7 +557,10 @@ class MainApiContractTests(unittest.TestCase):
         self.assert_error_detail(exc_info.exception.detail, "DUPLICATE_FACE_USER", "该用户已注册人脸")
 
     def test_register_rejects_low_quality_face(self):
-        module = load_main_module(api_key="secret", extra_env={"FACE_MIN_REGISTER_DET_SCORE": "0.8"})
+        module = load_main_module(
+            api_key="secret",
+            extra_env={"FACE_MIN_REGISTER_DET_SCORE": "0.8", "FACE_MIN_FACE_SHARPNESS": "0"},
+        )
         module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
         module.engine.analyze = lambda _: [
             {"bbox": [0, 0, 80, 80], "det_score": 0.5, "embedding": EMBEDDING, "gender": "M", "age": 20}
@@ -537,7 +570,7 @@ class MainApiContractTests(unittest.TestCase):
             module.register(module.RegisterReq(terminal_id="t-1", user_id=1, username="zhangsan", image="dummy"))
 
         self.assertEqual(exc_info.exception.status_code, 400)
-        self.assert_error_detail(exc_info.exception.detail, "FACE_QUALITY_LOW", "人脸质量不符合注册要求")
+        self.assert_error_detail(exc_info.exception.detail, "FACE_DET_SCORE_LOW", "人脸检测置信度过低")
 
     def test_delete_face_returns_structured_not_found(self):
         module = load_main_module(api_key="secret")
@@ -572,7 +605,7 @@ class MainApiContractTests(unittest.TestCase):
                 "age": 30,
             }
         ]
-        module.db.search = lambda *args, **kwargs: [{"user_id": 1, "username": "   "}]
+        module.db.search = lambda *args, **kwargs: [{"user_id": 1, "username": "   ", "similarity": 0.91}]
 
         with self.assertRaises(HTTPException) as exc_info:
             module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1"))
@@ -774,7 +807,7 @@ class MainApiContractTests(unittest.TestCase):
                 "age": 30,
             }
         ]
-        module.db.search = lambda *args, **kwargs: [{"user_id": 7, "username": "zhangsan"}]
+        module.db.search = lambda *args, **kwargs: [{"user_id": 7, "username": "zhangsan", "similarity": 0.91}]
 
         body = module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1", state="s-1"))
 
@@ -783,6 +816,31 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(module.db.audit_entries[0]["success"], True)
         self.assertEqual(module.db.audit_entries[0]["terminal_id"], "t-1")
         self.assertEqual(module.db.audit_entries[0]["matched_user_id"], 7)
+        self.assertEqual(module.db.audit_entries[0]["quality_metrics"]["det_score"], 0.99)
+        self.assertEqual(body["quality_metrics"]["det_score"], 0.99)
+
+    def test_face_login_records_low_similarity_for_no_match(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda _: object()
+        module.engine.analyze = lambda _: [
+            {
+                "bbox": [0.0, 1.0, 2.0, 3.0],
+                "det_score": 0.99,
+                "landmarks": [[1, 1], [2, 2]],
+                "embedding": EMBEDDING,
+                "gender": "M",
+                "age": 30,
+            }
+        ]
+        module.db.search = lambda *args, **kwargs: [{"user_id": 7, "username": "zhangsan", "similarity": 0.51}]
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1", state="s-low"))
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assert_error_detail(exc_info.exception.detail, "NO_MATCH", "身份验证失败，未匹配到有效用户")
+        self.assertEqual(module.db.audit_entries[0]["similarity"], 0.51)
+        self.assertEqual(module.db.audit_entries[0]["failure_reason"], "NO_MATCH")
 
     def test_face_login_writes_failure_audit(self):
         module = load_main_module(api_key="secret")
@@ -851,6 +909,47 @@ class MainApiContractTests(unittest.TestCase):
         self.assertTrue(body["passed"])
         self.assertEqual(module.db.challenges[created["challenge_id"]]["status"], "passed")
 
+    def test_liveness_challenge_submit_normalizes_purpose(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda image: module.np.ones((10, 10, 3), dtype=module.np.uint8) * (
+            120 if image == "bright" else 20
+        )
+        module.engine.analyze = lambda _: [{"embedding": EMBEDDING, "det_score": 0.9}]
+
+        created = module.create_liveness_challenge(
+            module.LivenessChallengeCreateReq(purpose=" Login ", terminal_id="door-1")
+        )
+        body = module.submit_liveness_challenge(
+            module.LivenessChallengeSubmitReq(
+                challenge_id=created["challenge_id"],
+                purpose=" LOGIN ",
+                terminal_id="door-1",
+                frames=["dark"] * 10 + ["bright"] * 10,
+            )
+        )
+
+        self.assertTrue(body["passed"])
+
+    def test_liveness_challenge_action_window_is_enforced(self):
+        module = load_main_module(api_key="secret")
+        created = module.create_liveness_challenge(
+            module.LivenessChallengeCreateReq(purpose="login", terminal_id="door-1")
+        )
+        module.db.challenges[created["challenge_id"]]["created_at_epoch"] = module.time.time() - 20
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.submit_liveness_challenge(
+                module.LivenessChallengeSubmitReq(
+                    challenge_id=created["challenge_id"],
+                    purpose="login",
+                    terminal_id="door-1",
+                    frames=["dark"] * 10 + ["bright"] * 10,
+                )
+            )
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assert_error_detail(exc_info.exception.detail, "LIVENESS_ACTION_WINDOW_EXPIRED", "活体动作超时")
+
     def test_liveness_challenge_cannot_be_written_in_maintenance_mode(self):
         module = load_main_module(api_key="secret")
         module.set_maintenance_mode(True)
@@ -910,7 +1009,11 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(module.db.audit_entries[0]["liveness_status"], "failed")
 
     def test_face_login_consumes_liveness_challenge_once(self):
-        module = load_main_module(api_key="secret", disable_login_liveness=False)
+        module = load_main_module(
+            api_key="secret",
+            disable_login_liveness=False,
+            extra_env={"FACE_MIN_FACE_SHARPNESS": "0"},
+        )
         challenge_id = module.db.add_liveness_challenge(
             purpose="login",
             terminal_id="door-1",
@@ -920,8 +1023,12 @@ class MainApiContractTests(unittest.TestCase):
         )
         module.db.mark_liveness_challenge_result(challenge_id, passed=True, result_reason="ok")
         module.db.challenges[challenge_id]["face_embedding"] = EMBEDDING
-        module.decode_base64 = lambda _: module.np.zeros((10, 10, 3), dtype=module.np.uint8)
-        module.get_single_face_or_raise = lambda _: {"embedding": EMBEDDING}
+        module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
+        module.get_single_face_or_raise = lambda _: {
+            "bbox": [0, 0, 80, 80],
+            "det_score": 0.99,
+            "embedding": EMBEDDING,
+        }
         module.db.search = lambda *args, **kwargs: [
             {"user_id": 7, "username": "alice", "similarity": 0.91, "metadata": {}}
         ]
@@ -938,7 +1045,11 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(exc_info.exception.status_code, 403)
 
     def test_face_login_rejects_liveness_face_mismatch(self):
-        module = load_main_module(api_key="secret", disable_login_liveness=False)
+        module = load_main_module(
+            api_key="secret",
+            disable_login_liveness=False,
+            extra_env={"FACE_MIN_FACE_SHARPNESS": "0"},
+        )
         challenge_id = module.db.add_liveness_challenge(
             purpose="login",
             terminal_id="door-1",
@@ -952,8 +1063,12 @@ class MainApiContractTests(unittest.TestCase):
             result_reason="ok",
             face_embedding=[0.1] * 512,
         )
-        module.decode_base64 = lambda _: module.np.zeros((10, 10, 3), dtype=module.np.uint8)
-        module.get_single_face_or_raise = lambda _: {"embedding": [0.0] * 511 + [1.0]}
+        module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
+        module.get_single_face_or_raise = lambda _: {
+            "bbox": [0, 0, 80, 80],
+            "det_score": 0.99,
+            "embedding": [0.0] * 511 + [1.0],
+        }
 
         with self.assertRaises(HTTPException) as exc_info:
             module.face_login(
@@ -1060,8 +1175,49 @@ class MainApiContractTests(unittest.TestCase):
 
         self.assertFalse(tuning["auto_apply"])
         self.assertEqual(tuning["policy"]["profile"], "default")
+        self.assertFalse(tuning["sample_sufficient"])
+        self.assertIn("样本不足", tuning["recommendation"])
         self.assertEqual(search_status["mode"], "exact")
         self.assertEqual(search_status["target_record_count"], 50000)
+
+    def test_policy_tuning_summary_exposes_false_accept_and_reject_risks(self):
+        module = load_main_module(api_key="secret")
+        for _ in range(20):
+            module.db.add_login_audit(success=True, similarity=0.57, terminal_id="door-1")
+        for _ in range(10):
+            module.db.add_login_audit(success=False, similarity=0.54, failure_reason="NO_MATCH", terminal_id="door-1")
+
+        tuning = module.policy_tuning_summary(limit=50, terminal_id="door-1")
+
+        self.assertTrue(tuning["sample_sufficient"])
+        self.assertFalse(tuning["auto_apply"])
+        self.assertTrue(tuning["manual_review_required"])
+        self.assertIn("false accept", tuning["false_accept_risk"])
+        self.assertIn("false reject", tuning["false_reject_risk"])
+        self.assertTrue(tuning["risk_notes"])
+
+    def test_performance_scale_plan_exposes_v16_contract(self):
+        module = load_main_module(api_key="secret")
+
+        index_status = module.search_index_status()
+        plan = module.performance_scale_plan()
+
+        self.assertFalse(index_status["enabled"])
+        self.assertEqual(index_status["mode"], "exact")
+        self.assertTrue(index_status["fallback"]["enabled"])
+        self.assertIn("enter_conditions", index_status)
+        self.assertEqual(plan["benchmark"]["target_record_count"], 50000)
+        self.assertIn("p95_ms", plan["benchmark"]["metrics"])
+        self.assertIn("image_path", plan["bulk_manifest"]["import_manifest_required_fields"])
+        self.assertIn("scripts/benchmark-scale.py", plan["bulk_manifest"]["scripts"]["benchmark"])
+
+    def test_openapi_contains_v16_routes(self):
+        module = load_main_module(api_key="secret")
+
+        schema = module.app.openapi()
+
+        self.assertIn("/search/index-status", schema["paths"])
+        self.assertIn("/performance/scale-plan", schema["paths"])
 
     def test_config_effective_returns_runtime_defaults(self):
         module = load_main_module(disable_login_liveness=False)
@@ -1071,6 +1227,8 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(body["face_login_threshold"], 0.55)
         self.assertTrue(body["force_cpu"])
         self.assertEqual(body["model"], "buffalo_l")
+        self.assertEqual(body["log_rotation"]["max_bytes"], 10 * 1024 * 1024)
+        self.assertEqual(body["log_rotation"]["backup_count"], 5)
         self.assertTrue(body["liveness"]["login_enabled"])
         self.assertFalse(body["liveness"]["register_enabled"])
         self.assertEqual(body["liveness"]["challenge_ttl_seconds"], 60)
@@ -1097,6 +1255,7 @@ class MainApiContractTests(unittest.TestCase):
 
         self.assertEqual(body["status"], "ok")
         self.assertEqual(body["device"], "CPU")
+        self.assertEqual(body["log_rotation"]["backup_count"], 5)
         self.assertEqual(body["search_cache"]["mode"], "exact")
         self.assertEqual(body["search_cache"]["target_record_count"], 50000)
         self.assertFalse(body["liveness"]["login_enabled"])

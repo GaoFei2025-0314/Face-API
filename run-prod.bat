@@ -18,5 +18,12 @@ if "%FACE_API_KEY%"=="" (
   exit /b 1
 )
 
-D:\anaconda3\envs\face_api\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000
+echo [face_api] FACE_API_KEY is set.
 
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":8000 .*LISTENING"') do (
+  echo [face_api] ERROR: port 8000 is already in use by PID %%p
+  echo [face_api] Run: powershell -ExecutionPolicy Bypass -File scripts\stop-service.ps1
+  exit /b 1
+)
+
+D:\anaconda3\envs\face_api\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000

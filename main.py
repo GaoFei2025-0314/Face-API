@@ -14,6 +14,7 @@
 import base64
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import shutil
 import uuid
@@ -97,7 +98,7 @@ def env_list(name: str, default: list[str]) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-def setup_app_logger(log_path: str) -> logging.Logger:
+def setup_app_logger(log_path: str, max_bytes: int, backup_count: int) -> logging.Logger:
     logger = logging.getLogger("face_api")
     logger.setLevel(logging.INFO)
     for handler in logger.handlers:
@@ -106,7 +107,12 @@ def setup_app_logger(log_path: str) -> logging.Logger:
     logger.propagate = False
     path = Path(log_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    handler = logging.FileHandler(path, encoding="utf-8")
+    handler = RotatingFileHandler(
+        path,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
     handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(handler)
     return logger
@@ -145,12 +151,17 @@ MAX_IMAGE_BYTES = env_int("FACE_MAX_IMAGE_BYTES", DEFAULT_MAX_IMAGE_BYTES, 1)
 MAX_IMAGE_PIXELS = env_int("FACE_MAX_IMAGE_PIXELS", 4_096_000, 1)
 DB_PATH = os.getenv("FACE_DB_PATH", "faces.db")
 LOG_PATH = os.getenv("FACE_LOG_PATH", "logs/face_api.log")
+LOG_MAX_BYTES = env_int("FACE_LOG_MAX_BYTES", 10 * 1024 * 1024, 1024)
+LOG_BACKUP_COUNT = env_int("FACE_LOG_BACKUP_COUNT", 5, 1)
 CORS_ORIGINS = env_list("FACE_CORS_ORIGINS", ["*"])
 DUPLICATE_POLICY = os.getenv("FACE_DUPLICATE_POLICY", "allow").strip().lower() or "allow"
 MIN_REGISTER_DET_SCORE = float(os.getenv("FACE_MIN_REGISTER_DET_SCORE", "0.5"))
 MIN_REGISTER_FACE_PIXELS = env_int("FACE_MIN_REGISTER_FACE_PIXELS", 2500, 1)
 MIN_REGISTER_BRIGHTNESS = float(os.getenv("FACE_MIN_REGISTER_BRIGHTNESS", "30"))
 MAX_REGISTER_BRIGHTNESS = float(os.getenv("FACE_MAX_REGISTER_BRIGHTNESS", "225"))
+MIN_LOGIN_DET_SCORE = float(os.getenv("FACE_MIN_LOGIN_DET_SCORE", "0.4"))
+MIN_LOGIN_FACE_PIXELS = env_int("FACE_MIN_LOGIN_FACE_PIXELS", 1600, 1)
+MIN_FACE_SHARPNESS = float(os.getenv("FACE_MIN_FACE_SHARPNESS", "2"))
 FACE_LOGIN_LIVENESS_ENABLED = env_bool("FACE_LOGIN_LIVENESS_ENABLED", True)
 FACE_REGISTER_LIVENESS_ENABLED = env_bool("FACE_REGISTER_LIVENESS_ENABLED", False)
 FACE_CHALLENGE_TTL_SECONDS = env_int("FACE_CHALLENGE_TTL_SECONDS", 60, 1)
@@ -171,7 +182,7 @@ if "blink" not in FACE_CHALLENGE_ACTIONS:
 db_dir = Path(DB_PATH).expanduser().resolve().parent
 if not db_dir.exists() or not os.access(db_dir, os.W_OK):
     raise RuntimeError(f"FACE_DB_PATH 目录不可写：{db_dir}")
-app_logger = setup_app_logger(LOG_PATH)
+app_logger = setup_app_logger(LOG_PATH, LOG_MAX_BYTES, LOG_BACKUP_COUNT)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -283,6 +294,26 @@ ERROR_DEFINITIONS = {
         "message": "人脸质量不符合注册要求",
         "reason": "注册照片的人脸置信度、大小或亮度不符合要求，请重新拍摄清晰的单人正脸照片",
     },
+    "FACE_DET_SCORE_LOW": {
+        "message": "人脸检测置信度过低",
+        "reason": "模型虽然检测到人脸，但置信度偏低，请调整角度、距离或光线后重试",
+    },
+    "FACE_TOO_SMALL": {
+        "message": "人脸区域过小",
+        "reason": "人脸在画面中占比太小，请靠近摄像头或调整画面后重试",
+    },
+    "FACE_TOO_DARK": {
+        "message": "画面过暗",
+        "reason": "当前图片亮度不足，请补光后重试",
+    },
+    "FACE_TOO_BRIGHT": {
+        "message": "画面过亮",
+        "reason": "当前图片过曝，请降低强光或调整摄像头角度后重试",
+    },
+    "FACE_BLURRY": {
+        "message": "画面清晰度不足",
+        "reason": "当前图片可能模糊，请保持稳定并重新拍摄",
+    },
     "DUPLICATE_FACE_USER": {
         "message": "该用户已注册人脸",
         "reason": "当前重复注册策略不允许同一 user_id 注册多条人脸记录，请先删除或调整重复注册策略",
@@ -318,6 +349,10 @@ ERROR_DEFINITIONS = {
     "LIVENESS_FRAME_COUNT_INVALID": {
         "message": "活体图片帧数量不符合要求",
         "reason": "请面对摄像头并完成眨眼后重试",
+    },
+    "LIVENESS_ACTION_WINDOW_EXPIRED": {
+        "message": "活体动作超时",
+        "reason": "活体动作需要在指定时间窗口内完成，请重新创建 challenge 后重试",
     },
     "UNSUPPORTED_LIVENESS_ACTION": {
         "message": "不支持的活体动作",
@@ -410,20 +445,60 @@ def strip_embedding(face: dict) -> dict:
     return {k: v for k, v in face.items() if k != "embedding"}
 
 
-def validate_register_quality(face: dict, image: np.ndarray) -> None:
+def compute_face_quality(face: dict, image: np.ndarray) -> dict:
     det_score = float(face.get("det_score") or 0)
     bbox = face.get("bbox") or [0, 0, 0, 0]
     width = max(float(bbox[2]) - float(bbox[0]), 0)
     height = max(float(bbox[3]) - float(bbox[1]), 0)
     face_pixels = width * height
-    brightness = float(np.mean(image)) if image.size else 0
-    if (
-        det_score < MIN_REGISTER_DET_SCORE
-        or face_pixels < MIN_REGISTER_FACE_PIXELS
-        or brightness < MIN_REGISTER_BRIGHTNESS
-        or brightness > MAX_REGISTER_BRIGHTNESS
-    ):
-        raise_api_error(400, "FACE_QUALITY_LOW")
+    image_pixels = 0
+    brightness = None
+    sharpness = None
+    if isinstance(image, np.ndarray) and image.size:
+        image_pixels = int(image.shape[0] * image.shape[1])
+        brightness = round(float(np.mean(image)), 2)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+        sharpness = round(float(cv2.Laplacian(gray, cv2.CV_64F).var()), 2)
+    return {
+        "det_score": round(det_score, 4),
+        "face_width": round(width, 2),
+        "face_height": round(height, 2),
+        "face_pixels": round(face_pixels, 2),
+        "image_pixels": image_pixels,
+        "face_area_ratio": round(face_pixels / image_pixels, 6) if image_pixels else None,
+        "brightness": brightness,
+        "sharpness": sharpness,
+    }
+
+
+def quality_failure_code(metrics: dict, *, flow: str) -> Optional[str]:
+    min_det_score = MIN_REGISTER_DET_SCORE if flow == "register" else MIN_LOGIN_DET_SCORE
+    min_face_pixels = MIN_REGISTER_FACE_PIXELS if flow == "register" else MIN_LOGIN_FACE_PIXELS
+    if metrics["det_score"] < min_det_score:
+        return "FACE_DET_SCORE_LOW"
+    if metrics.get("image_pixels") and metrics["face_pixels"] < min_face_pixels:
+        return "FACE_TOO_SMALL"
+    brightness = metrics.get("brightness")
+    if brightness is not None and brightness < MIN_REGISTER_BRIGHTNESS:
+        return "FACE_TOO_DARK"
+    if brightness is not None and brightness > MAX_REGISTER_BRIGHTNESS:
+        return "FACE_TOO_BRIGHT"
+    sharpness = metrics.get("sharpness")
+    if sharpness is not None and sharpness < MIN_FACE_SHARPNESS:
+        return "FACE_BLURRY"
+    return None
+
+
+def validate_face_quality(face: dict, image: np.ndarray, *, flow: str) -> dict:
+    metrics = compute_face_quality(face, image)
+    failure_code = quality_failure_code(metrics, flow=flow)
+    if failure_code:
+        raise_api_error(400, failure_code)
+    return metrics
+
+
+def validate_register_quality(face: dict, image: np.ndarray) -> dict:
+    return validate_face_quality(face, image, flow="register")
 
 
 def require_terminal_id_value(terminal_id: Optional[str]) -> str:
@@ -472,11 +547,27 @@ def parse_terminal_policy_map() -> dict[str, str]:
 def get_policy_for_terminal(terminal_id: Optional[str]) -> dict:
     mapping = parse_terminal_policy_map()
     profile = mapping.get((terminal_id or "").strip(), FACE_DEFAULT_POLICY_PROFILE)
+    thresholds = {
+        "default": 0.55,
+        "strict": 0.65,
+        "balanced": 0.60,
+        "permissive": 0.55,
+    }
     return {
         "profile": profile,
         "terminal_id": terminal_id,
-        "threshold": 0.55,
+        "threshold": thresholds.get(profile, thresholds["default"]),
+        "quality_thresholds": {
+            "min_login_det_score": MIN_LOGIN_DET_SCORE,
+            "min_login_face_pixels": MIN_LOGIN_FACE_PIXELS,
+            "min_register_det_score": MIN_REGISTER_DET_SCORE,
+            "min_register_face_pixels": MIN_REGISTER_FACE_PIXELS,
+            "min_brightness": MIN_REGISTER_BRIGHTNESS,
+            "max_brightness": MAX_REGISTER_BRIGHTNESS,
+            "min_sharpness": MIN_FACE_SHARPNESS,
+        },
         "auto_apply": False,
+        "manual_review_required": True,
     }
 
 
@@ -612,6 +703,7 @@ def write_login_audit(
     elapsed_ms: Optional[float] = None,
     liveness_status: Optional[str] = None,
     liveness_reason: Optional[str] = None,
+    quality_metrics: Optional[dict] = None,
 ) -> str:
     return db.add_login_audit(
         success=success,
@@ -625,6 +717,7 @@ def write_login_audit(
         elapsed_ms=elapsed_ms,
         liveness_status=liveness_status,
         liveness_reason=liveness_reason,
+        quality_metrics=quality_metrics,
     )
 
 
@@ -641,6 +734,7 @@ def raise_with_audit(
     elapsed_ms: Optional[float] = None,
     liveness_status: Optional[str] = None,
     liveness_reason: Optional[str] = None,
+    quality_metrics: Optional[dict] = None,
 ) -> None:
     write_login_audit(
         success=False,
@@ -652,6 +746,7 @@ def raise_with_audit(
         elapsed_ms=elapsed_ms,
         liveness_status=liveness_status,
         liveness_reason=liveness_reason,
+        quality_metrics=quality_metrics,
     )
     raise_api_error(status_code, code, message, reason)
 
@@ -670,6 +765,10 @@ def get_system_status() -> dict:
         "cors_origins": CORS_ORIGINS,
         "db_path": DB_PATH,
         "log_path": LOG_PATH,
+        "log_rotation": {
+            "max_bytes": LOG_MAX_BYTES,
+            "backup_count": LOG_BACKUP_COUNT,
+        },
         "duplicate_policy": DUPLICATE_POLICY,
         "search_cache": db.get_search_cache_status(),
         "liveness": get_liveness_policy(),
@@ -748,6 +847,7 @@ class RegisterResp(BaseModel):
     user_id: Optional[int] = None
     username: str
     message: str
+    quality_metrics: dict
 
 
 class MatchItem(BaseModel):
@@ -775,6 +875,7 @@ class FaceLoginResp(BaseModel):
     message: str
     match: FaceLoginMatch
     state: Optional[str] = None
+    quality_metrics: dict
     elapsed_ms: float
 
 
@@ -800,6 +901,7 @@ class SystemStatusResp(BaseModel):
     cors_origins: list[str]
     db_path: str
     log_path: str
+    log_rotation: dict
     duplicate_policy: str
     search_cache: dict
     liveness: dict
@@ -816,6 +918,7 @@ class EffectiveConfigResp(BaseModel):
     environment: str
     cors_origins: list[str]
     log_path: str
+    log_rotation: dict
     duplicate_policy: str
     model: str
     det_size: list[int]
@@ -826,6 +929,12 @@ class EffectiveConfigResp(BaseModel):
     liveness: dict
     recognition_policy: dict
     search_target: dict
+
+
+class PerformanceScalePlanResp(BaseModel):
+    benchmark: dict
+    index_status: dict
+    bulk_manifest: dict
 
 
 class LoginAuditItem(BaseModel):
@@ -841,6 +950,7 @@ class LoginAuditItem(BaseModel):
     elapsed_ms: Optional[float] = None
     liveness_status: Optional[str] = None
     liveness_reason: Optional[str] = None
+    quality_metrics: Optional[dict] = None
     created_at: Optional[str] = None
 
 
@@ -906,6 +1016,7 @@ TAG_COMPARE = "人脸比对"
 TAG_DB = "人脸库管理"
 TAG_SEARCH = "人脸搜索"
 TAG_AUTH = "认证"
+TAG_PERFORMANCE = "性能与规模化"
 
 
 # ---------- 系统 ----------
@@ -951,6 +1062,10 @@ def effective_config():
         "environment": ENVIRONMENT,
         "cors_origins": CORS_ORIGINS,
         "log_path": LOG_PATH,
+        "log_rotation": {
+            "max_bytes": LOG_MAX_BYTES,
+            "backup_count": LOG_BACKUP_COUNT,
+        },
         "duplicate_policy": DUPLICATE_POLICY,
         "model": FACE_MODEL,
         "det_size": [FACE_DET_SIZE, FACE_DET_SIZE],
@@ -982,16 +1097,61 @@ def admin_page():
 def policy_tuning_summary(limit: int = 100, terminal_id: Optional[str] = None):
     items = db.list_login_audits(limit, terminal_id=terminal_id)
     similarities = [item["similarity"] for item in items if item.get("similarity") is not None]
-    if len(similarities) < 10:
-        recommendation = "样本不足，暂不建议调整阈值"
+    failure_counts: dict[str, int] = {}
+    quality_failure_count = 0
+    liveness_failure_count = 0
+    no_match_count = 0
+    for item in items:
+        reason = item.get("failure_reason")
+        if reason:
+            failure_counts[reason] = failure_counts.get(reason, 0) + 1
+            if reason.startswith("FACE_"):
+                quality_failure_count += 1
+            if reason in {"NO_MATCH"}:
+                no_match_count += 1
+        if item.get("liveness_status") == "failed":
+            liveness_failure_count += 1
+    success_similarities = [
+        item["similarity"]
+        for item in items
+        if item.get("success") and item.get("similarity") is not None
+    ]
+    failed_similarities = [
+        item["similarity"]
+        for item in items
+        if not item.get("success") and item.get("similarity") is not None
+    ]
+    sample_sufficient = len(items) >= 30 and len(similarities) >= 10
+    risk_notes = []
+    if not sample_sufficient:
+        recommendation = "样本不足，暂不建议调整阈值；请先积累至少 30 条该 terminal 的 login audit"
     else:
         avg_similarity = sum(similarities) / len(similarities)
-        recommendation = "保持当前阈值" if avg_similarity >= 0.7 else "建议人工复核阈值和现场采集质量"
+        low_success = min(success_similarities) if success_similarities else None
+        high_failure = max(failed_similarities) if failed_similarities else None
+        if high_failure is not None and high_failure >= get_policy_for_terminal(terminal_id)["threshold"] - 0.03:
+            risk_notes.append("false accept 风险：失败样本相似度接近当前阈值，不能自动降低阈值")
+        if low_success is not None and low_success < get_policy_for_terminal(terminal_id)["threshold"] + 0.05:
+            risk_notes.append("false reject 风险：成功样本相似度贴近阈值，需复核采集质量和底库照片")
+        if quality_failure_count >= max(3, len(items) // 5):
+            risk_notes.append("质量风险：质量失败占比较高，优先检查光照、焦距和摄像头安装")
+        if liveness_failure_count >= max(3, len(items) // 5):
+            risk_notes.append("活体风险：活体失败占比较高，优先检查摄像头帧率和前端动作引导")
+        recommendation = "保持当前阈值，继续观察" if avg_similarity >= 0.7 and not risk_notes else "建议人工复核阈值、现场采集质量和底库照片"
     return {
         "policy": get_policy_for_terminal(terminal_id),
         "sample_count": len(items),
         "similarity_count": len(similarities),
+        "sample_sufficient": sample_sufficient,
+        "failure_counts": failure_counts,
+        "quality_failure_count": quality_failure_count,
+        "liveness_failure_count": liveness_failure_count,
+        "no_match_count": no_match_count,
+        "false_accept_risk": "false accept 风险需要人工复核，系统不会自动降低阈值",
+        "false_reject_risk": "false reject 风险需要结合成功/失败样本和质量指标复核",
+        "risk_notes": risk_notes,
         "auto_apply": False,
+        "manual_review_required": True,
         "recommendation": recommendation,
     }
 
@@ -1004,6 +1164,43 @@ def policy_tuning_summary(limit: int = 100, terminal_id: Optional[str] = None):
 )
 def search_benchmark_summary():
     return db.get_search_benchmark_summary()
+
+
+@app.get(
+    "/search/index-status",
+    tags=[TAG_PERFORMANCE],
+    summary="搜索 index 状态与回退策略",
+    dependencies=[Depends(require_api_key)],
+)
+def search_index_status():
+    return db.get_search_index_status()
+
+
+@app.get(
+    "/performance/scale-plan",
+    tags=[TAG_PERFORMANCE],
+    summary="5万人脸性能与规模化方案",
+    response_model=PerformanceScalePlanResp,
+    dependencies=[Depends(require_api_key)],
+)
+def performance_scale_plan():
+    return {
+        "benchmark": db.get_search_benchmark_summary(),
+        "index_status": db.get_search_index_status(),
+        "bulk_manifest": {
+            "import_manifest_required_fields": ["image_path", "username"],
+            "import_manifest_optional_fields": ["user_id", "terminal_id", "metadata"],
+            "export_manifest_fields": ["id", "user_id", "username", "metadata", "created_at"],
+            "scripts": {
+                "benchmark": "scripts/benchmark-scale.py",
+                "bulk_manifest": "scripts/bulk-manifest.py",
+            },
+            "notes": [
+                "批量导入先校验清单，再分批注册，失败记录必须输出原因",
+                "导出清单不包含 embedding，避免把人脸特征直接暴露给前端或普通业务系统",
+            ],
+        },
+    }
 
 
 @app.post(
@@ -1051,16 +1248,28 @@ def submit_liveness_challenge(req: LivenessChallengeSubmitReq):
     ensure_not_maintenance()
     t0 = time.perf_counter()
     terminal_id = require_terminal_id_value(req.terminal_id)
+    purpose = req.purpose.strip().lower()
     challenge = db.get_liveness_challenge(req.challenge_id)
     if not challenge:
         raise_api_error(404, "LIVENESS_CHALLENGE_INVALID")
-    if challenge["purpose"] != req.purpose or challenge["terminal_id"] != terminal_id:
+    if challenge["purpose"] != purpose or challenge["terminal_id"] != terminal_id:
         raise_api_error(403, "LIVENESS_CHALLENGE_INVALID")
     if challenge["status"] != "pending":
         raise_api_error(403, "LIVENESS_CHALLENGE_INVALID")
-    if time.time() > float(challenge["expires_at"]):
+    now = time.time()
+    if now > float(challenge["expires_at"]):
         db.mark_liveness_challenge_result(req.challenge_id, passed=False, result_reason="expired")
         raise_api_error(403, "LIVENESS_CHALLENGE_INVALID")
+    created_at_epoch = challenge.get("created_at_epoch")
+    if created_at_epoch is not None:
+        action_deadline = float(created_at_epoch) + float(challenge["action_window_seconds"])
+        if now > action_deadline:
+            db.mark_liveness_challenge_result(
+                req.challenge_id,
+                passed=False,
+                result_reason="action_window_expired",
+            )
+            raise_api_error(403, "LIVENESS_ACTION_WINDOW_EXPIRED")
     if challenge["action"] != "blink":
         raise_api_error(400, "UNSUPPORTED_LIVENESS_ACTION")
     passed, reason, face_embedding = evaluate_blink_frames(req.frames)
@@ -1211,7 +1420,18 @@ def register(req: RegisterReq):
     if not username:
         raise_api_error(400, "INVALID_USERNAME")
 
-    validate_register_quality(faces[0], img)
+    try:
+        quality_metrics = validate_register_quality(faces[0], img)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        log_event(
+            "face_register_quality_failed",
+            terminal_id=terminal_id,
+            user_id=req.user_id,
+            code=detail.get("code"),
+            quality_metrics=compute_face_quality(faces[0], img),
+        )
+        raise
     try:
         liveness_result = validate_liveness_for_flow("register", req.challenge_id, terminal_id, faces[0]["embedding"])
     except HTTPException as exc:
@@ -1237,12 +1457,14 @@ def register(req: RegisterReq):
         face_id=face_id,
         terminal_id=terminal_id,
         liveness_status=liveness_result["status"],
+        quality_metrics=quality_metrics,
     )
     return {
         "id": face_id,
         "user_id": req.user_id,
         "username": username,
         "message": "注册成功",
+        "quality_metrics": quality_metrics,
     }
 
 
@@ -1439,6 +1661,24 @@ def face_login(req: FaceLoginReq):
             liveness_status="not_checked",
             liveness_reason="face_invalid",
         )
+    try:
+        quality_metrics = validate_face_quality(face, img, flow="login")
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        metrics = compute_face_quality(face, img)
+        raise_with_audit(
+            status_code=exc.status_code,
+            code=detail.get("code", "FACE_QUALITY_LOW"),
+            message=detail.get("message", "人脸质量不符合登录要求"),
+            reason=detail.get("reason"),
+            threshold=normalize_auth_threshold(req.threshold),
+            terminal_id=terminal_id,
+            state=req.state,
+            elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+            liveness_status="not_checked",
+            liveness_reason="quality_failed",
+            quality_metrics=metrics,
+        )
 
     try:
         liveness_result = validate_liveness_for_flow("login", req.challenge_id, terminal_id, face["embedding"])
@@ -1455,11 +1695,12 @@ def face_login(req: FaceLoginReq):
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
             liveness_status="failed",
             liveness_reason=detail.get("code"),
+            quality_metrics=quality_metrics,
         )
 
     policy = get_policy_for_terminal(terminal_id)
     threshold = max(normalize_auth_threshold(req.threshold), policy["threshold"])
-    results = db.search(face["embedding"], top_k=1, threshold=threshold)
+    results = db.search(face["embedding"], top_k=1, threshold=-1.0)
     if not results:
         raise_with_audit(
             status_code=403,
@@ -1471,9 +1712,25 @@ def face_login(req: FaceLoginReq):
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
             liveness_status=liveness_result["status"],
             liveness_reason=liveness_result["reason"],
+            quality_metrics=quality_metrics,
         )
 
     best_match = results[0]
+    similarity = best_match.get("similarity")
+    if similarity is None or float(similarity) < threshold:
+        raise_with_audit(
+            status_code=403,
+            code="NO_MATCH",
+            message="身份验证失败，未匹配到有效用户",
+            threshold=threshold,
+            terminal_id=terminal_id,
+            state=req.state,
+            similarity=similarity,
+            elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+            liveness_status=liveness_result["status"],
+            liveness_reason=liveness_result["reason"],
+            quality_metrics=quality_metrics,
+        )
     username = str(best_match.get("username") or "").strip()
     if not username:
         raise_with_audit(
@@ -1487,6 +1744,7 @@ def face_login(req: FaceLoginReq):
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
             liveness_status=liveness_result["status"],
             liveness_reason=liveness_result["reason"],
+            quality_metrics=quality_metrics,
         )
 
     elapsed = (time.perf_counter() - t0) * 1000
@@ -1501,6 +1759,7 @@ def face_login(req: FaceLoginReq):
         elapsed_ms=round(elapsed, 2),
         liveness_status=liveness_result["status"],
         liveness_reason=liveness_result["reason"],
+        quality_metrics=quality_metrics,
     )
     return {
         "authenticated": True,
@@ -1510,6 +1769,7 @@ def face_login(req: FaceLoginReq):
             "username": username,
         },
         "state": req.state,
+        "quality_metrics": quality_metrics,
         "elapsed_ms": round(elapsed, 2),
     }
 

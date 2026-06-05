@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>face_api 摄像头接入示例</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, "Microsoft YaHei", sans-serif; color: #172033; background: #f5f7fb; }
+    header { padding: 20px 24px; background: #ffffff; border-bottom: 1px solid #d9dee8; }
+    main { max-width: 1180px; margin: 0 auto; padding: 20px; }
+    h1 { margin: 0; font-size: 26px; }
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    label { display: block; margin: 10px 0 4px; font-size: 13px; color: #475569; }
+    input, select, button, textarea { width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff; }
+    button { cursor: pointer; background: #2454a6; color: #fff; border-color: #2454a6; font-weight: 600; }
+    button.secondary { background: #ffffff; color: #2454a6; }
+    button.danger { background: #b42318; border-color: #b42318; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    video, canvas { width: 100%; max-height: 420px; background: #0f172a; border-radius: 8px; }
+    canvas { display: none; }
+    pre { min-height: 180px; margin: 0; padding: 12px; overflow: auto; background: #111827; color: #d1fae5; border-radius: 8px; font-size: 12px; }
+    .grid { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(300px, 0.8fr); gap: 16px; align-items: start; }
+    .card { background: #ffffff; border: 1px solid #d9dee8; border-radius: 8px; padding: 16px; }
+    .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .status { display: inline-block; margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: #e8eefc; color: #1d3f8f; font-size: 13px; }
+    .status.err { background: #fee4e2; color: #b42318; }
+    .status.ok { background: #dcfae6; color: #067647; }
+    .hint { margin: 8px 0 0; color: #667085; font-size: 13px; line-height: 1.5; }
+    .map { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .map th, .map td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }
+    .map th { background: #f8fafc; }
+    @media (max-width: 860px) {
+      .grid, .row, .actions { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>face_api 摄像头 login / register 接入示例</h1>
+    <p class="hint">这个页面仅用于本机或内网联调。正式业务前端不要直接保存或发送 API Key，应由业务后端代理注入 X-API-Key。</p>
+  </header>
+
+  <main class="grid">
+    <section class="card">
+      <h2>摄像头</h2>
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="actions">
+        <button onclick="startCamera()">打开摄像头</button>
+        <button class="secondary" onclick="capturePreview()">采集预览图</button>
+      </div>
+      <span id="cameraStatus" class="status">等待打开摄像头</span>
+      <p class="hint">活体示例会连续采集多帧，请让用户面对摄像头并按后端返回动作完成提示操作。</p>
+    </section>
+
+    <section class="card">
+      <h2>接入配置</h2>
+      <label>API Base URL</label>
+      <input id="apiBase" value="http://localhost:8000">
+      <label>API Key</label>
+      <input id="apiKey" type="password" placeholder="FACE_API_KEY 的值">
+      <p class="hint">联调页面需要填写 API Key。正式上线时，浏览器只应持有业务系统 session/token，不应持有 face_api 的 X-API-Key。</p>
+      <label>terminal_id</label>
+      <input id="terminalId" value="web-camera-01">
+      <div class="row">
+        <div>
+          <label>Login 阈值</label>
+          <input id="loginThreshold" type="number" min="0" max="1" step="0.01" value="0.6">
+        </div>
+        <div>
+          <label>注册是否先做活体</label>
+          <select id="registerLiveness">
+            <option value="no">不强制</option>
+            <option value="yes">先做 challenge</option>
+          </select>
+        </div>
+      </div>
+      <label>user_id（注册用，可选）</label>
+      <input id="userId" type="number" placeholder="10001">
+      <label>username（注册用）</label>
+      <input id="username" placeholder="zhangsan">
+      <div class="actions">
+        <button onclick="healthCheck()">健康检查</button>
+        <button class="secondary" onclick="loadAudit()">最近 audit</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>标准流程</h2>
+      <div class="actions">
+        <button onclick="cameraLogin()">摄像头 Login</button>
+        <button onclick="cameraRegister()">摄像头 Register</button>
+        <button class="secondary" onclick="createChallengeOnly('login')">只创建 Login Challenge</button>
+        <button class="secondary" onclick="submitLastChallenge()">提交上一次 Challenge</button>
+      </div>
+      <p class="hint">Login 默认流程：创建 challenge -> 连续采集帧 -> 提交 challenge -> 采集登录图 -> 调用 /auth/face-login。</p>
+      <p class="hint">Register 默认流程：采集单人脸图片 -> 调用 /faces/register。若后端开启注册活体，或你在配置中选择“先做 challenge”，则会先完成 register challenge。</p>
+    </section>
+
+    <section class="card">
+      <h2>结果</h2>
+      <pre id="output">等待操作...</pre>
+    </section>
+
+    <section class="card" style="grid-column: 1 / -1;">
+      <h2>常见错误码映射</h2>
+      <table class="map">
+        <thead>
+          <tr><th>code</th><th>用户提示</th><th>运维/开发处理</th></tr>
+        </thead>
+        <tbody id="errorMapRows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const errorMap = {
+      AUTH_INVALID_OR_MISSING: ["认证失败，请联系管理员检查配置", "确认服务启动时设置 FACE_API_KEY，前端请求头带 X-API-Key"],
+      TERMINAL_ID_REQUIRED: ["终端信息缺失，请刷新页面后重试", "为每台摄像头配置固定 terminal_id"],
+      NO_FACE: ["没有检测到人脸，请靠近摄像头并保持正脸", "检查光线、角度、摄像头清晰度和图片裁剪"],
+      MULTIPLE_FACES: ["画面中有多个人，请保持单人入镜", "注册和 login 都应要求单人画面"],
+      FACE_QUALITY_LOW: ["图片质量不够，请调整光线或距离后重试", "检查 det_score、亮度、脸框大小阈值"],
+      LIVENESS_CHALLENGE_REQUIRED: ["请先完成活体动作", "login 默认需要 challenge_id，注册是否需要取决于后端配置"],
+      LIVENESS_CHALLENGE_INVALID: ["活体验证已失效，请重新完成动作", "检查 challenge 是否过期、terminal_id/purpose 是否一致、是否已被使用"],
+      LIVENESS_CHALLENGE_FAILED: ["活体动作未通过，请重新眨眼", "检查连续帧数量、用户动作和摄像头帧率"],
+      LIVENESS_FRAME_COUNT_INVALID: ["采集帧数不足，请重新尝试", "按后端 action_window_seconds 采集 10 到 30 帧"],
+      NO_MATCH: ["未匹配到已注册用户", "检查用户是否已注册、阈值是否过高、现场图像质量"],
+      VALIDATION_ERROR: ["请求参数不完整，请刷新后重试", "检查必填字段、JSON 格式和字段类型"],
+      MAINTENANCE_MODE_ACTIVE: ["系统维护中，请稍后再试", "等待运维退出维护模式"],
+      NETWORK_ERROR: ["服务连接失败，请稍后重试", "确认后端已启动、地址正确、浏览器允许访问"]
+    };
+
+    let stream = null;
+    let lastChallenge = null;
+
+    function renderErrorMap() {
+      const rows = Object.entries(errorMap).map(([code, info]) =>
+        `<tr><td>${code}</td><td>${info[0]}</td><td>${info[1]}</td></tr>`
+      ).join("");
+      document.getElementById("errorMapRows").innerHTML = rows;
+    }
+
+    function getConfig() {
+      return {
+        base: document.getElementById("apiBase").value.replace(/\/+$/, ""),
+        apiKey: document.getElementById("apiKey").value,
+        terminalId: document.getElementById("terminalId").value.trim(),
+        threshold: Number(document.getElementById("loginThreshold").value || "0.6")
+      };
+    }
+
+    function show(data) {
+      document.getElementById("output").textContent = JSON.stringify(sanitize(data), null, 2);
+    }
+
+    function sanitize(value) {
+      if (Array.isArray(value)) return value.map(sanitize);
+      if (!value || typeof value !== "object") return value;
+      const clean = {};
+      for (const [key, item] of Object.entries(value)) {
+        if (key.toLowerCase().includes("embedding")) continue;
+        if (key.toLowerCase().includes("api_key") || key.toLowerCase().includes("apikey")) continue;
+        clean[key] = sanitize(item);
+      }
+      return clean;
+    }
+
+    function explainError(data) {
+      const detail = data && data.detail;
+      const code = detail && typeof detail === "object" ? detail.code : "NETWORK_ERROR";
+      const mapped = errorMap[code] || ["请求失败，请重试", "查看服务日志和接口返回 detail"];
+      return { code, user_message: mapped[0], operator_action: mapped[1], raw: sanitize(data) };
+    }
+
+    async function request(path, options = {}) {
+      const cfg = getConfig();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      try {
+        const headers = {
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...(cfg.apiKey ? { "X-API-Key": cfg.apiKey } : {}),
+          ...(options.headers || {})
+        };
+        const res = await fetch(cfg.base + path, { ...options, headers, signal: controller.signal });
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : {};
+        if (!res.ok) throw explainError(data);
+        return data;
+      } catch (err) {
+        if (err && err.code) throw err;
+        throw explainError({ detail: { code: "NETWORK_ERROR", reason: String(err.message || err) } });
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    async function startCamera() {
+      const status = document.getElementById("cameraStatus");
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+        document.getElementById("video").srcObject = stream;
+        status.className = "status ok";
+        status.textContent = "摄像头已打开";
+      } catch (err) {
+        status.className = "status err";
+        status.textContent = "摄像头不可用：" + err.message;
+      }
+    }
+
+    async function ensureCamera() {
+      if (!stream) await startCamera();
+      if (!stream) throw explainError({ detail: { code: "NETWORK_ERROR", reason: "camera unavailable" } });
+    }
+
+    function captureBase64() {
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(video, 0, 0, width, height);
+      return canvas.toDataURL("image/jpeg", 0.88);
+    }
+
+    async function capturePreview() {
+      try {
+        await ensureCamera();
+        show({ image_preview_captured: true, base64_hidden: true, timestamp: new Date().toISOString() });
+      } catch (err) {
+        show(err);
+      }
+    }
+
+    async function captureFrames(count = 12, intervalMs = 180) {
+      await ensureCamera();
+      const frames = [];
+      for (let i = 0; i < count; i += 1) {
+        frames.push(captureBase64());
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+      return frames;
+    }
+
+    async function createChallenge(purpose) {
+      const cfg = getConfig();
+      return request("/liveness/challenges", {
+        method: "POST",
+        body: JSON.stringify({ purpose, terminal_id: cfg.terminalId, action: "blink" })
+      });
+    }
+
+    async function submitChallenge(challenge) {
+      const cfg = getConfig();
+      const frames = await captureFrames(12, 180);
+      return request("/liveness/challenges/submit", {
+        method: "POST",
+        body: JSON.stringify({
+          challenge_id: challenge.challenge_id,
+          purpose: challenge.purpose,
+          terminal_id: cfg.terminalId,
+          frames
+        })
+      });
+    }
+
+    async function createChallengeOnly(purpose) {
+      try {
+        lastChallenge = await createChallenge(purpose);
+        show({ next_step: "请完成动作后点击提交上一次 Challenge", challenge: lastChallenge });
+      } catch (err) {
+        show(err);
+      }
+    }
+
+    async function submitLastChallenge() {
+      try {
+        if (!lastChallenge) throw explainError({ detail: { code: "LIVENESS_CHALLENGE_INVALID" } });
+        const result = await submitChallenge(lastChallenge);
+        show({ challenge_result: result });
+      } catch (err) {
+        show(err);
+      }
+    }
+
+    async function cameraLogin() {
+      try {
+        const cfg = getConfig();
+        if (!cfg.terminalId) throw explainError({ detail: { code: "TERMINAL_ID_REQUIRED" } });
+        const challenge = await createChallenge("login");
+        const liveness = await submitChallenge(challenge);
+        const image = captureBase64();
+        const data = await request("/auth/face-login", {
+          method: "POST",
+          body: JSON.stringify({
+            image,
+            terminal_id: cfg.terminalId,
+            challenge_id: liveness.challenge_id,
+            threshold: cfg.threshold,
+            state: "web-" + Date.now()
+          })
+        });
+        show({ step: "login_complete", data, business_next_step: "业务系统拿 match.user_id/username 查询用户表并签发自己的 session" });
+      } catch (err) {
+        show(err);
+      }
+    }
+
+    async function cameraRegister() {
+      try {
+        const cfg = getConfig();
+        const username = document.getElementById("username").value.trim();
+        const userIdRaw = document.getElementById("userId").value.trim();
+        const useLiveness = document.getElementById("registerLiveness").value === "yes";
+        if (!cfg.terminalId) throw explainError({ detail: { code: "TERMINAL_ID_REQUIRED" } });
+        if (!username) throw explainError({ detail: { code: "VALIDATION_ERROR", reason: "username required" } });
+        let challengeId = null;
+        if (useLiveness) {
+          const challenge = await createChallenge("register");
+          const liveness = await submitChallenge(challenge);
+          challengeId = liveness.challenge_id;
+        } else {
+          await ensureCamera();
+        }
+        const image = captureBase64();
+        const data = await request("/faces/register", {
+          method: "POST",
+          body: JSON.stringify({
+            user_id: userIdRaw ? Number(userIdRaw) : null,
+            username,
+            terminal_id: cfg.terminalId,
+            challenge_id: challengeId,
+            image,
+            metadata: { source: "camera-integration.html" }
+          })
+        });
+        show({ step: "register_complete", data });
+      } catch (err) {
+        show(err);
+      }
+    }
+
+    async function healthCheck() {
+      try {
+        show(await request("/health"));
+      } catch (err) {
+        show(err);
+      }
+    }
+
+    async function loadAudit() {
+      try {
+        const cfg = getConfig();
+        show(await request("/audit/login/recent?limit=10&terminal_id=" + encodeURIComponent(cfg.terminalId)));
+      } catch (err) {
+        show(err);
+      }
+    }
+
+    renderErrorMap();
+  </script>
+</body>
+</html>

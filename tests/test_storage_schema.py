@@ -29,6 +29,17 @@ class FaceDBSchemaTests(unittest.TestCase):
                 self.assertEqual(cache_status["mode"], "exact")
                 self.assertEqual(cache_status["target_record_count"], 50000)
 
+                index_status = db.get_search_index_status()
+                self.assertFalse(index_status["enabled"])
+                self.assertEqual(index_status["mode"], "exact")
+                self.assertTrue(index_status["fallback"]["enabled"])
+                self.assertIn("enter_conditions", index_status)
+
+                benchmark = db.get_search_benchmark_summary()
+                self.assertEqual(benchmark["target_record_count"], 50000)
+                self.assertIn("p95_ms", benchmark["metrics"])
+                self.assertEqual(benchmark["index_decision"]["mode"], "exact")
+
                 challenge_id = db.add_liveness_challenge(
                     purpose="login",
                     terminal_id="door-1",
@@ -57,6 +68,19 @@ class FaceDBSchemaTests(unittest.TestCase):
                 )
                 self.assertFalse(ok)
                 self.assertEqual(reason, "already_used")
+
+                audit_id = db.add_login_audit(
+                    success=False,
+                    similarity=0.42,
+                    threshold=0.6,
+                    failure_reason="FACE_TOO_DARK",
+                    terminal_id="door-1",
+                    quality_metrics={"brightness": 12.5, "det_score": 0.91},
+                )
+                self.assertTrue(audit_id)
+                audits = db.list_login_audits(limit=1, terminal_id="door-1")
+                self.assertEqual(audits[0]["quality_metrics"]["brightness"], 12.5)
+                self.assertEqual(audits[0]["failure_reason"], "FACE_TOO_DARK")
 
                 backup_path = os.path.join(temp_dir, "backup.db")
                 copied = db.backup_to(backup_path)

@@ -68,6 +68,14 @@ D 性能与规模化能力
 
 优先原因：规模优化应基于稳定运行、清晰识别策略和标准接入之后再做，避免提前引入复杂 index。
 
+计划交付：
+
+- 5 万人脸 benchmark 脚本和 JSON 报告格式。
+- 批量导出清单与导入清单校验流程。
+- `/search/index-status` 和 `/performance/scale-plan` 只读状态接口。
+- index 进入条件和 exact 回退策略文档。
+- 性能验证文档：`docs/performance/PERFORMANCE_SCALE.md`。
+
 ## 5. 全局约束
 
 - 继续以本地 Windows 工作站为主要部署目标。

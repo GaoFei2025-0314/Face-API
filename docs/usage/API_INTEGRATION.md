@@ -6,6 +6,13 @@
 这是 **联调手册**。  
 如果你是前端 / 全栈 / Electron 集成方，优先看这一份。
 
+如果你要直接接摄像头 login/register，优先打开：
+
+- `camera-integration.html`
+- `docs/usage/FRONTEND_BUSINESS_INTEGRATION.md`
+
+`camera-integration.html` 只用于本机或内网联调。正式业务前端不要直接持有 face_api 的 `X-API-Key`，应由业务后端保存密钥并代理调用 face_api；浏览器只持有业务系统自己的 session/token。
+
 它只回答 4 类问题：
 - 先调哪些接口最顺
 - 哪些接口要不要带 `X-API-Key`
@@ -44,6 +51,14 @@
 - 再验证识别能力
 - 最后再验证人脸库和认证辅助
 
+如果你接的是浏览器摄像头，建议直接按 V1.5 示例页走：
+
+1. 打开 `camera-integration.html`
+2. 填 `API Base URL`、`API Key`、`terminal_id`
+3. 点击“打开摄像头”
+4. 用“摄像头 Register”注册单人脸
+5. 用“摄像头 Login”完成活体 challenge 和 `/auth/face-login`
+
 ---
 
 ## 2. 基础信息
@@ -58,6 +73,12 @@
 | OpenAPI | `http://localhost:8000/openapi.json` |
 
 底库中保存的是**人脸记录**，并通过 `user_id` / `username` 关联业务用户体系；后端不维护业务用户主表，也不签发登录态。
+
+V1.5 明确边界：
+
+- `face_api` 返回识别结果和失败原因。
+- 业务系统负责用户主表、权限、token/session。
+- 普通浏览器页面不应该展示或保存 `embedding`、`FACE_API_KEY`。
 
 ---
 
@@ -181,7 +202,32 @@ function fileToBase64(file) {
 ### 推荐前端错误处理
 当前 API 的错误 `detail` 是结构化对象。前端可以额外保留字符串 `detail` 的防御性处理，兼容代理层或旧版本服务返回。
 
-### 5.4 特征向量返回边界
+### 5.4 常见错误码中文映射
+
+| code | 用户提示 | 运维/开发处理 |
+|---|---|---|
+| `AUTH_INVALID_OR_MISSING` | 认证失败，请联系管理员检查配置。 | 确认服务启动时设置 `FACE_API_KEY`，请求头带 `X-API-Key`。 |
+| `TERMINAL_ID_REQUIRED` | 终端信息缺失，请刷新页面后重试。 | 为每台摄像头配置固定 `terminal_id`。 |
+| `NO_FACE` | 没有检测到人脸，请靠近摄像头并保持正脸。 | 检查光线、角度、摄像头清晰度和图片裁剪。 |
+| `MULTIPLE_FACES` | 画面中有多个人，请保持单人入镜。 | 注册和 login 都应要求单人画面。 |
+| `FACE_QUALITY_LOW` | 图片质量不够，请调整光线或距离后重试。 | 检查检测置信度、亮度和脸框大小阈值。 |
+| `FACE_DET_SCORE_LOW` | 人脸识别不够稳定，请调整角度后重试。 | 检查人脸检测置信度阈值和现场角度。 |
+| `FACE_TOO_SMALL` | 人脸太小，请靠近摄像头。 | 检查摄像头距离、裁剪比例和最小人脸面积。 |
+| `FACE_TOO_DARK` | 画面太暗，请补光后重试。 | 检查现场光照和曝光。 |
+| `FACE_TOO_BRIGHT` | 画面过亮，请避开强光后重试。 | 检查逆光、强反光和曝光。 |
+| `FACE_BLURRY` | 画面不清晰，请保持稳定后重试。 | 检查摄像头焦距、码率、运动模糊和清晰度阈值。 |
+| `LIVENESS_CHALLENGE_REQUIRED` | 请先完成活体动作。 | login 默认需要 `challenge_id`。 |
+| `LIVENESS_CHALLENGE_INVALID` | 活体验证已失效，请重新完成动作。 | 检查 challenge 是否过期、用途/terminal 是否一致、是否已被使用。 |
+| `LIVENESS_CHALLENGE_FAILED` | 活体动作未通过，请重新眨眼。 | 检查连续帧数量、用户动作和摄像头帧率。 |
+| `LIVENESS_ACTION_WINDOW_EXPIRED` | 活体动作超时，请重新开始。 | 用户必须在 `FACE_CHALLENGE_ACTION_SECONDS` 时间窗口内完成动作。 |
+| `LIVENESS_FRAME_COUNT_INVALID` | 采集帧数不足，请重新尝试。 | 按后端配置采集 10 到 30 帧。 |
+| `NO_MATCH` | 未匹配到已注册用户。 | 检查用户是否已注册、阈值是否过高、现场图像质量。 |
+| `VALIDATION_ERROR` | 请求参数不完整，请刷新后重试。 | 检查必填字段、JSON 格式和字段类型。 |
+| `MAINTENANCE_MODE_ACTIVE` | 系统维护中，请稍后再试。 | 等待运维退出维护模式。 |
+
+完整摄像头接入说明见 `docs/usage/FRONTEND_BUSINESS_INTEGRATION.md`。
+
+### 5.5 特征向量返回边界
 普通页面不要把 embedding 当作普通展示字段来用。
 
 只有这个接口会返回它：
@@ -650,6 +696,41 @@ export async function POST(request, { params }) {
 }
 ```
 
+## 8.3 摄像头业务接入最小示例
+
+`camera-integration.html` 已经包含完整浏览器示例。业务系统自己的页面可以复用以下流程：
+
+```javascript
+async function createLoginChallenge(apiBase, apiKey, terminalId) {
+  const res = await fetch(`${apiBase}/liveness/challenges`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+    body: JSON.stringify({ purpose: "login", terminal_id: terminalId, action: "blink" })
+  });
+  return res.json();
+}
+
+async function faceLogin(apiBase, apiKey, terminalId, challengeId, imageBase64) {
+  const res = await fetch(`${apiBase}/auth/face-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+    body: JSON.stringify({
+      image: imageBase64,
+      terminal_id: terminalId,
+      challenge_id: challengeId,
+      threshold: 0.6,
+      state: "trace-" + Date.now()
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) throw data;
+
+  // face_api 不签发 token/session。
+  // 业务系统应使用 data.match.user_id / data.match.username 查询自己的用户表。
+  return data;
+}
+```
+
 ---
 
 ## 9. TypeScript 类型
@@ -717,11 +798,93 @@ export interface FaceLoginResp {
 - 历史经验值 / 参考值
 - 受机器、GPU 是否真实生效、图片尺寸、底库规模影响
 
+V1.6 起新增三个只读性能接口，均需要 `X-API-Key`：
+
+- `GET /search/benchmark-summary`：查看 5 万人脸 benchmark 目标、报告字段和当前搜索模式。
+- `GET /search/index-status`：查看 index 是否启用、是否 fresh、进入条件和 exact 回退策略。
+- `GET /performance/scale-plan`：查看 benchmark、index 和批量清单流程的总方案。
+
+默认搜索模式仍然是 `exact`，不会因为新增这些接口而自动启用 ANN/Faiss。
+
+### 10.1.1 Benchmark 报告格式
+
+`scripts/benchmark-scale.py` 默认输出：
+
+```text
+reports/performance/benchmark-scale.json
+```
+
+核心字段：
+
+```json
+{
+  "version": "1.0",
+  "target_record_count": 50000,
+  "target_latency_ms": 1000,
+  "record_count": 50000,
+  "runtime": {
+    "python": "3.10.x",
+    "platform": "Windows",
+    "db_path": "faces.db"
+  },
+  "search": {
+    "samples": 100,
+    "avg_ms": 120.5,
+    "p95_ms": 300.2,
+    "failure_count": 0,
+    "failure_reasons": {}
+  },
+  "index_decision": {
+    "current_mode": "exact",
+    "should_evaluate_index": false,
+    "fallback_required": true
+  },
+  "conclusion": "pass"
+}
+```
+
+### 10.1.2 批量清单流程
+
+导出底库清单：
+
+```powershell
+D:\anaconda3\envs\face_api\python.exe scripts\bulk-manifest.py export --db-path faces.db --output exports\faces-manifest.jsonl
+```
+
+导出字段：
+
+```text
+id, user_id, username, metadata, created_at
+```
+
+导出清单不包含 `embedding`。
+
+校验导入清单：
+
+```powershell
+D:\anaconda3\envs\face_api\python.exe scripts\bulk-manifest.py validate-import imports\faces.csv --output reports\bulk-import-validate.json
+```
+
+导入清单必填：
+
+```text
+image_path, username
+```
+
+导入清单可选：
+
+```text
+user_id, terminal_id, metadata
+```
+
 ### 10.2 前端建议
 - 上传前尽量压缩到 1000px 以内
 - 前端超时建议设 30 秒
 - 优先观察接口返回里的 `elapsed_ms`
 - 鉴权统一在请求封装层注入 `X-API-Key`
+- 摄像头页面提交期间禁用按钮，避免重复注册或重复消费 challenge
+- `terminal_id` 必须稳定，不要每次刷新页面随机生成
+- `API Key` 用密码框输入或由服务端代理注入，不要打印到页面结果区
 
 ### 10.3 联调顺序建议
 1. `/health`
@@ -730,3 +893,16 @@ export interface FaceLoginResp {
 4. `/faces/register` + `/search`
 5. `/auth/face-login`
 6. `/system/status` / `/config/effective` / 审计接口
+
+### 10.4 V1.5 上线检查清单
+
+- [ ] 后端服务能访问 `GET /health`。
+- [ ] 受保护接口请求头包含正确 `X-API-Key`。
+- [ ] 每台摄像头配置固定 `terminal_id`。
+- [ ] login 流程先完成活体 challenge，再调用 `/auth/face-login`。
+- [ ] 注册流程传入 `user_id`、`username`、`terminal_id` 和单人脸图片。
+- [ ] 前端不会打印或保存 `API Key`、`embedding`。
+- [ ] 常见错误码有中文用户提示和运维处理建议。
+- [ ] 业务系统明确由自己签发 token/session。
+- [ ] 网络超时、后端未启动、摄像头权限失败都有提示。
+- [ ] 可在 `/audit/login/recent` 查询指定 `terminal_id` 的登录记录。

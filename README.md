@@ -74,6 +74,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - Swagger：`http://localhost:8000/docs`
 - OpenAPI：`http://localhost:8000/openapi.json`
 - 联调页：直接打开 `test.html`
+- 摄像头接入示例：直接打开 `camera-integration.html`
 
 ---
 
@@ -203,6 +204,7 @@ curl http://localhost:8000/openapi.json
 
 详细请求/响应样例不要在这里死记，直接去看：
 - `docs/usage/API_INTEGRATION.md`
+- `docs/usage/FRONTEND_BUSINESS_INTEGRATION.md`
 
 ---
 
@@ -267,6 +269,8 @@ set FACE_FORCE_CPU=1
 | `FACE_API_KEY` | 空 | 启用 API Key 鉴权 |
 | `FACE_CORS_ORIGINS` | `*` | 允许跨域访问的前端来源，多个用英文逗号分隔 |
 | `FACE_LOG_PATH` | `logs/face_api.log` | 服务日志文件路径 |
+| `FACE_LOG_MAX_BYTES` | `10485760` | 单个日志文件最大字节数 |
+| `FACE_LOG_BACKUP_COUNT` | `5` | 日志轮转保留文件数 |
 | `FACE_MAINTENANCE_FILE` | `.maintenance_mode` | 运维控制台维护模式标记文件 |
 | `FACE_ALLOW_ONLINE_RESTORE` | 开发为 `1`，生产为 `0` | 是否允许通过 API 在线恢复数据库；生产建议停服务后离线恢复 |
 | `FACE_DUPLICATE_POLICY` | `allow` | 同一 `user_id` 重复注册策略：`allow` / `reject` / `replace` |
@@ -274,6 +278,9 @@ set FACE_FORCE_CPU=1
 | `FACE_MIN_REGISTER_FACE_PIXELS` | `2500` | 注册人脸框最小像素面积 |
 | `FACE_MIN_REGISTER_BRIGHTNESS` | `30` | 注册图片最低平均亮度 |
 | `FACE_MAX_REGISTER_BRIGHTNESS` | `225` | 注册图片最高平均亮度 |
+| `FACE_MIN_LOGIN_DET_SCORE` | `0.4` | 登录人脸最低检测置信度 |
+| `FACE_MIN_LOGIN_FACE_PIXELS` | `1600` | 登录人脸框最小像素面积 |
+| `FACE_MIN_FACE_SHARPNESS` | `2` | 注册/login 图片最低清晰度 |
 | `FACE_LOGIN_LIVENESS_ENABLED` | `1` | face login 是否启用活体检测 |
 | `FACE_REGISTER_LIVENESS_ENABLED` | `0` | 注册是否启用活体检测 |
 | `FACE_CHALLENGE_TTL_SECONDS` | `60` | 活体 challenge 有效期 |
@@ -309,6 +316,7 @@ powershell -ExecutionPolicy Bypass -File scripts\health-check.ps1
 详细运行、备份、恢复和排障说明见：
 
 - `docs/deployment/RUNBOOK.md`
+- `docs/usage/RECOGNITION_SECURITY_ACCURACY.md`
 
 ### 运维控制台
 
@@ -396,6 +404,12 @@ http://localhost:8000/admin.html
 适合：
 - 前端/全栈联调
 - 想直接复制请求体、返回体、TS 类型、fetch 示例
+
+### `docs/usage/FRONTEND_BUSINESS_INTEGRATION.md`
+适合：
+- 接摄像头 login / register
+- 看错误码中文映射、业务系统调用示例和上线检查清单
+- 明确 face_api 识别结果和业务系统 session 的边界
 
 ### `docs/architecture/ARCHITECTURE.md`
 适合：

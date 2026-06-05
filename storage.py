@@ -9,6 +9,7 @@ import json
 import os
 import sqlite3
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -73,6 +74,7 @@ class FaceDB:
                     elapsed_ms      REAL,
                     liveness_status TEXT,
                     liveness_reason TEXT,
+                    quality_metrics TEXT,
                     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -86,6 +88,7 @@ class FaceDB:
                     result_reason         TEXT,
                     face_embedding        BLOB,
                     action_window_seconds INTEGER NOT NULL,
+                    created_at_epoch      REAL,
                     expires_at            REAL NOT NULL,
                     used_at               REAL,
                     created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -112,9 +115,13 @@ class FaceDB:
                 c.execute("ALTER TABLE face_login_audit ADD COLUMN liveness_status TEXT")
             if "liveness_reason" not in audit_columns:
                 c.execute("ALTER TABLE face_login_audit ADD COLUMN liveness_reason TEXT")
+            if "quality_metrics" not in audit_columns:
+                c.execute("ALTER TABLE face_login_audit ADD COLUMN quality_metrics TEXT")
             challenge_columns = {row[1] for row in c.execute("PRAGMA table_info(liveness_challenges)")}
             if "face_embedding" not in challenge_columns:
                 c.execute("ALTER TABLE liveness_challenges ADD COLUMN face_embedding BLOB")
+            if "created_at_epoch" not in challenge_columns:
+                c.execute("ALTER TABLE liveness_challenges ADD COLUMN created_at_epoch REAL")
             c.execute("DROP INDEX IF EXISTS idx_name")
             c.execute("CREATE INDEX IF NOT EXISTS idx_username ON faces(username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON faces(user_id)")
@@ -277,6 +284,28 @@ class FaceDB:
             "target_latency_ms": 1000,
         }
 
+    def get_search_index_status(self) -> dict:
+        cache = self._load_search_cache()
+        return {
+            "enabled": False,
+            "mode": "exact",
+            "record_count": len(cache["ids"]),
+            "fresh": True,
+            "rebuild_required": False,
+            "fallback": {
+                "enabled": True,
+                "mode": "exact",
+                "reason": "默认保留 SQLite + NumPy 精确搜索，index 仅在 benchmark 证明必要后评估",
+            },
+            "enter_conditions": [
+                "5 万人脸 benchmark 的 search 或 login P95 连续超过 1000ms",
+                "优化图片尺寸、缓存预热和硬件配置后仍不达标",
+                "index 结果必须与精确搜索抽样对比，top-1 一致率达到验收阈值",
+                "新增、删除和恢复数据库后必须能标记 index 新鲜度或回退精确搜索",
+            ],
+            "candidate_backends": ["faiss-cpu", "faiss-gpu"],
+        }
+
     def get_search_benchmark_summary(self) -> dict:
         cache = self._load_search_cache()
         return {
@@ -285,6 +314,29 @@ class FaceDB:
             "target_record_count": 50000,
             "target_latency_ms": 1000,
             "approximate_search_enabled": False,
+            "metrics": ["avg_ms", "p95_ms", "min_ms", "max_ms", "failure_count", "failure_reasons"],
+            "report_format": {
+                "version": "1.0",
+                "record_count": "int",
+                "target_record_count": "int",
+                "runtime": {
+                    "python": "str",
+                    "platform": "str",
+                    "device": "CPU|GPU",
+                    "providers": "list[str]",
+                    "model": "str",
+                    "db_path": "str",
+                },
+                "search": {
+                    "samples": "int",
+                    "avg_ms": "float",
+                    "p95_ms": "float",
+                    "failure_count": "int",
+                    "failure_reasons": "dict[str,int]",
+                },
+                "conclusion": "str",
+            },
+            "index_decision": self.get_search_index_status(),
             "recommendation": "当前使用精确搜索；仅当 5 万人脸记录下超过 1 秒目标时，再评估近似搜索",
         }
 
@@ -340,8 +392,8 @@ class FaceDB:
                 """
                 INSERT INTO liveness_challenges (
                     id, purpose, terminal_id, action, status,
-                    action_window_seconds, expires_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    action_window_seconds, created_at_epoch, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     challenge_id,
@@ -350,6 +402,7 @@ class FaceDB:
                     action,
                     "pending",
                     action_window_seconds,
+                    time.time(),
                     expires_at,
                 ),
             )
@@ -359,7 +412,7 @@ class FaceDB:
         row = self._conn().execute(
             """
             SELECT id, purpose, terminal_id, action, status, result_reason,
-                   face_embedding, action_window_seconds, expires_at, used_at, created_at
+                   face_embedding, action_window_seconds, created_at_epoch, expires_at, used_at, created_at
             FROM liveness_challenges
             WHERE id = ?
             """,
@@ -380,6 +433,7 @@ class FaceDB:
                 else None
             ),
             "action_window_seconds": row["action_window_seconds"],
+            "created_at_epoch": row["created_at_epoch"],
             "expires_at": row["expires_at"],
             "used_at": row["used_at"],
             "created_at": row["created_at"],
@@ -421,7 +475,7 @@ class FaceDB:
             row = c.execute(
                 """
                 SELECT id, purpose, terminal_id, action, status, result_reason,
-                       face_embedding, action_window_seconds, expires_at, used_at, created_at
+                       face_embedding, action_window_seconds, created_at_epoch, expires_at, used_at, created_at
                 FROM liveness_challenges
                 WHERE id = ?
                 """,
@@ -442,6 +496,7 @@ class FaceDB:
                     else None
                 ),
                 "action_window_seconds": row["action_window_seconds"],
+                "created_at_epoch": row["created_at_epoch"],
                 "expires_at": row["expires_at"],
                 "used_at": row["used_at"],
                 "created_at": row["created_at"],
@@ -501,16 +556,18 @@ class FaceDB:
         elapsed_ms: Optional[float] = None,
         liveness_status: Optional[str] = None,
         liveness_reason: Optional[str] = None,
+        quality_metrics: Optional[dict] = None,
     ) -> str:
         audit_id = str(uuid.uuid4())
+        quality_metrics_text = json.dumps(quality_metrics, ensure_ascii=False) if quality_metrics is not None else None
         with self._conn() as c:
             c.execute(
                 """
                 INSERT INTO face_login_audit (
                     id, success, matched_user_id, matched_username, similarity,
                     threshold, failure_reason, terminal_id, state, elapsed_ms,
-                    liveness_status, liveness_reason
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    liveness_status, liveness_reason, quality_metrics
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     audit_id,
@@ -525,6 +582,7 @@ class FaceDB:
                     elapsed_ms,
                     liveness_status,
                     liveness_reason,
+                    quality_metrics_text,
                 ),
             )
         self._maybe_checkpoint()
@@ -545,7 +603,7 @@ class FaceDB:
             f"""
             SELECT id, success, matched_user_id, matched_username, similarity,
                    threshold, failure_reason, terminal_id, state, elapsed_ms,
-                   liveness_status, liveness_reason, created_at
+                   liveness_status, liveness_reason, quality_metrics, created_at
             FROM face_login_audit
             {where_sql}
             ORDER BY created_at DESC
@@ -567,6 +625,7 @@ class FaceDB:
                 "elapsed_ms": r["elapsed_ms"],
                 "liveness_status": r["liveness_status"],
                 "liveness_reason": r["liveness_reason"],
+                "quality_metrics": json.loads(r["quality_metrics"]) if r["quality_metrics"] else None,
                 "created_at": r["created_at"],
             }
             for r in rows
