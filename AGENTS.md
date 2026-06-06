@@ -135,6 +135,9 @@ When API behavior, request/response models, environment variables, setup, or fro
 - `README.md` for setup/run/operator guidance.
 - `docs/04_usage/01_api_integration.md` for frontend contract changes.
 - `HOW_TO_DELIVER.md` for deployment/hand-off changes when applicable.
+- `architecture.html` for visual architecture, role views, flow diagrams, and architecture walkthrough changes.
+
+When module boundaries, route groups, startup scripts, runtime configuration, data storage, or documentation structure change, check whether `architecture.html` needs to be updated.
 
 ## Adding or changing endpoints
 

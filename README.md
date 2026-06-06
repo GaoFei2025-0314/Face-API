@@ -9,6 +9,10 @@
 
 - `docs/01_document_index.md`
 
+如果你想先用一张图理解整体架构，可以直接双击：
+
+- `architecture.html`
+
 如果你要把控季度进度和功能边界，看：
 
 - `docs/02_product/02_quarterly_plan.md`

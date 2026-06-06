@@ -58,11 +58,14 @@
 
 看：
 
+- `architecture.html`
 - `docs/05_architecture/01_architecture.md`
 - `docs/05_architecture/02_face_api_rest_architecture.svg`
 
 作用：
 
+- `architecture.html`：交互式架构图，适合给同事演示整体结构、角色视图和关键流程。
+- `docs/05_architecture/01_architecture.md`：正式文字说明，适合维护、接手和深入理解。
 - 理解 FastAPI、FaceEngine、SQLite、脚本、前端示例之间的关系。
 
 ## 6. 想看识别安全和准确率
