@@ -133,7 +133,7 @@ Use the `FaceDB` interface instead of direct SQLite access from routes:
 When API behavior, request/response models, environment variables, setup, or frontend-facing semantics change, update the relevant docs together:
 
 - `README.md` for setup/run/operator guidance.
-- `docs/usage/API_INTEGRATION.md` for frontend contract changes.
+- `docs/04_usage/01_api_integration.md` for frontend contract changes.
 - `HOW_TO_DELIVER.md` for deployment/hand-off changes when applicable.
 
 ## Adding or changing endpoints

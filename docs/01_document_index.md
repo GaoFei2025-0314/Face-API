@@ -6,7 +6,7 @@
 
 看：
 
-- `docs/product/PRD.md`
+- `docs/02_product/01_prd.md`
 
 作用：
 
@@ -18,12 +18,12 @@
 
 看：
 
-- `docs/product/QUARTERLY_PLAN.md`
+- `docs/02_product/02_quarterly_plan.md`
 
 作用：
 
 - 看当前季度目标。
-- 看已完成版本、待验证事项和下一版本候选。
+- 看已完成版本、待验证事项和下一版本计划。
 - 控制功能不要失控扩张。
 
 ## 3. 想把服务跑起来
@@ -31,26 +31,26 @@
 看：
 
 - `README.md`
-- `docs/deployment/RUNBOOK.md`
+- `docs/03_deployment/01_runbook.md`
 
 作用：
 
 - `README.md`：第一次接手、启动、最小验证。
-- `RUNBOOK.md`：生产运行、停止、监控、日志、备份、恢复、排障。
+- `03_deployment/01_runbook.md`：生产运行、停止、监控、日志、备份、恢复、排障。
 
 ## 4. 想接前端或业务系统
 
 看：
 
-- `docs/usage/API_INTEGRATION.md`
-- `docs/usage/FRONTEND_BUSINESS_INTEGRATION.md`
+- `docs/04_usage/01_api_integration.md`
+- `docs/04_usage/02_frontend_business_integration.md`
 - `camera-integration.html`
 
 作用：
 
-- `API_INTEGRATION.md`：接口契约、请求返回、错误码。
-- `FRONTEND_BUSINESS_INTEGRATION.md`：摄像头 login/register 标准流程。
-- `camera-integration.html`：本机或内网联调页面。
+- `04_usage/01_api_integration.md`：接口契约、请求返回、错误码。
+- `04_usage/02_frontend_business_integration.md`：摄像头 login/register 标准流程。
+- `camera-integration.html`：本机或内网联调、V1.7.1 现场闭环验收页面。
 
 注意：正式前端不要直接持有 face_api 的 `X-API-Key`，应由业务后端代理调用 face_api。
 
@@ -58,8 +58,8 @@
 
 看：
 
-- `docs/architecture/ARCHITECTURE.md`
-- `docs/architecture/face_api_rest_architecture.svg`
+- `docs/05_architecture/01_architecture.md`
+- `docs/05_architecture/02_face_api_rest_architecture.svg`
 
 作用：
 
@@ -69,7 +69,7 @@
 
 看：
 
-- `docs/usage/RECOGNITION_SECURITY_ACCURACY.md`
+- `docs/04_usage/03_recognition_security_accuracy.md`
 
 作用：
 
@@ -82,7 +82,7 @@
 
 看：
 
-- `docs/performance/PERFORMANCE_SCALE.md`
+- `docs/06_performance/01_performance_scale.md`
 
 作用：
 
@@ -96,10 +96,14 @@
 
 - `specs/README.md`
 - `specs/ROADMAP-v1.2.md`
+- `specs/ROADMAP-v1.7.md`
 - `specs/014-production-runtime-monitoring/`
 - `specs/015-recognition-security-accuracy/`
 - `specs/016-frontend-business-integration/`
 - `specs/017-performance-scale/`
+- `specs/018-camera-acceptance-loop/`
+- `specs/019-windows-long-running/`
+- `docs/90_archive/04_acceptance/01_v1.7_acceptance_record.md`
 
 作用：
 
@@ -111,11 +115,11 @@
 
 以后按这个规则维护：
 
-- `docs/product/`：产品目标、季度计划、版本边界。
-- `docs/deployment/`：启动、停止、监控、备份、恢复。
-- `docs/usage/`：前端、业务系统、接口契约。
-- `docs/architecture/`：整体架构。
-- `docs/performance/`：benchmark、批量、规模化。
+- `docs/02_product/`：产品目标、季度计划、版本边界。
+- `docs/03_deployment/`：启动、停止、监控、备份、恢复。
+- `docs/04_usage/`：前端、业务系统、接口契约。
+- `docs/05_architecture/`：整体架构。
+- `docs/06_performance/`：benchmark、批量、规模化。
 - `specs/`：spec-kit 规格、任务和验收记录。
 
 如果一个文档不属于这些类别，就先不要新建，避免文档继续失控。

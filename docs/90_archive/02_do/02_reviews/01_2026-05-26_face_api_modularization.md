@@ -9,8 +9,8 @@ Changed files in this phase:
 - `tests/test_main_api.py`
 - `tests/test_storage_schema.py`
 - `README.md`
-- `docs/usage/API_INTEGRATION.md`
-- `docs/architecture/ARCHITECTURE.md`
+- `docs/04_usage/01_api_integration.md`
+- `docs/05_architecture/01_architecture.md`
 
 Verification performed:
 

@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>face_api 交互式架构图</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08111f;
+      --panel: #101b2e;
+      --panel-strong: #15233a;
+      --line: #2a3f5f;
+      --text: #e7edf7;
+      --muted: #91a2ba;
+      --api: #4da3ff;
+      --engine: #44d18d;
+      --page: #b58cff;
+      --ops: #ffb55c;
+      --data: #38d6d6;
+      --docs: #a8b3c7;
+      --risk: #ff6370;
+      --active: #ffe082;
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: auto;
+      background:
+        radial-gradient(circle at 25% 15%, rgba(77, 163, 255, 0.14), transparent 30%),
+        radial-gradient(circle at 75% 10%, rgba(68, 209, 141, 0.10), transparent 26%),
+        linear-gradient(135deg, #08111f 0%, #0b1424 54%, #101827 100%);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 280px minmax(520px, 1fr) 360px;
+      height: 100vh;
+      min-width: 1080px;
+    }
+
+    .sidebar,
+    .details {
+      background: rgba(16, 27, 46, 0.88);
+      border-color: rgba(255, 255, 255, 0.08);
+      border-style: solid;
+      backdrop-filter: blur(16px);
+      overflow: auto;
+    }
+
+    .sidebar {
+      border-width: 0 1px 0 0;
+      padding: 22px;
+    }
+
+    .details {
+      border-width: 0 0 0 1px;
+      padding: 24px;
+    }
+
+    .brand {
+      margin-bottom: 24px;
+    }
+
+    .brand h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .brand p,
+    .hint,
+    .detail-muted {
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .control-group {
+      margin: 24px 0;
+    }
+
+    .control-title {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .button-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .placeholder {
+      border: 1px dashed rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.055);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      text-align: left;
+      transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+    }
+
+    button:hover {
+      border-color: rgba(255, 255, 255, 0.28);
+      background: rgba(255, 255, 255, 0.095);
+    }
+
+    .choice {
+      padding: 10px 12px;
+    }
+
+    .choice.active {
+      border-color: rgba(255, 224, 130, 0.70);
+      background: rgba(255, 224, 130, 0.13);
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar button {
+      padding: 9px 11px;
+      text-align: center;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      min-width: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    .canvas-header {
+      position: absolute;
+      top: 18px;
+      left: 22px;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .canvas-header h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .canvas-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    svg.dragging {
+      cursor: grabbing;
+    }
+
+    .edge {
+      stroke: rgba(145, 162, 186, 0.42);
+      stroke-width: 2;
+      fill: none;
+      transition: stroke 160ms ease, opacity 160ms ease, stroke-width 160ms ease;
+    }
+
+    .edge.active {
+      stroke: var(--active);
+      stroke-width: 4;
+      filter: drop-shadow(0 0 8px rgba(255, 224, 130, 0.65));
+    }
+
+    .edge.dimmed,
+    .node.dimmed {
+      opacity: 0.22;
+    }
+
+    .node {
+      cursor: pointer;
+      transition: opacity 160ms ease, filter 160ms ease;
+    }
+
+    .node rect {
+      rx: 8;
+      ry: 8;
+      stroke-width: 1.5;
+      filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.32));
+    }
+
+    .node.active rect {
+      stroke: var(--active);
+      stroke-width: 2.5;
+      filter: drop-shadow(0 0 14px rgba(255, 224, 130, 0.58));
+    }
+
+    .node text {
+      fill: var(--text);
+      font-size: 13px;
+      pointer-events: none;
+    }
+
+    .node .subtitle {
+      fill: var(--muted);
+      font-size: 11px;
+    }
+
+    .details h2 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      margin: 8px 8px 8px 0;
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .detail-section {
+      margin-top: 22px;
+    }
+
+    .detail-section h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .detail-section ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    .detail-section code {
+      color: #d7e6ff;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <aside class="sidebar">
+      <section class="brand">
+        <h1>face_api 架构图</h1>
+        <p>用一张可交互图谱讲清楚本地人脸识别 REST API 的边界、流程、运行和文档入口。</p>
+      </section>
+
+      <section class="control-group">
+        <h2 class="control-title">角色视图</h2>
+        <div class="button-list" id="roleButtons">
+          <div class="placeholder">角色按钮将在图谱数据加载后显示。</div>
+        </div>
+      </section>
+
+      <section class="control-group">
+        <h2 class="control-title">流程高亮</h2>
+        <div class="button-list" id="flowButtons">
+          <div class="placeholder">流程按钮将在图谱数据加载后显示。</div>
+        </div>
+      </section>
+
+      <section class="control-group">
+        <h2 class="control-title">操作</h2>
+        <div class="toolbar">
+          <button type="button" id="resetView">复位视图</button>
+          <button type="button" id="clearFocus">清除高亮</button>
+        </div>
+      </section>
+
+      <p class="hint">滚轮缩放，拖动画布平移，拖拽节点调整位置，点击节点查看说明。</p>
+    </aside>
+
+    <section class="canvas-wrap">
+      <div class="canvas-header">
+        <h2 id="viewTitle">新同事视图</h2>
+        <p id="viewSubtitle">先理解系统边界和主链路。</p>
+      </div>
+      <svg id="graph" role="img" aria-label="face_api interactive architecture graph">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(145, 162, 186, 0.72)"></path>
+          </marker>
+        </defs>
+        <g id="viewport">
+          <g id="edges"></g>
+          <g id="nodes"></g>
+        </g>
+      </svg>
+    </section>
+
+    <aside class="details" id="details">
+      <h2>face_api 总览</h2>
+      <p class="detail-muted">点击架构节点后，这里会展示模块职责、输入输出、关联文件和注意事项。</p>
+    </aside>
+  </main>
+
+  <script>
+    // Task 2 will fill the data and rendering logic.
+  </script>
+</body>
+</html>

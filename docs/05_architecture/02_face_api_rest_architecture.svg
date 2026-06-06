@@ -118,8 +118,8 @@
   <text class="small" x="1076" y="630">operator / integration</text>
   <line class="divider" x1="1076" y1="646" x2="1279" y2="646"/>
   <text class="mono" x="1076" y="676">README.md</text>
-  <text class="mono" x="1076" y="702">API_INTEGRATION.md</text>
-  <text class="mono" x="1076" y="728">ARCHITECTURE.md</text>
+  <text class="mono" x="1076" y="702">04_usage/01_api_integration.md</text>
+  <text class="mono" x="1076" y="728">05_architecture/01_architecture.md</text>
   <text class="mono" x="1076" y="754">HOW_TO_DELIVER.md</text>
 
   <path class="arrow" d="M260 305 C288 305, 300 305, 330 305"/>

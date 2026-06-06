@@ -250,7 +250,7 @@ The first magical moment should be: a consumer sends one base64 image and immedi
 - [ ] Explain intended reuse model briefly
 
 **REFACTOR** (cleanup):
-- [ ] Keep README concise and non-redundant with `docs/architecture/ARCHITECTURE.md`
+- [ ] Keep README concise and non-redundant with `docs/05_architecture/01_architecture.md`
 - [ ] Preserve existing startup guidance
 
 **Done when**: a new integrator can understand the purpose of the new primitive endpoints from README alone.
@@ -260,11 +260,11 @@ The first magical moment should be: a consumer sends one base64 image and immedi
 **Context**: The handoff doc should reflect the new modular direction and explain when to use `/extract/base64` vs `/detect/base64`.
 
 **RED** (write failing test):
-- File: `docs/architecture/ARCHITECTURE.md`
+- File: `docs/05_architecture/01_architecture.md`
 - [ ] Identify outdated route inventory and route semantics after adding `/extract/base64` and `/system/status`
 
 **GREEN** (minimal implementation):
-- File: `docs/architecture/ARCHITECTURE.md`
+- File: `docs/05_architecture/01_architecture.md`
 - [ ] Document `/extract/base64` as the business-oriented primitive
 - [ ] Document `/detect/base64` as display/inspection-oriented detection
 - [ ] Document `/system/status` as diagnostics/ops endpoint

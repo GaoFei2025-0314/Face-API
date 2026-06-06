@@ -19,18 +19,30 @@
     button:disabled { opacity: 0.55; cursor: not-allowed; }
     video, canvas { width: 100%; max-height: 420px; background: #0f172a; border-radius: 8px; }
     canvas { display: none; }
-    pre { min-height: 180px; margin: 0; padding: 12px; overflow: auto; background: #111827; color: #d1fae5; border-radius: 8px; font-size: 12px; }
+    pre { min-height: 160px; margin: 0; padding: 12px; overflow: auto; background: #111827; color: #d1fae5; border-radius: 8px; font-size: 12px; }
     .grid { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(300px, 0.8fr); gap: 16px; align-items: start; }
     .card { background: #ffffff; border: 1px solid #d9dee8; border-radius: 8px; padding: 16px; }
     .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .actions.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .status { display: inline-block; margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: #e8eefc; color: #1d3f8f; font-size: 13px; }
     .status.err { background: #fee4e2; color: #b42318; }
     .status.ok { background: #dcfae6; color: #067647; }
+    .flow { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+    .flow li { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; padding: 8px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px; }
+    .flow .num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #e8eefc; color: #1d3f8f; font-weight: 700; }
+    .flow .state { color: #667085; }
+    .flow .state.ok { color: #067647; }
+    .flow .state.err { color: #b42318; }
     .hint { margin: 8px 0 0; color: #667085; font-size: 13px; line-height: 1.5; }
     .map { width: 100%; border-collapse: collapse; font-size: 13px; }
     .map th, .map td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }
     .map th { background: #f8fafc; }
+    .audit-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .audit-table th, .audit-table td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }
+    .audit-table th { background: #f8fafc; color: #475569; }
+    .audit-table .ok { color: #067647; font-weight: 700; }
+    .audit-table .err { color: #b42318; font-weight: 700; }
     @media (max-width: 860px) {
       .grid, .row, .actions { grid-template-columns: 1fr; }
     }
@@ -89,9 +101,19 @@
 
     <section class="card">
       <h2>标准流程</h2>
-      <div class="actions">
-        <button onclick="cameraLogin()">摄像头 Login</button>
+      <ol class="flow">
+        <li><span class="num">1</span><span>接入配置</span><span id="configStatus" class="state">待检查</span></li>
+        <li><span class="num">2</span><span>摄像头授权</span><span id="cameraStepStatus" class="state">待打开</span></li>
+        <li><span class="num">3</span><span>Register</span><span id="registerStatus" class="state">待注册</span></li>
+        <li><span class="num">4</span><span>Login + 活体</span><span id="loginStatus" class="state">待登录</span></li>
+        <li><span class="num">5</span><span>最近 audit</span><span id="auditStatus" class="state">待刷新</span></li>
+      </ol>
+      <div class="actions three">
         <button onclick="cameraRegister()">摄像头 Register</button>
+        <button onclick="cameraLogin()">摄像头 Login</button>
+        <button class="secondary" onclick="loadAudit()">刷新 audit</button>
+      </div>
+      <div class="actions">
         <button class="secondary" onclick="createChallengeOnly('login')">只创建 Login Challenge</button>
         <button class="secondary" onclick="submitLastChallenge()">提交上一次 Challenge</button>
       </div>
@@ -102,6 +124,12 @@
     <section class="card">
       <h2>结果</h2>
       <pre id="output">等待操作...</pre>
+    </section>
+
+    <section class="card" style="grid-column: 1 / -1;">
+      <h2>最近 login audit</h2>
+      <div id="auditOutput" class="hint">登录后自动刷新，也可以点击“刷新 audit”。</div>
+      <p class="hint">audit 用于排查最近登录成功、失败、失败原因和 terminal_id。页面不会展示 embedding 或 API Key。</p>
     </section>
 
     <section class="card" style="grid-column: 1 / -1;">
@@ -122,18 +150,30 @@
       NO_FACE: ["没有检测到人脸，请靠近摄像头并保持正脸", "检查光线、角度、摄像头清晰度和图片裁剪"],
       MULTIPLE_FACES: ["画面中有多个人，请保持单人入镜", "注册和 login 都应要求单人画面"],
       FACE_QUALITY_LOW: ["图片质量不够，请调整光线或距离后重试", "检查 det_score、亮度、脸框大小阈值"],
+      FACE_DET_SCORE_LOW: ["人脸不够清晰，请正对摄像头重试", "检查检测置信度阈值和摄像头清晰度"],
+      FACE_TOO_SMALL: ["人脸距离太远，请靠近摄像头", "检查脸框像素面积阈值"],
+      FACE_TOO_DARK: ["画面太暗，请打开补光或调整位置", "改善现场光线或降低最低亮度阈值"],
+      FACE_TOO_BRIGHT: ["画面过曝，请避开强光", "调整摄像头曝光或最高亮度阈值"],
+      FACE_BLURRY: ["画面模糊，请保持稳定后重试", "检查摄像头焦距、运动模糊和清晰度阈值"],
       LIVENESS_CHALLENGE_REQUIRED: ["请先完成活体动作", "login 默认需要 challenge_id，注册是否需要取决于后端配置"],
       LIVENESS_CHALLENGE_INVALID: ["活体验证已失效，请重新完成动作", "检查 challenge 是否过期、terminal_id/purpose 是否一致、是否已被使用"],
       LIVENESS_CHALLENGE_FAILED: ["活体动作未通过，请重新眨眼", "检查连续帧数量、用户动作和摄像头帧率"],
       LIVENESS_FRAME_COUNT_INVALID: ["采集帧数不足，请重新尝试", "按后端 action_window_seconds 采集 10 到 30 帧"],
+      LIVENESS_ACTION_WINDOW_EXPIRED: ["活体动作超时，请重新开始", "动作需要在后端 action_window_seconds 内完成"],
       NO_MATCH: ["未匹配到已注册用户", "检查用户是否已注册、阈值是否过高、现场图像质量"],
       VALIDATION_ERROR: ["请求参数不完整，请刷新后重试", "检查必填字段、JSON 格式和字段类型"],
+      INVALID_USERNAME: ["姓名不符合要求，请重新输入", "检查 username 是否为空或格式不合法"],
+      DUPLICATE_FACE_USER: ["该用户已注册人脸，请勿重复注册", "检查重复注册策略 FACE_DUPLICATE_POLICY"],
+      IMAGE_DECODE_FAILED: ["图片读取失败，请重新采集", "检查 Base64 前缀、图片格式和浏览器采集结果"],
+      IMAGE_TOO_LARGE: ["图片过大，请降低分辨率后重试", "检查 FACE_MAX_IMAGE_BYTES 和 FACE_MAX_IMAGE_PIXELS"],
+      INVALID_MATCH_RECORD: ["匹配记录异常，请联系管理员", "检查人脸库记录是否缺少 username 或 metadata 异常"],
       MAINTENANCE_MODE_ACTIVE: ["系统维护中，请稍后再试", "等待运维退出维护模式"],
       NETWORK_ERROR: ["服务连接失败，请稍后重试", "确认后端已启动、地址正确、浏览器允许访问"]
     };
 
     let stream = null;
     let lastChallenge = null;
+    const flowStatusIds = ["configStatus", "cameraStepStatus", "registerStatus", "loginStatus", "auditStatus"];
 
     function renderErrorMap() {
       const rows = Object.entries(errorMap).map(([code, info]) =>
@@ -144,15 +184,69 @@
 
     function getConfig() {
       return {
-        base: document.getElementById("apiBase").value.replace(/\/+$/, ""),
+        base: document.getElementById("apiBase").value.trim().replace(/\/+$/, ""),
         apiKey: document.getElementById("apiKey").value,
         terminalId: document.getElementById("terminalId").value.trim(),
         threshold: Number(document.getElementById("loginThreshold").value || "0.6")
       };
     }
 
+    function setStep(id, state, text) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = "state" + (state ? " " + state : "");
+      el.textContent = text;
+    }
+
+    function resetTransientSteps() {
+      for (const id of flowStatusIds) {
+        const el = document.getElementById(id);
+        if (el && el.className.includes("err")) el.className = "state";
+      }
+    }
+
+    function validateConfig() {
+      const cfg = getConfig();
+      if (!cfg.base) throw explainError({ detail: { code: "VALIDATION_ERROR", reason: "API Base URL required" } });
+      if (!cfg.terminalId) throw explainError({ detail: { code: "TERMINAL_ID_REQUIRED" } });
+      setStep("configStatus", "ok", cfg.apiKey ? "已填写" : "未填 Key");
+      return cfg;
+    }
+
     function show(data) {
       document.getElementById("output").textContent = JSON.stringify(sanitize(data), null, 2);
+    }
+
+    function showAudit(data) {
+      const target = document.getElementById("auditOutput");
+      const clean = sanitize(data);
+      if (!clean || !Array.isArray(clean.items)) {
+        target.innerHTML = `<pre>${escapeHtml(JSON.stringify(clean, null, 2))}</pre>`;
+        return;
+      }
+      if (clean.items.length === 0) {
+        target.textContent = "暂无 login audit 记录。";
+        return;
+      }
+      const rows = clean.items.map(item => {
+        const ok = item.success ? "成功" : "失败";
+        const cls = item.success ? "ok" : "err";
+        const name = item.matched_username || item.matched_user_id || "-";
+        const sim = item.similarity == null ? "-" : Number(item.similarity).toFixed(4);
+        const reason = item.failure_reason || item.liveness_reason || "-";
+        return `<tr><td>${escapeHtml(item.created_at || "-")}</td><td class="${cls}">${ok}</td><td>${escapeHtml(String(name))}</td><td>${sim}</td><td>${escapeHtml(reason)}</td><td>${escapeHtml(item.terminal_id || "-")}</td></tr>`;
+      }).join("");
+      target.innerHTML = `<table class="audit-table"><thead><tr><th>时间</th><th>结果</th><th>用户</th><th>similarity</th><th>原因</th><th>terminal</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, ch => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+      }[ch]));
     }
 
     function sanitize(value) {
@@ -171,7 +265,9 @@
       const detail = data && data.detail;
       const code = detail && typeof detail === "object" ? detail.code : "NETWORK_ERROR";
       const mapped = errorMap[code] || ["请求失败，请重试", "查看服务日志和接口返回 detail"];
-      return { code, user_message: mapped[0], operator_action: mapped[1], raw: sanitize(data) };
+      const message = detail && typeof detail === "object" && detail.message ? detail.message : mapped[0];
+      const reason = detail && typeof detail === "object" && detail.reason ? detail.reason : mapped[1];
+      return { code, message, reason, user_message: mapped[0], operator_action: mapped[1], raw: sanitize(data) };
     }
 
     async function request(path, options = {}) {
@@ -204,9 +300,11 @@
         document.getElementById("video").srcObject = stream;
         status.className = "status ok";
         status.textContent = "摄像头已打开";
+        setStep("cameraStepStatus", "ok", "已打开");
       } catch (err) {
         status.className = "status err";
         status.textContent = "摄像头不可用：" + err.message;
+        setStep("cameraStepStatus", "err", "不可用");
       }
     }
 
@@ -256,7 +354,7 @@
     async function submitChallenge(challenge) {
       const cfg = getConfig();
       const frames = await captureFrames(12, 180);
-      return request("/liveness/challenges/submit", {
+      const result = await request("/liveness/challenges/submit", {
         method: "POST",
         body: JSON.stringify({
           challenge_id: challenge.challenge_id,
@@ -265,13 +363,27 @@
           frames
         })
       });
+      if (result && result.passed === false) {
+        throw explainError({
+          detail: {
+            code: "LIVENESS_CHALLENGE_FAILED",
+            message: "活体动作未通过",
+            reason: result.result_reason || result.message || "请重新完成活体动作"
+          }
+        });
+      }
+      return result;
     }
 
     async function createChallengeOnly(purpose) {
       try {
+        resetTransientSteps();
+        validateConfig();
         lastChallenge = await createChallenge(purpose);
+        setStep("loginStatus", "", "challenge 已创建");
         show({ next_step: "请完成动作后点击提交上一次 Challenge", challenge: lastChallenge });
       } catch (err) {
+        setStep("loginStatus", "err", "challenge 失败");
         show(err);
       }
     }
@@ -280,18 +392,23 @@
       try {
         if (!lastChallenge) throw explainError({ detail: { code: "LIVENESS_CHALLENGE_INVALID" } });
         const result = await submitChallenge(lastChallenge);
+        setStep("loginStatus", "ok", "活体通过");
         show({ challenge_result: result });
       } catch (err) {
+        setStep("loginStatus", "err", "活体失败");
         show(err);
       }
     }
 
     async function cameraLogin() {
       try {
-        const cfg = getConfig();
-        if (!cfg.terminalId) throw explainError({ detail: { code: "TERMINAL_ID_REQUIRED" } });
+        resetTransientSteps();
+        const cfg = validateConfig();
+        setStep("loginStatus", "", "创建 challenge");
         const challenge = await createChallenge("login");
+        setStep("loginStatus", "", "采集活体帧");
         const liveness = await submitChallenge(challenge);
+        setStep("loginStatus", "", "提交登录");
         const image = captureBase64();
         const data = await request("/auth/face-login", {
           method: "POST",
@@ -303,26 +420,32 @@
             state: "web-" + Date.now()
           })
         });
+        setStep("loginStatus", "ok", "登录成功");
         show({ step: "login_complete", data, business_next_step: "业务系统拿 match.user_id/username 查询用户表并签发自己的 session" });
       } catch (err) {
+        setStep("loginStatus", "err", "登录失败");
         show(err);
+      } finally {
+        await refreshAuditAfterLogin();
       }
     }
 
     async function cameraRegister() {
       try {
-        const cfg = getConfig();
+        resetTransientSteps();
+        const cfg = validateConfig();
         const username = document.getElementById("username").value.trim();
         const userIdRaw = document.getElementById("userId").value.trim();
         const useLiveness = document.getElementById("registerLiveness").value === "yes";
-        if (!cfg.terminalId) throw explainError({ detail: { code: "TERMINAL_ID_REQUIRED" } });
         if (!username) throw explainError({ detail: { code: "VALIDATION_ERROR", reason: "username required" } });
         let challengeId = null;
         if (useLiveness) {
+          setStep("registerStatus", "", "注册活体中");
           const challenge = await createChallenge("register");
           const liveness = await submitChallenge(challenge);
           challengeId = liveness.challenge_id;
         } else {
+          setStep("registerStatus", "", "采集注册图");
           await ensureCamera();
         }
         const image = captureBase64();
@@ -337,8 +460,10 @@
             metadata: { source: "camera-integration.html" }
           })
         });
+        setStep("registerStatus", "ok", "注册成功");
         show({ step: "register_complete", data });
       } catch (err) {
+        setStep("registerStatus", "err", "注册失败");
         show(err);
       }
     }
@@ -353,10 +478,23 @@
 
     async function loadAudit() {
       try {
-        const cfg = getConfig();
-        show(await request("/audit/login/recent?limit=10&terminal_id=" + encodeURIComponent(cfg.terminalId)));
+        const cfg = validateConfig();
+        setStep("auditStatus", "", "刷新中");
+        const data = await request("/audit/login/recent?limit=10&terminal_id=" + encodeURIComponent(cfg.terminalId));
+        setStep("auditStatus", "ok", "已刷新");
+        showAudit(data);
       } catch (err) {
-        show(err);
+        setStep("auditStatus", "err", "刷新失败");
+        showAudit(err);
+      }
+    }
+
+    async function refreshAuditAfterLogin() {
+      try {
+        await loadAudit();
+      } catch (err) {
+        setStep("auditStatus", "err", "刷新失败");
+        showAudit(err);
       }
     }
 

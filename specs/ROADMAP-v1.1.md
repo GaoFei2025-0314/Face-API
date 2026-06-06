@@ -2,7 +2,7 @@
 
 > 创建时间：2026-06-05  
 > 用途：在 Roadmap v1.0 加固完成后的版本化功能路线图  
-> 来源：`docs/product/PRD.md`、`specs/001-face-api-product/spec.md`，以及已完成的 Roadmap v1.0 范围
+> 来源：`docs/02_product/01_prd.md`、`specs/001-face-api-product/spec.md`，以及已完成的 Roadmap v1.0 范围
 
 ## 1. Roadmap 版本
 

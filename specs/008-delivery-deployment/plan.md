@@ -14,7 +14,7 @@ Make setup, verification, backup, recovery, and handoff repeatable.
 
 ## Implementation Notes
 
-- `docs/deployment/RUNBOOK.md` is the operator entry.
+- `docs/03_deployment/01_runbook.md` is the operator entry.
 - `scripts/health-check.ps1` validates health, OpenAPI, and protected config when an API key is available.
 - `scripts/backup-db.ps1` copies SQLite database artifacts.
 - `scripts/restore-db.ps1` restores database artifacts after service stop.

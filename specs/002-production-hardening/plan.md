@@ -16,7 +16,7 @@ Make `face_api` stable for production-like Windows workstation operation.
 - `run-prod.bat` is the production startup entry.
 - `FACE_ENV=production` requires `FACE_API_KEY`.
 - Startup config is logged to `FACE_LOG_PATH`.
-- Detailed runbook is in `docs/deployment/RUNBOOK.md`.
+- Detailed runbook is in `docs/03_deployment/01_runbook.md`.
 
 ## Verification
 

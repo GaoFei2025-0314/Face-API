@@ -1,7 +1,7 @@
 # task_plan
 
 ## Goal
-产出一份 `docs/architecture/ARCHITECTURE.md`，让两类读者都能快速上手：
+产出一份 `docs/05_architecture/01_architecture.md`，让两类读者都能快速上手：
 1. 项目作者自己后续回看时，能迅速恢复对系统架构、关键约束和可优化点的理解。
 2. 后续接手的全栈同事，能快速知道接口怎么调、系统怎么跑、核心模块怎么协作、改哪里最安全。
 
@@ -10,9 +10,9 @@
 - 后续接手的全栈同事（联调 / 排障 / 二次开发）
 
 ## Deliverable
-- `docs/architecture/ARCHITECTURE.md`
+- `docs/05_architecture/01_architecture.md`
 - `README.md`（已同步统一口径）
-- `docs/usage/API_INTEGRATION.md`（已同步统一口径）
+- `docs/04_usage/01_api_integration.md`（已同步统一口径）
 
 ## Scope
 - 项目定位与能力边界
@@ -27,7 +27,7 @@
 |---|---|---|
 | 1. 收集上下文与现有资料 | complete | 已读取 README、FRONTEND_API、HOW_TO_DELIVER、main.py、face_engine.py、storage.py、test.html |
 | 2. 设计文档结构 | complete | 已确认采用综合型结构并收敛章节边界 |
-| 3. 起草文档 | complete | 已输出到 `docs/architecture/ARCHITECTURE.md` |
+| 3. 起草文档 | complete | 已输出到 `docs/05_architecture/01_architecture.md` |
 | 4. 校对一致性与可交接性 | complete | 已检查术语、默认值、已知坑与文档差异 |
 | 5. 读者视角检查 | complete | 已按“作者自查 + 接手全栈”双读者视角组织内容 |
 

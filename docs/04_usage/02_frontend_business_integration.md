@@ -1,4 +1,4 @@
-# V1.5 前端与业务接入指南
+# V1.5-V1.7.1 前端与业务接入指南
 
 > 适用范围：摄像头 login/register、错误码映射、业务系统调用示例、上线检查清单。
 
@@ -16,13 +16,15 @@ V1.5 的目标不是做一个完整业务前端，而是让前端和业务系统
 camera-integration.html
 ```
 
-浏览器直接打开即可。该页面仅用于本机或内网联调，页面需要填写：
+浏览器直接打开即可。V1.7.1 起该页面同时作为现场验收页，用来跑通“配置 -> 摄像头 -> 注册 -> 登录 -> 最近 audit”的闭环。该页面仅用于本机或内网联调，页面需要填写：
 
 - `API Base URL`：默认 `http://localhost:8000`
 - `API Key`：服务启动时 `FACE_API_KEY` 的值
 - `terminal_id`：固定终端标识，例如 `front-door-camera-01`
 
 页面不会把 `API Key` 或 `embedding` 输出到结果区。
+
+页面在 login 完成后会自动刷新最近 login audit，同时保留手动刷新入口。audit 用于查看最近登录成功、失败、相似度、失败原因和 terminal_id。
 
 正式上线时不要让浏览器直接持有 face_api 的 `X-API-Key`。推荐由业务后端保存密钥并代理调用 face_api，浏览器只持有业务系统自己的 session/token。
 
@@ -225,4 +227,6 @@ async function recentLoginAudit() {
 - [ ] 常见错误码有中文用户提示和运维处理建议。
 - [ ] 业务系统明确由自己签发 token/session。
 - [ ] 网络超时、后端未启动、摄像头权限失败都有提示。
+- [ ] `camera-integration.html` 能完成注册 + login 闭环。
+- [ ] login 后页面自动刷新最近 audit。
 - [ ] 可在 `/audit/login/recent` 查询指定 `terminal_id` 的登录记录。

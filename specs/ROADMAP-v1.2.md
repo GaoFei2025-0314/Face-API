@@ -74,7 +74,7 @@ D 性能与规模化能力
 - 批量导出清单与导入清单校验流程。
 - `/search/index-status` 和 `/performance/scale-plan` 只读状态接口。
 - index 进入条件和 exact 回退策略文档。
-- 性能验证文档：`docs/performance/PERFORMANCE_SCALE.md`。
+- 性能验证文档：`docs/06_performance/01_performance_scale.md`。
 
 ## 5. 全局约束
 
@@ -85,7 +85,7 @@ D 性能与规模化能力
 - 不在同一环境同时安装 `onnxruntime` 和 `onnxruntime-gpu`。
 - 默认 CPU 稳定运行，GPU 通过配置显式启用。
 - 所有危险操作必须可审计、可确认、可回退。
-- 所有新增前端语义必须同步 `docs/usage/API_INTEGRATION.md`。
+- 所有新增前端语义必须同步 `docs/04_usage/01_api_integration.md`。
 
 ## 6. 后续执行方式
 

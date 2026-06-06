@@ -1,0 +1,23 @@
+* text=auto
+
+# Documentation and source files should stay stable across Windows editors.
+*.md text eol=lf
+*.py text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.svg text eol=lf
+*.txt text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Windows entry scripts should keep CRLF for double-click/cmd usage.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Local data and model artifacts are binary if ever added intentionally.
+*.db binary
+*.onnx binary

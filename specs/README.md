@@ -8,6 +8,7 @@
 - `ROADMAP-v1.0.md` - V1.0 后续 `/goal` 的版本化执行顺序
 - `ROADMAP-v1.1.md` - V1.0 加固完成后的版本化功能路线图
 - `ROADMAP-v1.2.md` - V1.1 完成后的 A/B/C/D 四条产品线总规划
+- `ROADMAP-v1.7.md` - 现场闭环与 Windows 长期运行版规划
 
 ## 已规划开发阶段
 
@@ -45,6 +46,20 @@ Roadmap v1.2+ 建议版本线：
 4. `017-performance-scale` - 5 万人脸 benchmark、批量数据和搜索扩展
 
 Roadmap v1.2 是规划版，只建立总 PRD/specs；后续建议从 V1.3 开始逐版本实施。
+
+Roadmap v1.7 建议执行顺序：
+
+1. `018-camera-acceptance-loop` - 摄像头注册登录闭环验收
+2. `019-windows-long-running` - Windows 长期运行加固
+
+Roadmap v1.7 已确认主定位为“现场闭环与 Windows 长期运行版”。关键决策包括：
+
+- 先增强 `camera-integration.html`，不新增独立验收页面。
+- 先跑通 face_api 自己的页面，不接业务后端。
+- 页面展示注册、登录、活体状态、中文错误原因和最近 login audit。
+- Task Scheduler 和 NSSM 两种长期运行方案都规划。
+- 两种方案都提供安装和卸载脚本。
+- NSSM 不由脚本静默下载。
 
 ## 推荐流程
 

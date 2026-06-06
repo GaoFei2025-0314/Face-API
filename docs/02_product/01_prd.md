@@ -284,8 +284,8 @@ Expected result:
 ### 6.5 Deliverability
 
 - New maintainers should be able to start with README.
-- Frontend/backend integrators should be able to use `docs/usage/API_INTEGRATION.md`.
-- Architecture and operational boundaries should be documented in `docs/architecture/ARCHITECTURE.md`.
+- Frontend/backend integrators should be able to use `docs/04_usage/01_api_integration.md`.
+- Architecture and operational boundaries should be documented in `docs/05_architecture/01_architecture.md`.
 - Swagger should remain available at `/docs`.
 - OpenAPI should remain available at `/openapi.json`.
 
@@ -402,7 +402,7 @@ Goals:
 
 ### Phase 3: Workstation Production Hardening
 
-Status: next recommended phase.
+Status: mostly complete.
 
 Goals:
 
@@ -415,7 +415,7 @@ Goals:
 
 ### Phase 4: Search Performance Improvement
 
-Status: future.
+Status: mostly complete for benchmark and scale planning; index remains optional.
 
 Goals:
 
@@ -426,7 +426,7 @@ Goals:
 
 ### Phase 5: Face Quality and Registration Governance
 
-Status: future.
+Status: mostly complete for current quality policy and tuning needs.
 
 Goals:
 
@@ -448,6 +448,19 @@ Possible capabilities:
 - Centralized management dashboard.
 
 These should only be implemented after a real business need is confirmed.
+
+### Phase 7: Field Acceptance and Windows Long Running
+
+Status: complete for Roadmap V1.7.1 and V1.7.2.
+
+Goals:
+
+- Run the real camera register + login loop through `camera-integration.html`.
+- Show liveness status, Chinese error reasons, and recent login audit in the same local page.
+- Keep the local page as a field acceptance tool, not a full business frontend.
+- Provide Task Scheduler and NSSM options for long-running Windows workstation operation.
+- Provide install/uninstall scripts for both long-running options.
+- Keep stronger anti-spoofing models and Faiss/ANN index out of V1.7 unless separately approved.
 
 ## 11. Acceptance Criteria
 

@@ -5,11 +5,11 @@
 后端启动后，发以下三样东西给前端同学即可：
 1. 接口地址：`http://<后端机器IP>:8000`
 2. Swagger 文档链接：`http://<后端机器IP>:8000/docs`
-3. 附件 `docs/usage/API_INTEGRATION.md`
+3. 附件 `docs/04_usage/01_api_integration.md`
 
 生产类运行和交付排障优先看：
 
-- `docs/deployment/RUNBOOK.md`
+- `docs/03_deployment/01_runbook.md`
 
 V1.1 运维控制台：
 
@@ -247,7 +247,7 @@ axios.interceptors.request.use(config => {
 >
 > **交互式文档**：http://192.168.1.100:8000/docs
 >
-> **详细文档**：见附件 `docs/usage/API_INTEGRATION.md`
+> **详细文档**：见附件 `docs/04_usage/01_api_integration.md`
 >
 > **TypeScript 类型**：文档第七章
 >

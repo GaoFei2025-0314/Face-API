@@ -2,7 +2,7 @@
 
 ## 1. 适用范围
 
-本文用于 `face_api Roadmap v1.0-v1.6` 的生产类本地运行、交付、备份、恢复和排障。
+本文用于 `face_api Roadmap v1.0-v1.7` 的生产类本地运行、交付、备份、恢复和排障。
 
 目标环境是单台 Windows 工作站。
 
@@ -18,11 +18,27 @@ run-prod.bat
 
 - `FACE_ENV=production`
 - 必须配置 `FACE_API_KEY`
+- 默认监听 `FACE_PORT=8000`
+- 默认 Python 路径为 `FACE_PYTHON=D:\anaconda3\envs\face_api\python.exe`
 - 默认 CPU 推理
 - 如需 GPU，显式设置 `FACE_USE_GPU=1`
 - 如需强制 CPU，设置 `FACE_FORCE_CPU=1`
 
 生产类运行不使用 `--reload`。
+
+如果需要使用非默认端口：
+
+```bat
+set FACE_PORT=8001
+run-prod.bat
+```
+
+如果目标机器 Python 环境路径不同：
+
+```bat
+set FACE_PYTHON=D:\your\python.exe
+run-prod.bat
+```
 
 ## 3. 最小验证
 
@@ -77,8 +93,6 @@ set FACE_CORS_ORIGINS=http://localhost:3000,http://192.168.1.100:3000
 
 CORS 只控制浏览器跨域，不替代 `X-API-Key`。
 
-## 6. 备份
-
 ## 6. 停止服务
 
 开发窗口中可以按 `Ctrl+C`。
@@ -89,7 +103,7 @@ V1.3 起推荐使用停止脚本释放端口和 uvicorn 父子进程：
 powershell -ExecutionPolicy Bypass -File scripts\stop-service.ps1
 ```
 
-脚本默认只会停止命令行匹配当前项目目录或 `uvicorn main:app` 的进程。如果 8000 被其他程序占用，脚本会打印 PID 和命令行并拒绝强杀。
+脚本默认只会停止命令行匹配当前项目目录或 `uvicorn main:app` 的进程。如果 `FACE_PORT` 对应端口被其他程序占用，脚本会打印 PID 和命令行并拒绝强杀。默认端口是 8000。
 
 如果使用非默认端口：
 
@@ -155,14 +169,114 @@ powershell -ExecutionPolicy Bypass -File scripts\monitor-service.ps1 -ApiKey $en
 
 监控输出重点看：
 
-- `Port`：8000 是否有监听进程。
+- `Port`：`FACE_PORT` 对应端口是否有监听进程，默认 8000。
 - `Health`：`/health` 是否返回 `status=ok`。
 - `Protected Config`：带 `X-API-Key` 是否能访问 `/config/effective`。
 - `Database`：`faces.db`、`faces.db-wal`、`faces.db-shm` 文件大小和更新时间。
 - `Log`：日志是否存在，最近是否有错误。
 - `GPU`：`nvidia-smi` 是否可用。CPU 模式运行时 GPU 不可用不一定是错误。
 
-## 10. 常见问题
+## 10. Windows 长期运行
+
+V1.7 起提供两种长期运行方式：
+
+- Task Scheduler：轻量方案，适合开机或用户登录后自动启动。
+- NSSM：正式 Windows Service 方案，适合长期交付。
+
+两种方式都调用 `run-prod.bat`，并通过 `FACE_PORT` 控制端口。安装脚本支持 `-WhatIf`，建议先预览再执行。
+
+Task Scheduler 脚本不会把 `FACE_API_KEY` 写入任务动作。请先在运行用户或机器环境变量中配置 `FACE_API_KEY`。如果 NSSM 安装时传入 `-ApiKey`，密钥会保存到 NSSM 服务环境中；更严格的做法是先在机器环境变量中配置 `FACE_API_KEY`，NSSM 安装脚本不传 `-ApiKey`。
+
+### 10.1 Task Scheduler 安装
+
+预览：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-task-scheduler.ps1 -TaskName face_api -Port 8000 -WhatIf
+```
+
+安装：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-task-scheduler.ps1 -TaskName face_api -Port 8000
+```
+
+手工启动任务：
+
+```powershell
+Start-ScheduledTask -TaskName "face_api"
+```
+
+验证：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\health-check.ps1 -BaseUrl http://localhost:8000 -Port 8000
+```
+
+卸载：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\uninstall-task-scheduler.ps1 -TaskName face_api -WhatIf
+powershell -ExecutionPolicy Bypass -File scripts\uninstall-task-scheduler.ps1 -TaskName face_api
+```
+
+日志默认写入：
+
+```text
+logs\task-scheduler.out.log
+```
+
+### 10.2 NSSM 服务安装
+
+NSSM 不由脚本自动下载。请先安装 NSSM，并把 `nssm.exe` 路径传给脚本。
+
+预览：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-nssm-service.ps1 -ServiceName face_api -NssmPath C:\tools\nssm\nssm.exe -Port 8000 -ApiKey "你的密钥" -WhatIf
+```
+
+安装：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-nssm-service.ps1 -ServiceName face_api -NssmPath C:\tools\nssm\nssm.exe -Port 8000 -ApiKey "你的密钥"
+```
+
+启动服务：
+
+```powershell
+Start-Service -Name "face_api"
+```
+
+验证：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\health-check.ps1 -BaseUrl http://localhost:8000 -Port 8000
+```
+
+卸载：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\uninstall-nssm-service.ps1 -ServiceName face_api -NssmPath C:\tools\nssm\nssm.exe -WhatIf
+powershell -ExecutionPolicy Bypass -File scripts\uninstall-nssm-service.ps1 -ServiceName face_api -NssmPath C:\tools\nssm\nssm.exe
+```
+
+日志默认写入：
+
+```text
+logs\nssm-service.out.log
+logs\nssm-service.err.log
+```
+
+### 10.3 长期运行排障重点
+
+- 如果使用 `H:` 这类映射盘，确认运行任务或服务的 Windows 用户能看到该盘符。
+- Task Scheduler 的“用户登录时运行”和“无论用户是否登录都运行”权限不同，现场先用登录后运行验证。
+- NSSM 缺失时脚本会失败并提示安装或传入 `-NssmPath`，不会自动下载。
+- 端口不一致时，先确认 `FACE_PORT`、安装脚本 `-Port`、健康检查 `-Port` 是否一致。
+- 服务起不来时，先看 `logs\task-scheduler.out.log` 或 `logs\nssm-service.err.log`。
+
+## 11. 常见问题
 
 ### 服务启动时报 `FACE_API_KEY`
 
@@ -184,7 +298,7 @@ powershell -ExecutionPolicy Bypass -File scripts\monitor-service.ps1 -ApiKey $en
 
 ### 启动提示端口被占用
 
-说明 8000 端口已有旧服务或其他程序在监听。先运行：
+说明 `FACE_PORT` 对应端口已有旧服务或其他程序在监听。默认端口是 8000。先运行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\stop-service.ps1

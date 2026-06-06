@@ -20,6 +20,8 @@
 | V1.4 | 识别安全与准确率增强 | 已完成 | `specs/015-recognition-security-accuracy/tasks.md` |
 | V1.5 | 前端与业务接入体验 | 已完成 | `specs/016-frontend-business-integration/tasks.md` |
 | V1.6 | 性能与规模化能力 | 已完成 | `specs/017-performance-scale/tasks.md` |
+| V1.7.1 | 摄像头注册登录闭环验收 | 已完成 | `specs/018-camera-acceptance-loop/tasks.md` |
+| V1.7.2 | Windows 长期运行加固 | 已完成 | `specs/019-windows-long-running/tasks.md` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -93,16 +95,28 @@ a1bdf64 feat: complete roadmap v1.3-v1.6
 - code review 问题已处理或记录为残余风险。
 - 有 commit。
 
-## 7. 下一版本候选
+## 7. 下一版本计划
 
-本季度不建议立即开大版本。下一版本建议先做小范围 V1.7 候选评审：
+下一版本已确认按 V1.7 推进，主题是“现场闭环与 Windows 长期运行版”。
 
-| 候选 | 主题 | 是否建议本季度做 |
+| 子版本 | 主题 | 本季度建议 |
 |---|---|---|
-| V1.7-A | 真实摄像头端到端验收与示例页细化 | 建议，只做验收和小修 |
-| V1.7-B | Windows 服务化运行，如 NSSM 或计划任务守护 | 可评估 |
-| V1.7-C | 更强活体模型或硬件活体 | 不建议本季度直接做 |
-| V1.7-D | ANN/Faiss index 实现 | 不建议，除非 5 万 benchmark 不达标 |
+| V1.7.1 | 真实摄像头注册 + 登录闭环验收 | 优先做 |
+| V1.7.2 | Windows 长期运行加固，含 Task Scheduler 和 NSSM | 接着做 |
+| V1.7.3 | 更强活体模型或硬件活体 | 暂不做 |
+| V1.7.4 | ANN/Faiss index 实现 | 暂不做，除非 5 万 benchmark 不达标 |
+
+V1.7.1 的边界：
+
+- 增强现有 `camera-integration.html`，不新增独立验收页面。
+- 先跑通 face_api 自己的页面，不接业务后端。
+- 页面覆盖注册、登录、活体状态、中文错误原因和最近 login audit。
+
+V1.7.2 的边界：
+
+- 同时规划 Task Scheduler 简单方案和 NSSM 正式服务方案。
+- 提供两套方案的安装和卸载脚本。
+- NSSM 不由脚本静默下载，缺失时提示用户安装或配置路径。
 
 ## 8. 每周检查节奏
 

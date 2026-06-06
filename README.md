@@ -7,11 +7,11 @@
 
 如果你不知道该看哪份文档，先看：
 
-- `docs/README.md`
+- `docs/01_document_index.md`
 
 如果你要把控季度进度和功能边界，看：
 
-- `docs/product/QUARTERLY_PLAN.md`
+- `docs/02_product/02_quarterly_plan.md`
 
 如果你现在的目标是：
 - 把服务跑起来
@@ -211,8 +211,8 @@ curl http://localhost:8000/openapi.json
 - `GET /audit/login/summary`
 
 详细请求/响应样例不要在这里死记，直接去看：
-- `docs/usage/API_INTEGRATION.md`
-- `docs/usage/FRONTEND_BUSINESS_INTEGRATION.md`
+- `docs/04_usage/01_api_integration.md`
+- `docs/04_usage/02_frontend_business_integration.md`
 
 ---
 
@@ -272,6 +272,8 @@ set FACE_FORCE_CPU=1
 | `FACE_DET_SIZE` | `640` | 检测输入尺寸 |
 | `FACE_DB_PATH` | `faces.db` | SQLite 数据库路径 |
 | `FACE_ENV` | `development` | 运行环境；`production` 会启用更严格启动校验 |
+| `FACE_PORT` | `8000` | `run-prod.bat` 监听端口 |
+| `FACE_PYTHON` | `D:\anaconda3\envs\face_api\python.exe` | `run-prod.bat` 使用的 Python 解释器路径 |
 | `FACE_USE_GPU` | `0` | 设为 `1` 时允许优先使用 GPU |
 | `FACE_FORCE_CPU` | `0` | 设为 `1` 时强制 CPU，并覆盖 `FACE_USE_GPU` |
 | `FACE_API_KEY` | 空 | 启用 API Key 鉴权 |
@@ -313,7 +315,12 @@ set FACE_API_KEY=your-secret
 run-prod.bat
 ```
 
-`run-prod.bat` 会设置 `FACE_ENV=production`，并且不使用 `--reload`。
+`run-prod.bat` 会设置 `FACE_ENV=production`，并且不使用 `--reload`。默认监听 8000；如需换端口：
+
+```bat
+set FACE_PORT=8001
+run-prod.bat
+```
 
 启动后建议运行：
 
@@ -323,8 +330,33 @@ powershell -ExecutionPolicy Bypass -File scripts\health-check.ps1
 
 详细运行、备份、恢复和排障说明见：
 
-- `docs/deployment/RUNBOOK.md`
-- `docs/usage/RECOGNITION_SECURITY_ACCURACY.md`
+- `docs/03_deployment/01_runbook.md`
+- `docs/04_usage/03_recognition_security_accuracy.md`
+
+### Windows 长期运行
+
+V1.7 提供两种长期运行方式：
+
+- Task Scheduler：轻量开机或登录后自启。
+- NSSM：注册成 Windows Service，适合正式交付。
+
+安装前先用 `-WhatIf` 预览：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-task-scheduler.ps1 -Port 8000 -WhatIf
+powershell -ExecutionPolicy Bypass -File scripts\install-task-scheduler.ps1 -Port 8000
+```
+
+NSSM 方案需要先安装 NSSM，并显式传入 `nssm.exe` 路径：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-nssm-service.ps1 -NssmPath C:\tools\nssm\nssm.exe -ApiKey "your-secret" -Port 8000 -WhatIf
+powershell -ExecutionPolicy Bypass -File scripts\install-nssm-service.ps1 -NssmPath C:\tools\nssm\nssm.exe -ApiKey "your-secret" -Port 8000
+```
+
+Task Scheduler 脚本不会把 `FACE_API_KEY` 写入任务动作；请先在运行用户或机器环境变量里配置 `FACE_API_KEY`。如果 NSSM 安装时传入 `-ApiKey`，密钥会保存到 NSSM 服务环境中；更严格的交付方式是先配置机器环境变量 `FACE_API_KEY`，NSSM 安装脚本不传 `-ApiKey`。
+
+详细安装、卸载和排障见 `docs/03_deployment/01_runbook.md`。
 
 ### 运维控制台
 
@@ -379,9 +411,9 @@ http://localhost:8000/admin.html
 
 按这个顺序：
 1. `README.md` —— 先跑起来
-2. `docs/usage/API_INTEGRATION.md` —— 看怎么调用接口
-3. `docs/architecture/ARCHITECTURE.md` —— 看架构、边界和维护重点
-4. `docs/releases/2026-05-27-phase-1-summary.md` —— 看当前阶段成果和风险边界
+2. `docs/04_usage/01_api_integration.md` —— 看怎么调用接口
+3. `docs/05_architecture/01_architecture.md` —— 看架构、边界和维护重点
+4. `docs/90_archive/01_releases/01_2026-05-27_phase_1_summary.md` —— 看当前阶段成果和风险边界
 
 ### Q2：报 `ModuleNotFoundError`
 
@@ -408,23 +440,23 @@ http://localhost:8000/admin.html
 
 ## 12. 其他文档分别干什么
 
-### `docs/usage/API_INTEGRATION.md`
+### `docs/04_usage/01_api_integration.md`
 适合：
 - 前端/全栈联调
 - 想直接复制请求体、返回体、TS 类型、fetch 示例
 
-### `docs/usage/FRONTEND_BUSINESS_INTEGRATION.md`
+### `docs/04_usage/02_frontend_business_integration.md`
 适合：
 - 接摄像头 login / register
 - 看错误码中文映射、业务系统调用示例和上线检查清单
 - 明确 face_api 识别结果和业务系统 session 的边界
 
-### `docs/architecture/ARCHITECTURE.md`
+### `docs/05_architecture/01_architecture.md`
 适合：
 - 接手维护
 - 看模块边界、数据流、存储设计、高风险改动点
 
-### `docs/releases/2026-05-27-phase-1-summary.md`
+### `docs/90_archive/01_releases/01_2026-05-27_phase_1_summary.md`
 适合：
 - 看本轮阶段成果
 - 看 phase-1 当前已经交付了什么

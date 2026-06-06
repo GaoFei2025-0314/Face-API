@@ -16,10 +16,10 @@
 - 看 `README.md`
 
 如果你只是想联调接口：
-- 看 `docs/usage/API_INTEGRATION.md`
+- 看 `docs/04_usage/01_api_integration.md`
 
 如果你想看当前阶段成果和风险边界：
-- 看 `docs/releases/2026-05-27-phase-1-summary.md`
+- 看 `docs/90_archive/01_releases/01_2026-05-27_phase_1_summary.md`
 
 ---
 
@@ -412,8 +412,8 @@ provider 可见，不等于实际稳定跑在 GPU 上。
 第一次接手时，按这个顺序：
 
 1. `README.md` —— 先跑起来
-2. `docs/usage/API_INTEGRATION.md` —— 看怎么联调
+2. `docs/04_usage/01_api_integration.md` —— 看怎么联调
 3. `main.py` —— 看接口与鉴权边界
 4. `face_engine.py` —— 看模型初始化和 GPU / CPU 逻辑
 5. `storage.py` —— 看底库和审计存储
-6. `docs/releases/2026-05-27-phase-1-summary.md` —— 看当前阶段成果与风险边界
+6. `docs/90_archive/01_releases/01_2026-05-27_phase_1_summary.md` —— 看当前阶段成果与风险边界

@@ -6,6 +6,7 @@ __pycache__/
 venv/
 .venv/
 .worktrees/
+.claude/
 
 # Local databases and SQLite sidecars
 faces.db

@@ -37,9 +37,9 @@ This plan does not add lazy model loading, token/session management, vector data
   - No required change unless test command discovery exposes ordering issues.
 - Modify: `README.md`
   - Document new environment variables and startup diagnostics.
-- Modify: `docs/usage/API_INTEGRATION.md`
+- Modify: `docs/04_usage/01_api_integration.md`
   - Document the unified error payload and frontend handling.
-- Modify: `docs/architecture/ARCHITECTURE.md`
+- Modify: `docs/05_architecture/01_architecture.md`
   - Document the validation boundary and startup-time model loading policy.
 
 ## Task 1: Centralize API Error Payloads
@@ -657,8 +657,8 @@ git commit -m "test: align api assertions with error reasons"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/usage/API_INTEGRATION.md`
-- Modify: `docs/architecture/ARCHITECTURE.md`
+- Modify: `docs/04_usage/01_api_integration.md`
+- Modify: `docs/05_architecture/01_architecture.md`
 
 - [ ] **Step 1: Update `README.md` environment variables**
 
@@ -688,7 +688,7 @@ Add this note near the GPU / CPU troubleshooting section:
 这几个字段可以判断是模型下载/路径问题、CUDA provider 问题，还是输入配置问题。
 ```
 
-- [ ] **Step 3: Update `docs/usage/API_INTEGRATION.md` error section**
+- [ ] **Step 3: Update `docs/04_usage/01_api_integration.md` error section**
 
 Replace the current “两种形态” explanation with:
 
@@ -714,7 +714,7 @@ Replace the current “两种形态” explanation with:
 
 - [ ] **Step 4: Update frontend error handling snippet**
 
-In `docs/usage/API_INTEGRATION.md`, update the frontend handling snippet to prefer `reason`:
+In `docs/04_usage/01_api_integration.md`, update the frontend handling snippet to prefer `reason`:
 
 ```javascript
 if (!res.ok) {
@@ -728,7 +728,7 @@ if (!res.ok) {
 }
 ```
 
-- [ ] **Step 5: Update `docs/architecture/ARCHITECTURE.md`**
+- [ ] **Step 5: Update `docs/05_architecture/01_architecture.md`**
 
 Add this policy text to the image input or API boundary section:
 
@@ -746,7 +746,7 @@ Add this policy text to the image input or API boundary section:
 - [ ] **Step 6: Commit**
 
 ```bat
-git add README.md docs/usage/API_INTEGRATION.md docs/architecture/ARCHITECTURE.md
+git add README.md docs/04_usage/01_api_integration.md docs/05_architecture/01_architecture.md
 git commit -m "docs: document api hardening behavior"
 ```
 
@@ -760,8 +760,8 @@ git commit -m "docs: document api hardening behavior"
 - Read: `tests/test_main_api.py`
 - Read: `tests/test_face_engine.py`
 - Read: `README.md`
-- Read: `docs/usage/API_INTEGRATION.md`
-- Read: `docs/architecture/ARCHITECTURE.md`
+- Read: `docs/04_usage/01_api_integration.md`
+- Read: `docs/05_architecture/01_architecture.md`
 
 - [x] **Step 1: Run the full unittest suite**
 
@@ -801,7 +801,7 @@ Expected:
 Run:
 
 ```bat
-Select-String -Path README.md,docs\usage\API_INTEGRATION.md,docs\architecture\ARCHITECTURE.md -Pattern "FACE_MAX_BASE64_CHARS|FACE_MAX_IMAGE_BYTES|FACE_MAX_IMAGE_PIXELS|reason|FaceEngine initialization failed"
+Select-String -Path README.md,docs\04_usage\01_api_integration.md,docs\05_architecture\01_architecture.md -Pattern "FACE_MAX_BASE64_CHARS|FACE_MAX_IMAGE_BYTES|FACE_MAX_IMAGE_PIXELS|reason|FaceEngine initialization failed"
 ```
 
 Expected: all patterns appear in the relevant docs.
@@ -811,7 +811,7 @@ Expected: all patterns appear in the relevant docs.
 If Step 1 through Step 4 required any fixes, commit the fixes:
 
 ```bat
-git add main.py face_engine.py tests README.md docs/usage/API_INTEGRATION.md docs/architecture/ARCHITECTURE.md
+git add main.py face_engine.py tests README.md docs/04_usage/01_api_integration.md docs/05_architecture/01_architecture.md
 git commit -m "chore: verify face api hardening"
 ```
 
@@ -825,7 +825,7 @@ If no files changed during verification, skip this commit.
 
 ## Execution Options
 
-Plan complete and saved to `docs/superpowers/plans/2026-05-31-face-api-hardening.md`. Two execution options:
+Plan complete and saved to `docs/90_archive/03_superpowers/01_plans/01_2026-05-31_face_api_hardening.md`. Two execution options:
 
 1. **Subagent-Driven (recommended)** - Dispatch a fresh subagent per task, review between tasks, fast iteration.
 2. **Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints.

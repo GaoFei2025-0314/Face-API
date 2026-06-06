@@ -2,7 +2,7 @@
 
 > Created: 2026-06-05  
 > Purpose: Versioned execution roadmap for future `/goal` work  
-> Source: `docs/product/PRD.md` and `specs/001-face-api-product/spec.md`
+> Source: `docs/02_product/01_prd.md` and `specs/001-face-api-product/spec.md`
 
 ## 1. Roadmap Version
 
@@ -310,7 +310,7 @@ When implementing this roadmap:
 
 Current baseline artifacts:
 
-- Product PRD: `docs/product/PRD.md`
+- Product PRD: `docs/02_product/01_prd.md`
 - Product baseline spec: `specs/001-face-api-product/spec.md`
 - Roadmap index: `specs/README.md`
 - This roadmap version: `specs/ROADMAP-v1.0.md`

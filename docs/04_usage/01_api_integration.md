@@ -9,7 +9,7 @@
 如果你要直接接摄像头 login/register，优先打开：
 
 - `camera-integration.html`
-- `docs/usage/FRONTEND_BUSINESS_INTEGRATION.md`
+- `docs/04_usage/02_frontend_business_integration.md`
 
 `camera-integration.html` 只用于本机或内网联调。正式业务前端不要直接持有 face_api 的 `X-API-Key`，应由业务后端保存密钥并代理调用 face_api；浏览器只持有业务系统自己的 session/token。
 
@@ -26,7 +26,7 @@
 
 这些看：
 - `README.md`
-- `docs/architecture/ARCHITECTURE.md`
+- `docs/05_architecture/01_architecture.md`
 
 ---
 
@@ -225,7 +225,7 @@ function fileToBase64(file) {
 | `VALIDATION_ERROR` | 请求参数不完整，请刷新后重试。 | 检查必填字段、JSON 格式和字段类型。 |
 | `MAINTENANCE_MODE_ACTIVE` | 系统维护中，请稍后再试。 | 等待运维退出维护模式。 |
 
-完整摄像头接入说明见 `docs/usage/FRONTEND_BUSINESS_INTEGRATION.md`。
+完整摄像头接入说明见 `docs/04_usage/02_frontend_business_integration.md`。
 
 ### 5.5 特征向量返回边界
 普通页面不要把 embedding 当作普通展示字段来用。
