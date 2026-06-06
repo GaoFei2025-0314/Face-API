@@ -286,6 +286,7 @@
         grid-template-columns: 250px minmax(520px, 1fr);
         grid-template-rows: 68vh auto;
         height: auto;
+        min-width: 0;
         min-height: 100vh;
       }
 
@@ -293,6 +294,23 @@
         grid-column: 1 / -1;
         border-width: 1px 0 0;
         min-height: 320px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        display: block;
+        min-width: 0;
+      }
+
+      .sidebar,
+      .details {
+        border-width: 0 0 1px;
+      }
+
+      .canvas-wrap {
+        height: 68vh;
+        min-height: 520px;
       }
     }
   </style>
