@@ -42,7 +42,7 @@
 
     .app {
       display: grid;
-      grid-template-columns: 280px minmax(520px, 1fr) 360px;
+      grid-template-columns: 260px minmax(620px, 1fr) 340px;
       height: 100vh;
       min-width: 1080px;
     }
@@ -58,7 +58,7 @@
 
     .sidebar {
       border-width: 0 1px 0 0;
-      padding: 22px;
+      padding: 20px;
     }
 
     .details {
@@ -67,7 +67,7 @@
     }
 
     .brand {
-      margin-bottom: 24px;
+      margin-bottom: 18px;
     }
 
     .brand h1 {
@@ -85,7 +85,7 @@
     }
 
     .control-group {
-      margin: 24px 0;
+      margin: 20px 0;
     }
 
     .control-title {
@@ -130,7 +130,7 @@
     }
 
     .choice {
-      padding: 10px 12px;
+      padding: 9px 11px;
     }
 
     .choice.active {
@@ -178,6 +178,28 @@
       font-size: 13px;
     }
 
+    .lane {
+      pointer-events: none;
+    }
+
+    .lane rect {
+      fill: rgba(255, 255, 255, 0.025);
+      stroke: rgba(255, 255, 255, 0.06);
+      stroke-width: 1;
+    }
+
+    .lane.active rect {
+      fill: rgba(255, 224, 130, 0.055);
+      stroke: rgba(255, 224, 130, 0.20);
+    }
+
+    .lane text {
+      fill: rgba(231, 237, 247, 0.42);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
     svg {
       display: block;
       width: 100%;
@@ -190,21 +212,26 @@
     }
 
     .edge {
-      stroke: rgba(145, 162, 186, 0.42);
+      stroke: rgba(145, 162, 186, 0.28);
       stroke-width: 2;
       fill: none;
-      transition: stroke 160ms ease, opacity 160ms ease, stroke-width 160ms ease;
+      transition: stroke 160ms ease, opacity 160ms ease, stroke-width 160ms ease, filter 160ms ease;
+    }
+
+    .edge.primary {
+      stroke: rgba(218, 232, 255, 0.62);
+      stroke-width: 3.4;
     }
 
     .edge.active {
       stroke: var(--active);
-      stroke-width: 4;
-      filter: drop-shadow(0 0 8px rgba(255, 224, 130, 0.65));
+      stroke-width: 5;
+      filter: drop-shadow(0 0 10px rgba(255, 224, 130, 0.70));
     }
 
     .edge.dimmed,
     .node.dimmed {
-      opacity: 0.22;
+      opacity: 0.24;
     }
 
     .node {
@@ -212,28 +239,57 @@
       transition: opacity 160ms ease, filter 160ms ease;
     }
 
-    .node rect {
+    .node rect.card {
       rx: 8;
       ry: 8;
-      stroke-width: 1.5;
-      filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.32));
+      stroke-width: 1.6;
+      filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.30));
     }
 
-    .node.active rect {
+    .node rect.accent {
+      rx: 8;
+      ry: 8;
+    }
+
+    .node.active rect.card {
       stroke: var(--active);
-      stroke-width: 2.5;
-      filter: drop-shadow(0 0 14px rgba(255, 224, 130, 0.58));
+      stroke-width: 2.4;
+      filter: drop-shadow(0 0 16px rgba(255, 224, 130, 0.52));
+    }
+
+    .node:hover rect.card {
+      filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.16));
     }
 
     .node text {
       fill: var(--text);
-      font-size: 13px;
       pointer-events: none;
     }
 
+    .node .type-label {
+      fill: rgba(231, 237, 247, 0.62);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .node .title {
+      fill: var(--text);
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .node.core .title {
+      font-size: 19px;
+    }
+
     .node .subtitle {
-      fill: var(--muted);
-      font-size: 11px;
+      fill: rgba(231, 237, 247, 0.70);
+      font-size: 14px;
+    }
+
+    .node .file-label {
+      fill: rgba(145, 162, 186, 0.78);
+      font-size: 12px;
     }
 
     .details h2 {
@@ -251,6 +307,38 @@
       background: rgba(255, 255, 255, 0.08);
       color: var(--muted);
       font-size: 12px;
+    }
+
+    .detail-summary {
+      margin: 14px 0 0;
+      padding: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .detail-summary strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .detail-summary p {
+      margin: 0;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .detail-box {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.035);
     }
 
     .detail-section {
@@ -360,6 +448,7 @@
           </marker>
         </defs>
         <g id="viewport">
+          <g id="lanes"></g>
           <g id="edges"></g>
           <g id="nodes"></g>
         </g>
@@ -373,6 +462,14 @@
   </main>
 
   <script>
+    const lanes = [
+      { id: "users", label: "使用者", y: 92, height: 116 },
+      { id: "pages", label: "页面入口", y: 222, height: 116 },
+      { id: "api", label: "API 层", y: 352, height: 126 },
+      { id: "engine-data", label: "识别与数据", y: 492, height: 126 },
+      { id: "ops-docs", label: "运维与文档", y: 632, height: 126 }
+    ];
+
     const nodeTypes = {
       user: { label: "使用者", color: "#7aa2ff", fill: "rgba(122, 162, 255, 0.16)" },
       page: { label: "页面入口", color: "#b58cff", fill: "rgba(181, 140, 255, 0.16)" },
@@ -388,10 +485,14 @@
       {
         id: "overview",
         type: "docs",
-        x: 520,
-        y: 80,
+        lane: "users",
+        size: "normal",
+        x: 560,
+        y: 108,
         title: "face_api 总览",
         subtitle: "本地人脸识别 REST API",
+        fileLabel: "README / PRD",
+        talkTrack: "先用它说明 face_api 是本地人脸识别模块底座，不是完整登录平台。",
         summary: "face_api 是运行在 Windows 工作站上的人脸识别模块底座，负责检测、比对、搜索、人脸库和轻量认证辅助。",
         inputs: ["图片上传或 Base64 图片", "配置项和启动环境变量"],
         outputs: ["识别结果", "匹配用户信息", "运行状态", "审计记录"],
@@ -401,10 +502,14 @@
       {
         id: "frontend",
         type: "user",
-        x: 90,
-        y: 220,
+        lane: "users",
+        size: "normal",
+        x: 110,
+        y: 108,
         title: "前端 / 摄像头",
         subtitle: "采集图片",
+        fileLabel: "camera-integration.html",
+        talkTrack: "讲前端只负责采集图片和交互，正式密钥应放在业务后端。",
         summary: "前端负责摄像头采集、用户交互和把图片交给受控调用方。",
         inputs: ["摄像头画面", "用户点击注册或登录"],
         outputs: ["图片文件或 Base64 字符串"],
@@ -414,10 +519,14 @@
       {
         id: "backend",
         type: "user",
-        x: 90,
-        y: 390,
+        lane: "users",
+        size: "normal",
+        x: 340,
+        y: 108,
         title: "业务后端",
         subtitle: "代理调用",
+        fileLabel: "业务系统",
+        talkTrack: "讲业务后端负责用户主表、token 和权限，face_api 只做识别辅助。",
         summary: "业务后端保存用户主表，代理调用 face_api，并在登录成功后签发自己的业务 token。",
         inputs: ["前端提交的图片", "业务用户信息"],
         outputs: ["业务登录态", "用户资料"],
@@ -427,10 +536,14 @@
       {
         id: "pages",
         type: "page",
-        x: 310,
-        y: 220,
+        lane: "pages",
+        size: "normal",
+        x: 220,
+        y: 246,
         title: "HTML 页面入口",
         subtitle: "test / camera / admin",
+        fileLabel: "test / camera / admin",
+        talkTrack: "讲这些页面是调试、现场验收和运维观察工具。",
         summary: "项目保留多个静态 HTML 页面用于调试、摄像头验收和运维观察。",
         inputs: ["浏览器访问", "API 地址和 API Key"],
         outputs: ["接口请求", "验收结果", "运维观察信息"],
@@ -440,10 +553,14 @@
       {
         id: "fastapi",
         type: "api",
-        x: 560,
-        y: 260,
+        lane: "api",
+        size: "core",
+        x: 520,
+        y: 372,
         title: "FastAPI main.py",
         subtitle: "REST API 入口",
+        fileLabel: "main.py",
+        talkTrack: "这是请求入口和编排中心，所有识别能力都从这里进入。",
         summary: "main.py 定义路由、请求模型、鉴权、CORS、图片解析、错误响应，并调用 FaceEngine 和 FaceDB。",
         inputs: ["HTTP 请求", "上传文件", "Base64 JSON"],
         outputs: ["JSON 响应", "HTTPException detail"],
@@ -453,10 +570,14 @@
       {
         id: "auth",
         type: "risk",
-        x: 560,
-        y: 430,
+        lane: "api",
+        size: "normal",
+        x: 790,
+        y: 372,
         title: "X-API-Key / CORS",
         subtitle: "访问边界",
+        fileLabel: "FACE_API_KEY / CORS",
+        talkTrack: "讲清楚 X-API-Key 是服务密钥，不是用户登录密码。",
         summary: "FACE_API_KEY 设置后，受保护接口必须传入 X-API-Key。CORS 控制允许访问的前端来源。",
         inputs: ["FACE_API_KEY", "FACE_CORS_ORIGINS", "X-API-Key 请求头"],
         outputs: ["允许请求", "401 鉴权失败", "跨域控制"],
@@ -466,10 +587,14 @@
       {
         id: "engine",
         type: "engine",
-        x: 820,
-        y: 260,
+        lane: "engine-data",
+        size: "core",
+        x: 520,
+        y: 514,
         title: "FaceEngine",
         subtitle: "检测与特征提取",
+        fileLabel: "face_engine.py",
+        talkTrack: "这是识别核心，负责检测、人脸质量和 512 维 embedding。",
         summary: "face_engine.py 封装 InsightFace 和 ONNX Runtime，输出人脸框、质量信息和 512 维 embedding。",
         inputs: ["OpenCV BGR 图片", "FACE_MODEL", "FACE_DET_SIZE", "FACE_USE_GPU", "FACE_FORCE_CPU"],
         outputs: ["bbox", "det_score", "landmarks", "embedding", "gender", "age"],
@@ -479,10 +604,14 @@
       {
         id: "models",
         type: "engine",
-        x: 1080,
-        y: 260,
+        lane: "engine-data",
+        size: "normal",
+        x: 790,
+        y: 514,
         title: "InsightFace / ONNX",
         subtitle: "buffalo_l 模型",
+        fileLabel: "buffalo_l / ONNX",
+        talkTrack: "讲模型和 provider，解释 CPU 默认、GPU 可切换。",
         summary: "InsightFace 下载并加载 buffalo_l 模型，ONNX Runtime 执行 CPU 或 GPU provider。",
         inputs: ["模型文件", "ONNX Runtime provider"],
         outputs: ["检测、关键点、识别向量"],
@@ -492,10 +621,14 @@
       {
         id: "sqlite",
         type: "data",
-        x: 820,
-        y: 460,
+        lane: "engine-data",
+        size: "core",
+        x: 1060,
+        y: 514,
         title: "SQLite FaceDB",
         subtitle: "faces.db",
+        fileLabel: "storage.py / faces.db",
+        talkTrack: "这是本地人脸库和审计数据的持久化位置。",
         summary: "storage.py 管理人脸底库、embedding、metadata 和登录审计记录。",
         inputs: ["人脸 embedding", "username", "user_id", "metadata", "audit 事件"],
         outputs: ["人脸列表", "搜索结果", "审计汇总"],
@@ -505,10 +638,14 @@
       {
         id: "ops",
         type: "ops",
-        x: 310,
-        y: 590,
+        lane: "ops-docs",
+        size: "normal",
+        x: 220,
+        y: 654,
         title: "Windows 运维脚本",
         subtitle: "run / prod / service",
+        fileLabel: "run-prod / scripts",
+        talkTrack: "讲 Windows 工作站如何启动、守护和维护服务。",
         summary: "脚本负责本地启动、生产启动、服务安装、定时任务和停止排障。",
         inputs: ["环境变量", "conda 环境", "端口配置"],
         outputs: ["Uvicorn 服务", "日志", "后台进程"],
@@ -518,10 +655,14 @@
       {
         id: "health",
         type: "ops",
-        x: 560,
-        y: 610,
+        lane: "ops-docs",
+        size: "normal",
+        x: 520,
+        y: 654,
         title: "健康检查 / 监控",
         subtitle: "/health / logs",
+        fileLabel: "/health / logs",
+        talkTrack: "讲服务起来后如何确认它健康，以及出问题去哪看。",
         summary: "运维通过 /health、日志、Swagger 和 admin 页面确认服务是否正常。",
         inputs: ["GET /health", "日志文件", "admin 页面请求"],
         outputs: ["运行状态", "device", "faces", "错误定位线索"],
@@ -531,10 +672,14 @@
       {
         id: "docs",
         type: "docs",
+        lane: "ops-docs",
+        size: "normal",
         x: 820,
-        y: 650,
+        y: 654,
         title: "文档 / specs",
         subtitle: "开发和交付依据",
+        fileLabel: "docs / specs",
+        talkTrack: "讲需求、计划、交付和后续维护都从文档入口开始。",
         summary: "文档入口、PRD、季度计划、runbook、API 集成文档和 specs 共同约束项目演进。",
         inputs: ["需求", "版本计划", "验收记录"],
         outputs: ["开发边界", "交付说明", "后续计划"],
@@ -544,19 +689,19 @@
     ];
 
     const edges = [
-      { id: "frontend-pages", from: "frontend", to: "pages", label: "打开页面", flows: ["register", "login", "search"] },
-      { id: "frontend-backend", from: "frontend", to: "backend", label: "提交图片", flows: ["register", "login"] },
-      { id: "backend-fastapi", from: "backend", to: "fastapi", label: "代理调用 API", flows: ["register", "login", "search"] },
-      { id: "pages-fastapi", from: "pages", to: "fastapi", label: "本机联调", flows: ["register", "login", "search"] },
-      { id: "fastapi-auth", from: "fastapi", to: "auth", label: "鉴权 / CORS", flows: ["register", "login", "search"] },
-      { id: "fastapi-engine", from: "fastapi", to: "engine", label: "图片识别", flows: ["register", "login", "search"] },
-      { id: "engine-models", from: "engine", to: "models", label: "模型推理", flows: ["register", "login", "search"] },
-      { id: "fastapi-sqlite", from: "fastapi", to: "sqlite", label: "写入 / 搜索", flows: ["register", "login", "search", "backup"] },
-      { id: "ops-fastapi", from: "ops", to: "fastapi", label: "启动服务", flows: ["startup"] },
-      { id: "ops-health", from: "ops", to: "health", label: "检查状态", flows: ["startup"] },
-      { id: "health-fastapi", from: "health", to: "fastapi", label: "GET /health", flows: ["startup"] },
-      { id: "ops-sqlite", from: "ops", to: "sqlite", label: "备份恢复", flows: ["backup"] },
-      { id: "docs-overview", from: "docs", to: "overview", label: "解释边界", flows: [] }
+      { id: "frontend-pages", from: "frontend", to: "pages", label: "打开页面", kind: "primary", flows: ["register", "login", "search"] },
+      { id: "frontend-backend", from: "frontend", to: "backend", label: "提交图片", kind: "primary", flows: ["register", "login"] },
+      { id: "backend-fastapi", from: "backend", to: "fastapi", label: "代理调用 API", kind: "primary", flows: ["register", "login", "search"] },
+      { id: "pages-fastapi", from: "pages", to: "fastapi", label: "本机联调", kind: "primary", flows: ["register", "login", "search"] },
+      { id: "fastapi-auth", from: "fastapi", to: "auth", label: "鉴权 / CORS", kind: "secondary", flows: ["register", "login", "search"] },
+      { id: "fastapi-engine", from: "fastapi", to: "engine", label: "图片识别", kind: "primary", flows: ["register", "login", "search"] },
+      { id: "engine-models", from: "engine", to: "models", label: "模型推理", kind: "primary", flows: ["register", "login", "search"] },
+      { id: "fastapi-sqlite", from: "fastapi", to: "sqlite", label: "写入 / 搜索", kind: "primary", flows: ["register", "login", "search", "backup"] },
+      { id: "ops-fastapi", from: "ops", to: "fastapi", label: "启动服务", kind: "secondary", flows: ["startup"] },
+      { id: "ops-health", from: "ops", to: "health", label: "检查状态", kind: "secondary", flows: ["startup"] },
+      { id: "health-fastapi", from: "health", to: "fastapi", label: "GET /health", kind: "secondary", flows: ["startup"] },
+      { id: "ops-sqlite", from: "ops", to: "sqlite", label: "备份恢复", kind: "secondary", flows: ["backup"] },
+      { id: "docs-overview", from: "docs", to: "overview", label: "解释边界", kind: "secondary", flows: [] }
     ];
 
     const roles = {
@@ -596,6 +741,7 @@
 
     const graph = document.getElementById("graph");
     const viewport = document.getElementById("viewport");
+    const laneLayer = document.getElementById("lanes");
     const edgeLayer = document.getElementById("edges");
     const nodeLayer = document.getElementById("nodes");
     const details = document.getElementById("details");
@@ -631,12 +777,36 @@
       );
     }
 
-    function centerOf(node) {
-      return { x: node.x + 92, y: node.y + 34 };
-    }
-
     function typeOf(node) {
       return nodeTypes[node.type] || nodeTypes.docs;
+    }
+
+    function sizeOf(node) {
+      return node.size === "core"
+        ? { width: 260, height: 112 }
+        : { width: 230, height: 98 };
+    }
+
+    function centerOf(node) {
+      const size = sizeOf(node);
+      return { x: node.x + size.width / 2, y: node.y + size.height / 2 };
+    }
+
+    function activeLaneIds() {
+      if (!state.activeFlow) {
+        return new Set();
+      }
+      const ids = new Set();
+      edges.forEach((edge) => {
+        if (!edge.flows.includes(state.activeFlow)) {
+          return;
+        }
+        const from = byId(edge.from);
+        const to = byId(edge.to);
+        if (from) ids.add(from.lane);
+        if (to) ids.add(to.lane);
+      });
+      return ids;
     }
 
     function isNodeActive(nodeId) {
@@ -648,6 +818,16 @@
 
     function isEdgeActive(edge) {
       return Boolean(state.activeFlow && edge.flows.includes(state.activeFlow));
+    }
+
+    function renderLanes() {
+      const active = activeLaneIds();
+      laneLayer.innerHTML = lanes.map((lane) => `
+        <g class="lane${active.has(lane.id) ? " active" : ""}">
+          <rect x="54" y="${lane.y}" width="1212" height="${lane.height}" rx="10" ry="10"></rect>
+          <text x="72" y="${lane.y + 25}">${escapeHtml(lane.label)}</text>
+        </g>
+      `).join("");
     }
 
     function renderEdges() {
@@ -663,7 +843,7 @@
         const dimmed = state.activeFlow && !active;
         return `
           <path
-            class="edge${active ? " active" : ""}${dimmed ? " dimmed" : ""}"
+            class="edge ${edge.kind === "primary" ? "primary" : "secondary"}${active ? " active" : ""}${dimmed ? " dimmed" : ""}"
             data-edge-id="${escapeHtml(edge.id)}"
             d="M ${from.x} ${from.y} C ${(from.x + to.x) / 2} ${from.y}, ${(from.x + to.x) / 2} ${to.y}, ${to.x} ${to.y}"
             marker-end="url(#arrow)"
@@ -675,13 +855,17 @@
     function renderNodes() {
       nodeLayer.innerHTML = nodes.map((node) => {
         const type = typeOf(node);
+        const size = sizeOf(node);
         const active = state.selectedNodeId === node.id || isNodeActive(node.id);
         const dimmed = state.activeFlow && !active;
         return `
-          <g class="node${active ? " active" : ""}${dimmed ? " dimmed" : ""}" data-node-id="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})">
-            <rect width="184" height="68" fill="${type.fill}" stroke="${type.color}"></rect>
-            <text x="16" y="27">${escapeHtml(node.title)}</text>
-            <text class="subtitle" x="16" y="49">${escapeHtml(node.subtitle)}</text>
+          <g class="node ${node.size === "core" ? "core" : "normal"}${active ? " active" : ""}${dimmed ? " dimmed" : ""}" data-node-id="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})">
+            <rect class="card" width="${size.width}" height="${size.height}" fill="${type.fill}" stroke="${type.color}"></rect>
+            <rect class="accent" width="${size.width}" height="4" fill="${type.color}"></rect>
+            <text class="type-label" x="16" y="22">${escapeHtml(type.label)}</text>
+            <text class="title" x="16" y="46">${escapeHtml(node.title)}</text>
+            <text class="subtitle" x="16" y="68">${escapeHtml(node.subtitle)}</text>
+            <text class="file-label" x="16" y="${size.height - 16}">${escapeHtml(node.fileLabel || "")}</text>
           </g>
         `;
       }).join("");
@@ -691,20 +875,33 @@
       return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
     }
 
+    function listCompact(items) {
+      return `<ul>${items.slice(0, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+    }
+
     function renderDetails() {
       const node = byId(state.selectedNodeId) || byId("overview");
       const type = typeOf(node);
       details.innerHTML = `
         <h2>${escapeHtml(node.title)}</h2>
-        <p class="detail-muted">${escapeHtml(node.summary)}</p>
         <span class="tag" style="border: 1px solid ${type.color}; color: ${type.color};">${escapeHtml(type.label)}</span>
-        <section class="detail-section">
-          <h3>输入</h3>
-          ${list(node.inputs)}
+        <section class="detail-summary">
+          <strong>模块定位</strong>
+          <p class="detail-muted">${escapeHtml(node.summary)}</p>
         </section>
-        <section class="detail-section">
-          <h3>输出</h3>
-          ${list(node.outputs)}
+        <section class="detail-summary">
+          <strong>为什么重要</strong>
+          <p class="detail-muted">${escapeHtml(node.talkTrack || "演示时用它说明当前模块在系统里的职责。")}</p>
+        </section>
+        <section class="detail-section detail-grid">
+          <div class="detail-box">
+            <h3>输入</h3>
+            ${listCompact(node.inputs)}
+          </div>
+          <div class="detail-box">
+            <h3>输出</h3>
+            ${listCompact(node.outputs)}
+          </div>
         </section>
         <section class="detail-section">
           <h3>关联文件 / 文档</h3>
@@ -718,6 +915,7 @@
     }
 
     function renderGraph() {
+      renderLanes();
       renderEdges();
       renderNodes();
       renderDetails();
