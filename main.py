@@ -16,7 +16,6 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
-import shutil
 import uuid
 from pathlib import Path
 import time
@@ -32,6 +31,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from api_errors import ERROR_DEFINITIONS, error_detail, raise_api_error
 from app_config import load_settings
+import admin_ops
 from api_schemas import (
     Base64ImageReq,
     CompareReq,
@@ -354,24 +354,19 @@ def require_terminal_id_value(terminal_id: Optional[str]) -> str:
 
 
 def is_maintenance_mode() -> bool:
-    return MAINTENANCE_MODE_FILE.exists()
+    return admin_ops.is_maintenance_mode(MAINTENANCE_MODE_FILE)
 
 
 def set_maintenance_mode(enabled: bool) -> None:
-    if enabled:
-        MAINTENANCE_MODE_FILE.write_text(str(round(time.time(), 3)), encoding="utf-8")
-    elif MAINTENANCE_MODE_FILE.exists():
-        MAINTENANCE_MODE_FILE.unlink()
+    admin_ops.set_maintenance_mode(enabled, MAINTENANCE_MODE_FILE)
 
 
 def ensure_not_maintenance():
-    if is_maintenance_mode():
-        raise_api_error(503, "MAINTENANCE_MODE_ACTIVE")
+    admin_ops.ensure_not_maintenance(MAINTENANCE_MODE_FILE)
 
 
 def require_confirm(confirm: bool):
-    if not confirm:
-        raise_api_error(400, "MAINTENANCE_CONFIRM_REQUIRED")
+    admin_ops.require_confirm(confirm)
 
 
 def parse_terminal_policy_map() -> dict[str, str]:
@@ -490,40 +485,15 @@ def validate_liveness_for_flow(
 
 
 def ensure_backup_subdir(backup_dir: Path) -> Path:
-    backup_root = Path("backups").resolve()
-    resolved = backup_dir.resolve()
-    try:
-        is_allowed = resolved.is_relative_to(backup_root)
-    except AttributeError:
-        is_allowed = str(resolved).startswith(str(backup_root) + os.sep)
-    if resolved == backup_root or not is_allowed:
-        raise_api_error(400, "BACKUP_PATH_INVALID")
-    return resolved
+    return admin_ops.ensure_backup_subdir(backup_dir)
 
 
 def copy_existing_db_files(target_dir: Path) -> list[str]:
-    target_dir.mkdir(parents=True, exist_ok=True)
-    backup_file = target_dir / Path(DB_PATH).name
-    return [db.backup_to(backup_file)]
+    return admin_ops.copy_existing_db_files(target_dir, db_path=DB_PATH, db=db)
 
 
 def restore_db_files(backup_dir: Path) -> list[str]:
-    backup_dir = ensure_backup_subdir(backup_dir)
-    if not backup_dir.exists():
-        raise_api_error(404, "BACKUP_NOT_FOUND")
-    restored = []
-    base_name = Path(DB_PATH).name
-    if not (backup_dir / base_name).exists():
-        raise_api_error(404, "BACKUP_NOT_FOUND")
-    for suffix in ("", "-wal", "-shm"):
-        src = backup_dir / f"{base_name}{suffix}"
-        dst = Path(f"{DB_PATH}{suffix}")
-        if src.exists():
-            shutil.copy2(src, dst)
-            restored.append(str(dst))
-        elif suffix and dst.exists():
-            dst.unlink()
-    return restored
+    return admin_ops.restore_db_files(backup_dir, db_path=DB_PATH)
 
 
 def get_available_providers() -> list[str]:

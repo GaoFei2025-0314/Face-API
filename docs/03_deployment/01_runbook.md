@@ -153,6 +153,8 @@ powershell -ExecutionPolicy Bypass -File scripts\restore-db.ps1 -BackupDir backu
 
 如果通过 V1.1 运维控制台恢复数据库，必须先进入维护模式，再二次确认恢复。production 默认禁用在线恢复；生产恢复建议先停止 API 服务，再运行 `scripts\restore-db.ps1` 离线恢复。恢复完成后退出维护模式，并运行健康检查。
 
+V1.8 后，备份、恢复、维护模式的实现细节集中在 `admin_ops.py`，接口行为仍通过 `main.py` 暴露。恢复数据库仍必须遵守维护模式和二次确认规则。
+
 ## 9. 监控
 
 V1.3 起提供监控脚本，用于一次性查看健康接口、OpenAPI、受保护配置、端口、进程、数据库文件、日志文件和 GPU 状态：
