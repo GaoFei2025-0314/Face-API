@@ -8,6 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Keep the MVP shape small: the business code currently lives in `main.py`, `face_engine.py`, and `storage.py`. Prefer extending these files while they remain focused and under roughly 500 lines. Do not framework-ize `test.html` or the `.bat` scripts.
 
+`app_config.py` owns environment parsing and startup validation. Preserve the exported runtime constants in `main.py` unless a separate route refactor is planned.
+
 `api_errors.py` owns structured error definitions and Chinese reason text. Route handlers should call `raise_api_error(...)` instead of constructing ad hoc `HTTPException` payloads.
 
 ## Common commands
@@ -83,11 +85,12 @@ Environment variables:
 
 ### `main.py`
 
-Contains the FastAPI app, Pydantic request/response models, CORS config, optional API-key auth, and all routes. Module import initializes global singletons:
+Contains the FastAPI app, Pydantic request/response models, CORS config, optional API-key auth, and all routes. Runtime environment parsing lives in `app_config.py`; `main.py` keeps compatibility constants and initializes global singletons:
 
 ```python
-USE_GPU = env_bool("FACE_USE_GPU", False)
-FORCE_CPU = env_bool("FACE_FORCE_CPU", False) or not USE_GPU
+settings = load_settings()
+USE_GPU = settings.use_gpu
+FORCE_CPU = settings.force_cpu
 engine = FaceEngine(force_cpu=FORCE_CPU, use_gpu=USE_GPU)
 db = FaceDB()
 ```

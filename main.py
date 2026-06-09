@@ -32,6 +32,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from api_errors import ERROR_DEFINITIONS, error_detail, raise_api_error
+from app_config import load_settings
 from face_engine import FaceEngine
 from storage import FaceDB
 
@@ -70,33 +71,6 @@ app = FastAPI(
 )
 
 SENSITIVE_LOG_FIELDS = {"api_key", "x_api_key", "embedding", "image", "image1", "image2"}
-
-
-def env_bool(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def env_int(name: str, default: int, minimum: int = 1) -> int:
-    raw = os.getenv(name)
-    if raw is None or raw.strip() == "":
-        return default
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise RuntimeError(f"{name} 必须是整数，当前值为 {raw!r}") from exc
-    if value < minimum:
-        raise RuntimeError(f"{name} 必须大于等于 {minimum}，当前值为 {value}")
-    return value
-
-
-def env_list(name: str, default: list[str]) -> list[str]:
-    raw = os.getenv(name)
-    if raw is None or raw.strip() == "":
-        return default
-    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 def setup_app_logger(log_path: str, max_bytes: int, backup_count: int) -> logging.Logger:
@@ -138,51 +112,41 @@ def log_event(event: str, **payload) -> dict:
     return safe
 
 # ---------- 启动时加载（模块级单例）----------
-ENVIRONMENT = os.getenv("FACE_ENV", "development").strip().lower() or "development"
-PRODUCTION_LIKE = ENVIRONMENT in {"prod", "production"}
-API_KEY = os.getenv("FACE_API_KEY", "")
-USE_GPU = env_bool("FACE_USE_GPU", False)
-FORCE_CPU = env_bool("FACE_FORCE_CPU", False) or not USE_GPU
-FACE_MODEL = os.getenv("FACE_MODEL", "buffalo_l")
-FACE_DET_SIZE = env_int("FACE_DET_SIZE", 640, 1)
-DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
-DEFAULT_MAX_BASE64_IMAGE_CHARS = ((DEFAULT_MAX_IMAGE_BYTES + 2) // 3) * 4 + 256
-MAX_BASE64_IMAGE_CHARS = env_int("FACE_MAX_BASE64_CHARS", DEFAULT_MAX_BASE64_IMAGE_CHARS, 1)
-MAX_IMAGE_BYTES = env_int("FACE_MAX_IMAGE_BYTES", DEFAULT_MAX_IMAGE_BYTES, 1)
-MAX_IMAGE_PIXELS = env_int("FACE_MAX_IMAGE_PIXELS", 4_096_000, 1)
-DB_PATH = os.getenv("FACE_DB_PATH", "faces.db")
-LOG_PATH = os.getenv("FACE_LOG_PATH", "logs/face_api.log")
-LOG_MAX_BYTES = env_int("FACE_LOG_MAX_BYTES", 10 * 1024 * 1024, 1024)
-LOG_BACKUP_COUNT = env_int("FACE_LOG_BACKUP_COUNT", 5, 1)
-CORS_ORIGINS = env_list("FACE_CORS_ORIGINS", ["*"])
-DUPLICATE_POLICY = os.getenv("FACE_DUPLICATE_POLICY", "allow").strip().lower() or "allow"
-MIN_REGISTER_DET_SCORE = float(os.getenv("FACE_MIN_REGISTER_DET_SCORE", "0.5"))
-MIN_REGISTER_FACE_PIXELS = env_int("FACE_MIN_REGISTER_FACE_PIXELS", 2500, 1)
-MIN_REGISTER_BRIGHTNESS = float(os.getenv("FACE_MIN_REGISTER_BRIGHTNESS", "30"))
-MAX_REGISTER_BRIGHTNESS = float(os.getenv("FACE_MAX_REGISTER_BRIGHTNESS", "225"))
-MIN_LOGIN_DET_SCORE = float(os.getenv("FACE_MIN_LOGIN_DET_SCORE", "0.4"))
-MIN_LOGIN_FACE_PIXELS = env_int("FACE_MIN_LOGIN_FACE_PIXELS", 1600, 1)
-MIN_FACE_SHARPNESS = float(os.getenv("FACE_MIN_FACE_SHARPNESS", "2"))
-FACE_LOGIN_LIVENESS_ENABLED = env_bool("FACE_LOGIN_LIVENESS_ENABLED", True)
-FACE_REGISTER_LIVENESS_ENABLED = env_bool("FACE_REGISTER_LIVENESS_ENABLED", False)
-FACE_CHALLENGE_TTL_SECONDS = env_int("FACE_CHALLENGE_TTL_SECONDS", 60, 1)
-FACE_CHALLENGE_ACTION_SECONDS = env_int("FACE_CHALLENGE_ACTION_SECONDS", 10, 1)
-FACE_CHALLENGE_MIN_FRAMES = env_int("FACE_CHALLENGE_MIN_FRAMES", 10, 1)
-FACE_CHALLENGE_MAX_FRAMES = env_int("FACE_CHALLENGE_MAX_FRAMES", 30, FACE_CHALLENGE_MIN_FRAMES)
-FACE_CHALLENGE_ACTIONS = env_list("FACE_CHALLENGE_ACTIONS", ["blink"])
-FACE_DEFAULT_POLICY_PROFILE = os.getenv("FACE_DEFAULT_POLICY_PROFILE", "default").strip() or "default"
-FACE_TERMINAL_POLICY_MAP = os.getenv("FACE_TERMINAL_POLICY_MAP", "").strip()
-MAINTENANCE_MODE_FILE = Path(os.getenv("FACE_MAINTENANCE_FILE", ".maintenance_mode"))
-ALLOW_ONLINE_RESTORE = env_bool("FACE_ALLOW_ONLINE_RESTORE", not PRODUCTION_LIKE)
-if PRODUCTION_LIKE and not API_KEY:
-    raise RuntimeError("FACE_API_KEY 在 production 环境不能为空")
-if DUPLICATE_POLICY not in {"allow", "reject", "replace"}:
-    raise RuntimeError("FACE_DUPLICATE_POLICY 必须是 allow、reject 或 replace")
-if "blink" not in FACE_CHALLENGE_ACTIONS:
-    raise RuntimeError("FACE_CHALLENGE_ACTIONS 第一版必须包含 blink")
-db_dir = Path(DB_PATH).expanduser().resolve().parent
-if not db_dir.exists() or not os.access(db_dir, os.W_OK):
-    raise RuntimeError(f"FACE_DB_PATH 目录不可写：{db_dir}")
+settings = load_settings()
+ENVIRONMENT = settings.environment
+PRODUCTION_LIKE = settings.production_like
+API_KEY = settings.api_key
+USE_GPU = settings.use_gpu
+FORCE_CPU = settings.force_cpu
+FACE_MODEL = settings.face_model
+FACE_DET_SIZE = settings.face_det_size
+MAX_BASE64_IMAGE_CHARS = settings.max_base64_image_chars
+MAX_IMAGE_BYTES = settings.max_image_bytes
+MAX_IMAGE_PIXELS = settings.max_image_pixels
+DB_PATH = settings.db_path
+LOG_PATH = settings.log_path
+LOG_MAX_BYTES = settings.log_max_bytes
+LOG_BACKUP_COUNT = settings.log_backup_count
+CORS_ORIGINS = settings.cors_origins
+DUPLICATE_POLICY = settings.duplicate_policy
+MIN_REGISTER_DET_SCORE = settings.min_register_det_score
+MIN_REGISTER_FACE_PIXELS = settings.min_register_face_pixels
+MIN_REGISTER_BRIGHTNESS = settings.min_register_brightness
+MAX_REGISTER_BRIGHTNESS = settings.max_register_brightness
+MIN_LOGIN_DET_SCORE = settings.min_login_det_score
+MIN_LOGIN_FACE_PIXELS = settings.min_login_face_pixels
+MIN_FACE_SHARPNESS = settings.min_face_sharpness
+FACE_LOGIN_LIVENESS_ENABLED = settings.face_login_liveness_enabled
+FACE_REGISTER_LIVENESS_ENABLED = settings.face_register_liveness_enabled
+FACE_CHALLENGE_TTL_SECONDS = settings.face_challenge_ttl_seconds
+FACE_CHALLENGE_ACTION_SECONDS = settings.face_challenge_action_seconds
+FACE_CHALLENGE_MIN_FRAMES = settings.face_challenge_min_frames
+FACE_CHALLENGE_MAX_FRAMES = settings.face_challenge_max_frames
+FACE_CHALLENGE_ACTIONS = settings.face_challenge_actions
+FACE_DEFAULT_POLICY_PROFILE = settings.face_default_policy_profile
+FACE_TERMINAL_POLICY_MAP = settings.face_terminal_policy_map
+MAINTENANCE_MODE_FILE = settings.maintenance_mode_file
+ALLOW_ONLINE_RESTORE = settings.allow_online_restore
 app_logger = setup_app_logger(LOG_PATH, LOG_MAX_BYTES, LOG_BACKUP_COUNT)
 app.add_middleware(
     CORSMiddleware,
