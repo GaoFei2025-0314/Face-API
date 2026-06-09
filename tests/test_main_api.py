@@ -1166,6 +1166,19 @@ class MainApiContractTests(unittest.TestCase):
         self.assertIn("terminal_id", login_props)
         self.assertIn("challenge_id", login_props)
 
+    def test_api_schema_models_are_importable(self):
+        from api_schemas import (
+            Base64ImageReq,
+            FaceLoginReq,
+            RegisterReq,
+            SystemStatusResp,
+        )
+
+        self.assertEqual(Base64ImageReq.model_fields["image"].annotation, str)
+        self.assertIn("terminal_id", FaceLoginReq.model_fields)
+        self.assertIn("username", RegisterReq.model_fields)
+        self.assertIn("device", SystemStatusResp.model_fields)
+
     def test_policy_and_search_v11_summaries_are_read_only(self):
         module = load_main_module(api_key="secret")
         module.db.add_login_audit(success=False, similarity=0.4, terminal_id="door-1")
