@@ -1276,6 +1276,23 @@ class MainApiContractTests(unittest.TestCase):
         self.assertFalse(body["maintenance_mode"])
         self.assertEqual(body["faces_count"], 0)
 
+    def test_system_status_exposes_fields_for_local_status_pages(self):
+        module = load_main_module()
+
+        data = module.system_status()
+        for key in [
+            "status",
+            "device",
+            "auth_enabled",
+            "db_path",
+            "log_path",
+            "faces_count",
+            "maintenance_mode",
+            "liveness",
+            "search_cache",
+        ]:
+            self.assertIn(key, data)
+
 
 if __name__ == "__main__":
     unittest.main()

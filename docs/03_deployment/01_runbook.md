@@ -2,7 +2,7 @@
 
 ## 1. 适用范围
 
-本文用于 `face_api Roadmap v1.0-v1.7` 的生产类本地运行、交付、备份、恢复和排障。
+本文用于 `face_api Roadmap v1.0-v1.8` 的生产类本地运行、交付、备份、恢复和排障。
 
 目标环境是单台 Windows 工作站。
 
@@ -53,6 +53,19 @@ powershell -ExecutionPolicy Bypass -File scripts\health-check.ps1
 ```powershell
 $env:FACE_API_KEY="你的密钥"
 ```
+
+现场浏览器验收建议顺序：
+
+1. 启动服务。
+2. 打开 `camera-integration.html`。
+3. 填写 API 地址和 API Key。
+4. 点击“检查服务”，确认服务、鉴权、推理设备和人脸库状态。
+5. 检查摄像头权限和画面。
+6. 注册一条测试人脸。
+7. 执行 login。
+8. 查看最近 audit，确认成功/失败原因能被记录。
+
+如果“检查服务”显示服务正常但鉴权失败，优先检查页面填写的 API Key 是否等于启动服务时的 `FACE_API_KEY`。如果服务检查失败，先确认端口、启动窗口和防火墙。
 
 ## 4. 日志
 

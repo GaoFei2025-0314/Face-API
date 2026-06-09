@@ -1,4 +1,4 @@
-# V1.5-V1.7.1 前端与业务接入指南
+# V1.5-V1.8 前端与业务接入指南
 
 > 适用范围：摄像头 login/register、错误码映射、业务系统调用示例、上线检查清单。
 
@@ -16,7 +16,7 @@ V1.5 的目标不是做一个完整业务前端，而是让前端和业务系统
 camera-integration.html
 ```
 
-浏览器直接打开即可。V1.7.1 起该页面同时作为现场验收页，用来跑通“配置 -> 摄像头 -> 注册 -> 登录 -> 最近 audit”的闭环。该页面仅用于本机或内网联调，页面需要填写：
+浏览器直接打开即可。V1.7.1 起该页面同时作为现场验收页，用来跑通“配置 -> 摄像头 -> 注册 -> 登录 -> 最近 audit”的闭环。V1.8 起，页面可先执行“检查服务”，确认服务、鉴权、推理设备和人脸库状态，再进行注册或登录验收。该页面仅用于本机或内网联调，页面需要填写：
 
 - `API Base URL`：默认 `http://localhost:8000`
 - `API Key`：服务启动时 `FACE_API_KEY` 的值
@@ -25,6 +25,8 @@ camera-integration.html
 页面不会把 `API Key` 或 `embedding` 输出到结果区。
 
 页面在 login 完成后会自动刷新最近 login audit，同时保留手动刷新入口。audit 用于查看最近登录成功、失败、相似度、失败原因和 terminal_id。
+
+现场验收建议先点击“检查服务”。如果 `/health` 正常但 `/system/status` 失败，通常说明 API Key 缺失或错误；如果 `/health` 也失败，优先确认 `run.bat` / `run-prod.bat` 是否正在运行、API 地址是否正确、端口是否被占用。
 
 正式上线时不要让浏览器直接持有 face_api 的 `X-API-Key`。推荐由业务后端保存密钥并代理调用 face_api，浏览器只持有业务系统自己的 session/token。
 
@@ -219,6 +221,7 @@ async function recentLoginAudit() {
 ## 7. 上线检查清单
 
 - [ ] 后端服务能访问 `GET /health`。
+- [ ] `camera-integration.html` 的“检查服务”能显示服务、鉴权、推理设备和人脸库状态。
 - [ ] 受保护接口请求头包含正确 `X-API-Key`。
 - [ ] 每台摄像头配置固定 `terminal_id`。
 - [ ] login 流程先完成活体 challenge，再调用 `/auth/face-login`。

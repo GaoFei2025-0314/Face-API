@@ -28,6 +28,10 @@
     .status { display: inline-block; margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: #e8eefc; color: #1d3f8f; font-size: 13px; }
     .status.err { background: #fee4e2; color: #b42318; }
     .status.ok { background: #dcfae6; color: #067647; }
+    .status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+    .status-grid div { padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f8fafc; min-width: 0; }
+    .status-grid span { display: block; margin-bottom: 4px; color: #667085; font-size: 12px; }
+    .status-grid strong { display: block; color: #172033; font-size: 14px; overflow-wrap: anywhere; }
     .flow { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
     .flow li { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; padding: 8px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px; }
     .flow .num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #e8eefc; color: #1d3f8f; font-weight: 700; }
@@ -44,7 +48,7 @@
     .audit-table .ok { color: #067647; font-weight: 700; }
     .audit-table .err { color: #b42318; font-weight: 700; }
     @media (max-width: 860px) {
-      .grid, .row, .actions { grid-template-columns: 1fr; }
+      .grid, .row, .actions, .status-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -74,6 +78,13 @@
       <label>API Key</label>
       <input id="apiKey" type="password" placeholder="FACE_API_KEY 的值">
       <p class="hint">联调页面需要填写 API Key。正式上线时，浏览器只应持有业务系统 session/token，不应持有 face_api 的 X-API-Key。</p>
+      <div class="status-grid" aria-label="服务检查结果">
+        <div><span>服务</span><strong id="statusService">未检查</strong></div>
+        <div><span>鉴权</span><strong id="statusAuth">未检查</strong></div>
+        <div><span>推理</span><strong id="statusDevice">未检查</strong></div>
+        <div><span>人脸库</span><strong id="statusFaces">未检查</strong></div>
+      </div>
+      <p class="hint" id="statusHint">先启动 run.bat，再检查服务状态。</p>
       <label>terminal_id</label>
       <input id="terminalId" value="web-camera-01">
       <div class="row">
@@ -93,8 +104,9 @@
       <input id="userId" type="number" placeholder="10001">
       <label>username（注册用）</label>
       <input id="username" placeholder="zhangsan">
-      <div class="actions">
-        <button onclick="healthCheck()">健康检查</button>
+      <div class="actions three">
+        <button onclick="checkServiceStatus()">检查服务</button>
+        <button class="secondary" onclick="healthCheck()">健康检查</button>
         <button class="secondary" onclick="loadAudit()">最近 audit</button>
       </div>
     </section>
@@ -180,6 +192,11 @@
         `<tr><td>${code}</td><td>${info[0]}</td><td>${info[1]}</td></tr>`
       ).join("");
       document.getElementById("errorMapRows").innerHTML = rows;
+    }
+
+    function setText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
     }
 
     function getConfig() {
@@ -290,6 +307,46 @@
         throw explainError({ detail: { code: "NETWORK_ERROR", reason: String(err.message || err) } });
       } finally {
         clearTimeout(timeout);
+      }
+    }
+
+    async function checkServiceStatus() {
+      const cfg = getConfig();
+      setText("statusService", "检查中");
+      setText("statusAuth", "检查中");
+      setText("statusDevice", "检查中");
+      setText("statusFaces", "检查中");
+      setText("statusHint", "正在检查 /health 和 /system/status。");
+      try {
+        if (!cfg.base) {
+          throw explainError({ detail: { code: "VALIDATION_ERROR", reason: "API Base URL required" } });
+        }
+        const healthRes = await fetch(cfg.base + "/health");
+        const healthText = await healthRes.text();
+        const health = healthText ? JSON.parse(healthText) : {};
+        if (!healthRes.ok) throw explainError(health);
+        setText("statusService", health.status === "ok" ? "正常" : "异常");
+        try {
+          const status = await request("/system/status", { method: "GET" });
+          setText("statusAuth", status.auth_enabled ? "已启用" : "未启用");
+          setText("statusDevice", status.device || "未知");
+          setText("statusFaces", `${status.faces_count ?? 0} 条`);
+          setText("statusHint", `数据库：${status.db_path || "-"}；日志：${status.log_path || "-"}；维护模式：${status.maintenance_mode ? "开启" : "关闭"}`);
+          show({ health, status });
+        } catch (err) {
+          setText("statusAuth", err.code === "AUTH_INVALID_OR_MISSING" ? "Key 错误/缺失" : "检查失败");
+          setText("statusDevice", "未知");
+          setText("statusFaces", "未知");
+          setText("statusHint", `${err.message || "状态检查失败"}：${err.reason || "请检查 API Key"}`);
+          show({ health, protected_status_error: err });
+        }
+      } catch (err) {
+        setText("statusService", "失败");
+        setText("statusAuth", "未检查");
+        setText("statusDevice", "未知");
+        setText("statusFaces", "未知");
+        setText("statusHint", `${err.message || "服务连接失败"}：${err.reason || "确认后端已启动、地址正确"}`);
+        show(err);
       }
     }
 

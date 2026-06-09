@@ -11,8 +11,13 @@
     button { cursor: pointer; }
     section { border-top: 1px solid #d1d5db; margin-top: 20px; padding-top: 16px; }
     pre { background: #f3f4f6; padding: 12px; overflow: auto; border-radius: 4px; }
+    .hint { color: #6b7280; font-size: 13px; line-height: 1.5; }
     .danger { color: #b91c1c; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    .status-item { border: 1px solid #d1d5db; border-radius: 6px; padding: 10px; background: #f9fafb; min-width: 0; }
+    .status-item span { display: block; color: #6b7280; font-size: 12px; margin-bottom: 4px; }
+    .status-item strong { display: block; font-size: 15px; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
@@ -28,6 +33,21 @@
       <button onclick="setMaintenance(false)">退出维护模式</button>
       <button onclick="backupDb()">备份数据库</button>
     </div>
+  </section>
+
+  <section>
+    <h2>运行状态总览</h2>
+    <div class="status-grid">
+      <div class="status-item"><span>服务</span><strong id="adminStatus">未刷新</strong></div>
+      <div class="status-item"><span>推理模式</span><strong id="adminDevice">未刷新</strong></div>
+      <div class="status-item"><span>API Key</span><strong id="adminAuth">未刷新</strong></div>
+      <div class="status-item"><span>人脸数量</span><strong id="adminFaces">未刷新</strong></div>
+      <div class="status-item"><span>维护模式</span><strong id="adminMaintenance">未刷新</strong></div>
+      <div class="status-item"><span>数据库</span><strong id="adminDb">未刷新</strong></div>
+      <div class="status-item"><span>日志</span><strong id="adminLog">未刷新</strong></div>
+      <div class="status-item"><span>最近 audit</span><strong id="adminAudit">未刷新</strong></div>
+    </div>
+    <p class="hint" id="adminHint">填写 API Key 后点击“刷新概览”。</p>
   </section>
 
   <section>
@@ -49,15 +69,59 @@
   </section>
 
   <script>
+    function setText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
     function headers() {
       return { "Content-Type": "application/json", "X-API-Key": document.getElementById("apiKey").value };
     }
-    async function call(path, options = {}) {
-      const res = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
-      const data = await res.json();
+
+    function formatError(data) {
+      const detail = data && data.detail;
+      if (detail && typeof detail === "object") {
+        return `${detail.code || "ERROR"}：${detail.message || "请求失败"}。${detail.reason || ""}`;
+      }
+      return JSON.stringify(data);
+    }
+
+    function show(data) {
       document.getElementById("output").textContent = JSON.stringify(data, null, 2);
     }
-    function loadOverview() { call("/admin/overview"); }
+
+    function renderOverview(data) {
+      const status = data.status || {};
+      const audit = data.audit_summary || {};
+      setText("adminStatus", status.status === "ok" ? "正常" : "异常");
+      setText("adminDevice", status.device || "未知");
+      setText("adminAuth", status.auth_enabled ? "已启用" : "未启用");
+      setText("adminFaces", String(status.faces_count ?? (data.faces && data.faces.count) ?? "-"));
+      setText("adminMaintenance", data.maintenance_mode ? "开启" : "关闭");
+      setText("adminDb", status.db_path || "-");
+      setText("adminLog", status.log_path || "-");
+      setText("adminAudit", `成功 ${audit.success_count ?? 0} / 失败 ${audit.failure_count ?? 0}`);
+      setText("adminHint", "概览已刷新。高风险操作前确认维护模式和备份目录。");
+    }
+
+    async function call(path, options = {}, onSuccess) {
+      try {
+        const res = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : {};
+        if (!res.ok) throw data;
+        show(data);
+        if (onSuccess) onSuccess(data);
+        return data;
+      } catch (err) {
+        const message = formatError(err);
+        setText("adminHint", message);
+        show({ error: message, raw: err });
+        return null;
+      }
+    }
+
+    function loadOverview() { call("/admin/overview", {}, renderOverview); }
     function setMaintenance(enabled) {
       call("/admin/maintenance", { method: "POST", body: JSON.stringify({ enabled }) });
     }
