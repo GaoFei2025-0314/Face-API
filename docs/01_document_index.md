@@ -2,6 +2,13 @@
 
 这份文件是文档导航。以后不知道看哪里，先看这里。
 
+## 按角色阅读
+
+- 新同事：先看 `README.md`、`docs/02_product/01_prd.md`、`architecture.html`。
+- 前端接入：先看 `docs/04_usage/01_api_integration.md`、`docs/04_usage/02_frontend_business_integration.md`、`camera-integration.html`。
+- 运维交付：先看 `docs/03_deployment/01_runbook.md`、`admin.html`、`architecture.html` 的运维流程。
+- 项目负责人：先看 `docs/02_product/02_quarterly_plan.md`、`docs/05_architecture/01_architecture.md`、`docs/90_archive/04_acceptance/01_v1.7_acceptance_record.md`。
+
 ## 1. 只想知道项目是什么
 
 看：

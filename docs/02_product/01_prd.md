@@ -462,6 +462,17 @@ Goals:
 - Provide install/uninstall scripts for both long-running options.
 - Keep stronger anti-spoofing models and Faiss/ANN index out of V1.7 unless separately approved.
 
+### Phase 8: Field Delivery And Maintainability
+
+Status: planned for V1.8.
+
+Goals:
+
+- Make the local acceptance and runtime status flow easier for field operators.
+- Reduce `main.py` complexity without changing public API behavior.
+- Keep the interactive architecture page useful for training and handoff.
+- Keep documentation entry points aligned with actual completed versions.
+
 ## 11. Acceptance Criteria
 
 The product direction is satisfied when:

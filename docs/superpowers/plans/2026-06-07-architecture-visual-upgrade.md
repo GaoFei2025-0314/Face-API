@@ -1,5 +1,7 @@
 # Architecture Visual Upgrade Implementation Plan
 
+> 状态同步：本计划对应的实现已完成并提交；checkbox 已按当前仓库状态同步。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Upgrade `architecture.html` from a usable interactive graph into a clearer, more polished presentation-grade architecture map.
@@ -25,7 +27,7 @@
 **Files:**
 - Modify: `architecture.html`
 
-- [ ] **Step 1: Replace core layout dimensions**
+- [x] **Step 1: Replace core layout dimensions**
 
 In the `<style>` block, adjust the main layout to reduce side-panel weight and release space to the graph:
 
@@ -44,7 +46,7 @@ Expected:
 - Right panel becomes slightly narrower.
 - Center graph gets more visual priority.
 
-- [ ] **Step 2: Add lane, card, and edge CSS**
+- [x] **Step 2: Add lane, card, and edge CSS**
 
 Add these CSS rules after the existing `.canvas-header p` rule:
 
@@ -157,7 +159,7 @@ Replace the existing `.edge`, `.edge.active`, `.edge.dimmed`, `.node`, `.node re
 }
 ```
 
-- [ ] **Step 3: Compact side controls**
+- [x] **Step 3: Compact side controls**
 
 Change `.sidebar` padding from `22px` to:
 
@@ -185,7 +187,7 @@ Change `.choice` padding:
 }
 ```
 
-- [ ] **Step 4: Verify CSS syntax manually**
+- [x] **Step 4: Verify CSS syntax manually**
 
 Run:
 
@@ -202,7 +204,7 @@ Expected:
 **Files:**
 - Modify: `architecture.html`
 
-- [ ] **Step 1: Add lane data before `nodeTypes`**
+- [x] **Step 1: Add lane data before `nodeTypes`**
 
 Inside the `<script>` block, before `const nodeTypes = {`, add:
 
@@ -216,7 +218,7 @@ const lanes = [
 ];
 ```
 
-- [ ] **Step 2: Update node data fields**
+- [x] **Step 2: Update node data fields**
 
 For every object in `nodes`, add these fields:
 
@@ -244,7 +246,7 @@ Use these exact values per node:
 | `health` | `ops-docs` | `normal` | `/health / logs` | `讲服务起来后如何确认它健康，以及出问题去哪看。` |
 | `docs` | `ops-docs` | `normal` | `docs / specs` | `讲需求、计划、交付和后续维护都从文档入口开始。` |
 
-- [ ] **Step 3: Reposition nodes**
+- [x] **Step 3: Reposition nodes**
 
 Replace each node's `x` and `y` with:
 
@@ -263,7 +265,7 @@ Replace each node's `x` and `y` with:
 | `health` | 520 | 654 |
 | `docs` | 820 | 654 |
 
-- [ ] **Step 4: Add edge kind**
+- [x] **Step 4: Add edge kind**
 
 For every edge in `edges`, add `kind`.
 
@@ -279,7 +281,7 @@ Use `kind: "primary"` for:
 
 Use `kind: "secondary"` for the remaining edges.
 
-- [ ] **Step 5: Run JavaScript syntax check**
+- [x] **Step 5: Run JavaScript syntax check**
 
 Run:
 
@@ -300,7 +302,7 @@ JS syntax OK
 **Files:**
 - Modify: `architecture.html`
 
-- [ ] **Step 1: Add lane SVG group**
+- [x] **Step 1: Add lane SVG group**
 
 In the SVG viewport, change:
 
@@ -329,7 +331,7 @@ add:
 const laneLayer = document.getElementById("lanes");
 ```
 
-- [ ] **Step 2: Add size helpers after `typeOf`**
+- [x] **Step 2: Add size helpers after `typeOf`**
 
 ```javascript
 function sizeOf(node) {
@@ -356,7 +358,7 @@ function activeLaneIds() {
 }
 ```
 
-- [ ] **Step 3: Update `centerOf`**
+- [x] **Step 3: Update `centerOf`**
 
 Replace `centerOf(node)` with:
 
@@ -367,7 +369,7 @@ function centerOf(node) {
 }
 ```
 
-- [ ] **Step 4: Add `renderLanes` before `renderEdges`**
+- [x] **Step 4: Add `renderLanes` before `renderEdges`**
 
 ```javascript
 function renderLanes() {
@@ -381,7 +383,7 @@ function renderLanes() {
 }
 ```
 
-- [ ] **Step 5: Update `renderEdges` class**
+- [x] **Step 5: Update `renderEdges` class**
 
 In `renderEdges`, change the `class` expression to include edge kind:
 
@@ -389,7 +391,7 @@ In `renderEdges`, change the `class` expression to include edge kind:
 class="edge ${edge.kind === "primary" ? "primary" : "secondary"}${active ? " active" : ""}${dimmed ? " dimmed" : ""}"
 ```
 
-- [ ] **Step 6: Replace `renderNodes`**
+- [x] **Step 6: Replace `renderNodes`**
 
 Replace the current `renderNodes` with:
 
@@ -414,7 +416,7 @@ function renderNodes() {
 }
 ```
 
-- [ ] **Step 7: Update `renderGraph`**
+- [x] **Step 7: Update `renderGraph`**
 
 Replace:
 
@@ -437,7 +439,7 @@ function renderGraph() {
 }
 ```
 
-- [ ] **Step 8: Run syntax and diff checks**
+- [x] **Step 8: Run syntax and diff checks**
 
 Run:
 
@@ -458,7 +460,7 @@ Expected:
 **Files:**
 - Modify: `architecture.html`
 
-- [ ] **Step 1: Add detail panel CSS**
+- [x] **Step 1: Add detail panel CSS**
 
 After `.tag` CSS, add:
 
@@ -492,7 +494,7 @@ After `.tag` CSS, add:
 }
 ```
 
-- [ ] **Step 2: Add `listCompact` after `list`**
+- [x] **Step 2: Add `listCompact` after `list`**
 
 ```javascript
 function listCompact(items) {
@@ -500,7 +502,7 @@ function listCompact(items) {
 }
 ```
 
-- [ ] **Step 3: Replace `renderDetails` body**
+- [x] **Step 3: Replace `renderDetails` body**
 
 Inside `renderDetails`, replace `details.innerHTML = ...` with:
 
@@ -537,7 +539,7 @@ details.innerHTML = `
 `;
 ```
 
-- [ ] **Step 4: Verify details update after node click**
+- [x] **Step 4: Verify details update after node click**
 
 Run syntax check:
 
@@ -556,7 +558,7 @@ Expected:
 **Files:**
 - Verify: `architecture.html`
 
-- [ ] **Step 1: Run final static checks**
+- [x] **Step 1: Run final static checks**
 
 ```powershell
 $html = Get-Content -Raw -Path "H:\AI_test\face_api\architecture.html"
@@ -572,7 +574,7 @@ Expected:
 - No external dependency matches.
 - No `git diff --check` output.
 
-- [ ] **Step 2: Capture desktop screenshot**
+- [x] **Step 2: Capture desktop screenshot**
 
 ```powershell
 $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
@@ -588,7 +590,7 @@ Expected:
 - File length is greater than 20 KB.
 - Visual inspection shows lanes, larger module cards, and clear main chain.
 
-- [ ] **Step 3: Capture narrow screenshot**
+- [x] **Step 3: Capture narrow screenshot**
 
 ```powershell
 $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
@@ -604,7 +606,7 @@ Expected:
 - File length is greater than 20 KB.
 - Visual inspection shows content is readable and not horizontally crushed.
 
-- [ ] **Step 4: Remove temporary screenshots**
+- [x] **Step 4: Remove temporary screenshots**
 
 ```powershell
 Remove-Item -LiteralPath "H:\AI_test\face_api\architecture-upgrade-desktop.png","H:\AI_test\face_api\architecture-upgrade-mobile.png" -Force
@@ -616,7 +618,7 @@ Expected:
 - Screenshot files are removed.
 - Only intended source files remain modified.
 
-- [ ] **Step 5: Run unit tests**
+- [x] **Step 5: Run unit tests**
 
 ```powershell
 D:\anaconda3\envs\face_api\python.exe -m unittest discover -s tests -v
@@ -632,7 +634,7 @@ Expected:
 - Modify: `architecture.html`
 - Optional modify: `docs/05_architecture/01_architecture.md`
 
-- [ ] **Step 1: Inspect final diff**
+- [x] **Step 1: Inspect final diff**
 
 ```powershell
 git diff -- architecture.html docs/05_architecture/01_architecture.md
@@ -643,7 +645,7 @@ Expected:
 - Diff only includes visual upgrade and optional page-maintenance wording.
 - No backend files changed.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```powershell
 git add -- architecture.html docs/05_architecture/01_architecture.md
@@ -654,7 +656,7 @@ Expected:
 
 - Commit succeeds.
 
-- [ ] **Step 3: Final status**
+- [x] **Step 3: Final status**
 
 ```powershell
 git status --short

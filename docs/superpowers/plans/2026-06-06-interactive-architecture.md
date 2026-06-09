@@ -1,5 +1,7 @@
 # Interactive Architecture Implementation Plan
 
+> 状态同步：本计划对应的实现已完成并提交；checkbox 已按当前仓库状态同步。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a polished, offline, interactive `architecture.html` page that explains the face_api architecture through an SVG graph, role views, flow highlighting, and node details.
@@ -32,7 +34,7 @@
 **Files:**
 - Create: `architecture.html`
 
-- [ ] **Step 1: Create the page skeleton**
+- [x] **Step 1: Create the page skeleton**
 
 Create `architecture.html` with this structure:
 
@@ -360,7 +362,7 @@ Create `architecture.html` with this structure:
 </html>
 ```
 
-- [ ] **Step 2: Open the page locally**
+- [x] **Step 2: Open the page locally**
 
 Run:
 
@@ -376,7 +378,7 @@ Expected:
 - Right panel is empty until Task 2 adds data.
 - No network access is required.
 
-- [ ] **Step 3: Commit the shell**
+- [x] **Step 3: Commit the shell**
 
 Run:
 
@@ -394,7 +396,7 @@ Expected:
 **Files:**
 - Modify: `architecture.html`
 
-- [ ] **Step 1: Replace the placeholder script with graph data**
+- [x] **Step 1: Replace the placeholder script with graph data**
 
 Replace the placeholder script body with data definitions. Keep this exact shape so later tasks can add behavior without changing the data contract:
 
@@ -586,7 +588,7 @@ const edges = [
 ];
 ```
 
-- [ ] **Step 2: Add render helpers below the data**
+- [x] **Step 2: Add render helpers below the data**
 
 Append this code after the data:
 
@@ -714,7 +716,7 @@ updateTransform();
 renderGraph();
 ```
 
-- [ ] **Step 3: Verify initial rendering**
+- [x] **Step 3: Verify initial rendering**
 
 Run:
 
@@ -728,7 +730,7 @@ Expected:
 - The right panel shows "face_api 总览".
 - No browser console syntax error appears.
 
-- [ ] **Step 4: Commit graph rendering**
+- [x] **Step 4: Commit graph rendering**
 
 Run:
 
@@ -746,7 +748,7 @@ Expected:
 **Files:**
 - Modify: `architecture.html`
 
-- [ ] **Step 1: Add role and flow data after `edges`**
+- [x] **Step 1: Add role and flow data after `edges`**
 
 ```javascript
 const roles = {
@@ -785,7 +787,7 @@ const flows = {
 };
 ```
 
-- [ ] **Step 2: Add control rendering functions after `renderGraph`**
+- [x] **Step 2: Add control rendering functions after `renderGraph`**
 
 ```javascript
 function renderControls() {
@@ -845,7 +847,7 @@ function resetView() {
 }
 ```
 
-- [ ] **Step 3: Add event handling after the control functions**
+- [x] **Step 3: Add event handling after the control functions**
 
 ```javascript
 function clientPoint(event) {
@@ -943,7 +945,7 @@ graph.addEventListener("pointerup", (event) => {
 });
 ```
 
-- [ ] **Step 4: Update initialization**
+- [x] **Step 4: Update initialization**
 
 Replace the final two lines:
 
@@ -960,7 +962,7 @@ updateTransform();
 renderGraph();
 ```
 
-- [ ] **Step 5: Manual interaction verification**
+- [x] **Step 5: Manual interaction verification**
 
 Run:
 
@@ -978,7 +980,7 @@ Expected:
 - "复位视图" resets pan and zoom.
 - "清除高亮" removes flow highlighting.
 
-- [ ] **Step 6: Commit interactions**
+- [x] **Step 6: Commit interactions**
 
 Run:
 
@@ -996,7 +998,7 @@ Expected:
 **Files:**
 - Modify: `architecture.html`
 
-- [ ] **Step 1: Add responsive CSS near the end of the style block**
+- [x] **Step 1: Add responsive CSS near the end of the style block**
 
 ```css
     @media (max-width: 1180px) {
@@ -1019,7 +1021,7 @@ Expected:
     }
 ```
 
-- [ ] **Step 2: Add keyboard accessibility helper after event handlers**
+- [x] **Step 2: Add keyboard accessibility helper after event handlers**
 
 ```javascript
 document.addEventListener("keydown", (event) => {
@@ -1032,7 +1034,7 @@ document.addEventListener("keydown", (event) => {
 });
 ```
 
-- [ ] **Step 3: Run JavaScript syntax check**
+- [x] **Step 3: Run JavaScript syntax check**
 
 Run:
 
@@ -1048,7 +1050,7 @@ Expected:
 JS syntax OK
 ```
 
-- [ ] **Step 4: Check that the page has no external dependencies**
+- [x] **Step 4: Check that the page has no external dependencies**
 
 Run:
 
@@ -1061,7 +1063,7 @@ Expected:
 - No matches.
 - If `http://localhost:8000/docs` appears inside graph data, that is acceptable because it is displayed as text in the details panel, not loaded as a dependency.
 
-- [ ] **Step 5: Run whitespace check**
+- [x] **Step 5: Run whitespace check**
 
 Run:
 
@@ -1073,7 +1075,7 @@ Expected:
 
 - No output.
 
-- [ ] **Step 6: Commit polish**
+- [x] **Step 6: Commit polish**
 
 Run:
 
@@ -1094,7 +1096,7 @@ Expected:
 - Modify: `docs/05_architecture/01_architecture.md`
 - Modify: `AGENTS.md`
 
-- [ ] **Step 1: Update `README.md`**
+- [x] **Step 1: Update `README.md`**
 
 Add this near the beginning, after the existing "不知道该看哪份文档" block:
 
@@ -1104,7 +1106,7 @@ Add this near the beginning, after the existing "不知道该看哪份文档" bl
 - `architecture.html`
 ```
 
-- [ ] **Step 2: Update `docs/01_document_index.md`**
+- [x] **Step 2: Update `docs/01_document_index.md`**
 
 In section "5. 想看架构", change the "看：" list to include:
 
@@ -1120,7 +1122,7 @@ Add this under the "作用：" list:
 - `architecture.html`：交互式架构图，适合给同事演示整体结构、角色视图和关键流程。
 ```
 
-- [ ] **Step 3: Update `docs/05_architecture/01_architecture.md`**
+- [x] **Step 3: Update `docs/05_architecture/01_architecture.md`**
 
 Add this after the opening "优先看这一份。" paragraph:
 
@@ -1132,7 +1134,7 @@ Add this after the opening "优先看这一份。" paragraph:
 它是交互式架构图，适合演示角色视图、注册 / 登录 / 搜索 / 运维 / 备份恢复流程。本文负责更详细的文字解释，静态 SVG 负责一页式归档，`architecture.html` 负责现场讲解。
 ```
 
-- [ ] **Step 4: Update `AGENTS.md`**
+- [x] **Step 4: Update `AGENTS.md`**
 
 In the "Documentation coupling" section, extend the list with:
 
@@ -1146,7 +1148,7 @@ Add this sentence after the list:
 When module boundaries, route groups, startup scripts, runtime configuration, data storage, or documentation structure change, check whether `architecture.html` needs to be updated.
 ```
 
-- [ ] **Step 5: Verify documentation references**
+- [x] **Step 5: Verify documentation references**
 
 Run:
 
@@ -1158,7 +1160,7 @@ Expected:
 
 - Each of the four files has at least one match.
 
-- [ ] **Step 6: Commit documentation updates**
+- [x] **Step 6: Commit documentation updates**
 
 Run:
 
@@ -1180,7 +1182,7 @@ Expected:
 - Verify: `docs/05_architecture/01_architecture.md`
 - Verify: `AGENTS.md`
 
-- [ ] **Step 1: Run final JavaScript syntax check**
+- [x] **Step 1: Run final JavaScript syntax check**
 
 Run:
 
@@ -1196,7 +1198,7 @@ Expected:
 JS syntax OK
 ```
 
-- [ ] **Step 2: Run final external dependency check**
+- [x] **Step 2: Run final external dependency check**
 
 Run:
 
@@ -1208,7 +1210,7 @@ Expected:
 
 - No matches.
 
-- [ ] **Step 3: Run final whitespace check**
+- [x] **Step 3: Run final whitespace check**
 
 Run:
 
@@ -1220,7 +1222,7 @@ Expected:
 
 - No output.
 
-- [ ] **Step 4: Open final page**
+- [x] **Step 4: Open final page**
 
 Run:
 
@@ -1237,7 +1239,7 @@ Expected:
 - Drag, pan, zoom, reset, and clear highlight work.
 - The page looks suitable for projector demonstration.
 
-- [ ] **Step 5: Inspect final git status**
+- [x] **Step 5: Inspect final git status**
 
 Run:
 
@@ -1250,7 +1252,7 @@ Expected:
 - Only unrelated pre-existing workspace changes remain, or the working tree is clean.
 - No generated temp files were added.
 
-- [ ] **Step 6: Final handoff**
+- [x] **Step 6: Final handoff**
 
 Report:
 
