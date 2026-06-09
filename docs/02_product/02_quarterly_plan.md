@@ -1,8 +1,8 @@
 # face_api 2026 Q2 季度计划与进度看板
 
-> 当前日期：2026-06-06  
+> 当前日期：2026-06-09
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：`a1bdf64 feat: complete roadmap v1.3-v1.6`
+> 当前版本基线：V1.8 现场交付与维护闭环
 
 ## 1. 本季度目标
 
@@ -22,6 +22,10 @@
 | V1.6 | 性能与规模化能力 | 已完成 | `specs/017-performance-scale/tasks.md` |
 | V1.7.1 | 摄像头注册登录闭环验收 | 已完成 | `specs/018-camera-acceptance-loop/tasks.md` |
 | V1.7.2 | Windows 长期运行加固 | 已完成 | `specs/019-windows-long-running/tasks.md` |
+| V1.8.1 | 文档与版本基线收口 | 已完成 | `1f5e376 docs: align v1.8 delivery maintenance baseline` |
+| V1.8.2 | `main.py` 可维护性拆分 | 已完成 | `06e8555`、`a9625fd`、`0473080`、`1558959` |
+| V1.8.3 | 现场验收台与运行状态总览 | 已完成 | `5968483 feat: improve local field acceptance status` |
+| V1.8.4 | 交互式架构图演示增强 | 已完成 | `fc40854 docs: enhance architecture demo mode` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -95,18 +99,18 @@ a1bdf64 feat: complete roadmap v1.3-v1.6
 - code review 问题已处理或记录为残余风险。
 - 有 commit。
 
-## 7. 下一版本计划
+## 7. V1.8 完成状态
 
-下一版本建议按 V1.8 推进，主题是“现场交付与维护闭环”。
+V1.8 已按“现场交付与维护闭环”完成，重点不是新增业务平台能力，而是让 face_api 更容易交付、排障、讲解和维护。
 
-| 子版本 | 主题 | 建议顺序 |
+| 子版本 | 主题 | 状态 |
 |---|---|---|
-| V1.8.1 | 文档与版本基线收口 | 先做 |
-| V1.8.2 | `main.py` 可维护性拆分 | 第二步 |
-| V1.8.3 | 现场验收台与运行状态总览 | 第三步 |
-| V1.8.4 | 交互式架构图演示增强 | 第四步 |
+| V1.8.1 | 文档与版本基线收口 | 已完成 |
+| V1.8.2 | `main.py` 可维护性拆分 | 已完成 |
+| V1.8.3 | 现场验收台与运行状态总览 | 已完成 |
+| V1.8.4 | 交互式架构图演示增强 | 已完成 |
 
-V1.8 的目标不是新增业务平台能力，而是让 face_api 更容易交付、排障、讲解和维护。
+V1.8 验收记录见 `docs/90_archive/04_acceptance/02_v1.8_acceptance_record.md`。
 
 ## 8. 每周检查节奏
 

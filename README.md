@@ -1,7 +1,7 @@
 # 人脸识别 API 运行与使用说明
 
-> 最后同步：2026-05-27  
-> 适用阶段：face_api modularization phase-1
+> 最后同步：2026-06-09
+> 适用阶段：V1.8 现场交付与维护闭环
 
 这是 **首次接手时优先阅读** 的文档。
 
@@ -12,6 +12,8 @@
 如果你想先用一张图理解整体架构，可以直接双击：
 
 - `architecture.html`
+
+它是交互式架构讲解页，支持演示模式、流程播放和 SVG 导出。
 
 如果你要把控季度进度和功能边界，看：
 
@@ -86,7 +88,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - Swagger：`http://localhost:8000/docs`
 - OpenAPI：`http://localhost:8000/openapi.json`
 - 联调页：直接打开 `test.html`
-- 摄像头接入示例：直接打开 `camera-integration.html`
+- 摄像头接入示例：直接打开 `camera-integration.html`，可做服务检查、注册、登录、活体和 audit 验收
 
 ---
 
