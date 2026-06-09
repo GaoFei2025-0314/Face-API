@@ -8,6 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Keep the MVP shape small: the business code currently lives in `main.py`, `face_engine.py`, and `storage.py`. Prefer extending these files while they remain focused and under roughly 500 lines. Do not framework-ize `test.html` or the `.bat` scripts.
 
+`api_errors.py` owns structured error definitions and Chinese reason text. Route handlers should call `raise_api_error(...)` instead of constructing ad hoc `HTTPException` payloads.
+
 ## Common commands
 
 Use Windows commands unless the user explicitly asks for another shell.
