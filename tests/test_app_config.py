@@ -35,6 +35,30 @@ class AppConfigTest(unittest.TestCase):
         self.assertEqual(settings.face_model, "buffalo_l")
         self.assertEqual(settings.face_det_size, 640)
 
+    def test_challenge_max_frames_default_is_not_lower_than_min_frames(self):
+        with patch.dict(
+            os.environ,
+            {"FACE_DB_PATH": "faces.db", "FACE_CHALLENGE_MIN_FRAMES": "40"},
+            clear=True,
+        ):
+            settings = load_settings()
+
+        self.assertEqual(settings.face_challenge_min_frames, 40)
+        self.assertEqual(settings.face_challenge_max_frames, 40)
+
+    def test_challenge_max_frames_rejects_value_lower_than_min_frames(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FACE_DB_PATH": "faces.db",
+                "FACE_CHALLENGE_MIN_FRAMES": "40",
+                "FACE_CHALLENGE_MAX_FRAMES": "30",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "FACE_CHALLENGE_MAX_FRAMES 必须大于等于 40"):
+                load_settings()
+
 
 if __name__ == "__main__":
     unittest.main()

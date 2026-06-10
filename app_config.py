@@ -78,6 +78,7 @@ def load_settings() -> RuntimeSettings:
     default_max_image_bytes = 8 * 1024 * 1024
     default_max_base64_image_chars = ((default_max_image_bytes + 2) // 3) * 4 + 256
     challenge_min_frames = env_int("FACE_CHALLENGE_MIN_FRAMES", 10, 1)
+    challenge_max_frames_default = max(30, challenge_min_frames)
 
     settings = RuntimeSettings(
         environment=environment,
@@ -108,7 +109,11 @@ def load_settings() -> RuntimeSettings:
         face_challenge_ttl_seconds=env_int("FACE_CHALLENGE_TTL_SECONDS", 60, 1),
         face_challenge_action_seconds=env_int("FACE_CHALLENGE_ACTION_SECONDS", 10, 1),
         face_challenge_min_frames=challenge_min_frames,
-        face_challenge_max_frames=env_int("FACE_CHALLENGE_MAX_FRAMES", 30, challenge_min_frames),
+        face_challenge_max_frames=env_int(
+            "FACE_CHALLENGE_MAX_FRAMES",
+            challenge_max_frames_default,
+            challenge_min_frames,
+        ),
         face_challenge_actions=env_list("FACE_CHALLENGE_ACTIONS", ["blink"]),
         face_default_policy_profile=os.getenv("FACE_DEFAULT_POLICY_PROFILE", "default").strip() or "default",
         face_terminal_policy_map=os.getenv("FACE_TERMINAL_POLICY_MAP", "").strip(),
