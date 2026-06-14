@@ -2,7 +2,7 @@
 
 > 当前日期：2026-06-14
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：V1.9 现场验收收口与 P1/P2 小修（实施中）
+> 当前版本基线：V1.9 现场验收收口与 P1/P2 小修（已完成）
 
 ## 1. 本季度目标
 
@@ -26,7 +26,7 @@
 | V1.8.2 | `main.py` 可维护性拆分 | 已完成 | `06e8555`、`a9625fd`、`0473080`、`1558959` |
 | V1.8.3 | 现场验收台与运行状态总览 | 已完成 | `5968483 feat: improve local field acceptance status` |
 | V1.8.4 | 交互式架构图演示增强 | 已完成 | `fc40854 docs: enhance architecture demo mode` |
-| V1.9 | 现场验收收口与 P1/P2 小修 | 实施中 | `specs/ROADMAP-v1.9.md`、`specs/020-field-acceptance-closure/tasks.md` |
+| V1.9 | 现场验收收口与 P1/P2 小修 | 已完成 | `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`、`specs/020-field-acceptance-closure/tasks.md` |
 
 当前 V1.3-V1.6 已统一提交：
 

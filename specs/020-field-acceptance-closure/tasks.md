@@ -27,9 +27,9 @@
 
 **独立测试标准**：`camera-integration.html` 能完成摄像头授权、注册、login challenge、face login，并显示中文结果和最近 audit。
 
-- [ ] T013 [US2] 打开 `camera-integration.html`，记录 API 地址、API Key 配置和摄像头授权结果到 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
-- [ ] T014 [US2] 完成一次 `/faces/register` 注册，记录 user_id、username、结果和失败原因到 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`，不得记录 embedding。
-- [ ] T015 [US2] 完成一次 login challenge 和 `/auth/face-login`，记录匹配结果、similarity、活体状态和耗时到 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
+- [x] T013 [US2] 打开 `camera-integration.html`，记录 API 地址、API Key 配置和摄像头授权结果到 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
+- [x] T014 [US2] 完成一次 `/faces/register` 注册，记录 user_id、username、结果和失败原因到 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`，不得记录 embedding。
+- [x] T015 [US2] 完成一次 login challenge 和 `/auth/face-login`，记录匹配结果、similarity、活体状态和耗时到 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
 - [x] T016 [US2] 触发至少一个失败场景，确认页面显示中文 `message` 和 `reason`，记录到 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
 - [x] T017 [US2] 验证最近 login audit 展示，记录成功、失败和失败原因到 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
 - [x] T018 [US2] 如果 T013-T017 发现 P1/P2 问题，先在 `tests/test_main_api.py` 或可自动化的 HTML 检查中补失败测试，再最小修复 `camera-integration.html`、`main.py`、`api_errors.py` 或 `docs/04_usage/02_frontend_business_integration.md`。
@@ -49,4 +49,4 @@
 - [x] T024 重新运行 `git diff --check`。
 - [x] T025 重新扫描本地 HTML 外部依赖并确认无新增外部脚本、样式、`import` 或 `require`。
 - [x] T026 更新 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md` 的完成状态、验证命令、残余风险和 commit 信息。
-- [ ] T027 提交 V1.9 实施结果，建议 commit message：`feat: complete roadmap v1.9 field acceptance closure`。
+- [x] T027 提交 V1.9 实施结果，建议 commit message：`feat: complete roadmap v1.9 field acceptance closure`。
