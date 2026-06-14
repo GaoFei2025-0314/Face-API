@@ -34,7 +34,7 @@ camera-integration.html
 
 1. 打开摄像头并获取用户授权。
 2. 调用 `POST /liveness/challenges` 创建 login challenge。
-3. 在动作窗口内连续采集 10 到 30 帧。
+3. 在动作窗口内连续采集 10 到 30 帧；现场浏览器建议采集 20 到 24 帧，并在预览旁提示用户眨眼、轻微前后移动。
 4. 调用 `POST /liveness/challenges/submit` 提交连续帧。
 5. challenge 通过后采集登录图片。
 6. 调用 `POST /auth/face-login`，带上 `terminal_id` 和一次性 `challenge_id`。
@@ -216,6 +216,7 @@ async function recentLoginAudit() {
 - `GET /health` 可以自动 retry。
 - 注册、删除、恢复、face login 不建议自动无限 retry，避免重复写入或重复消费 challenge。
 - challenge 失败或过期后重新创建，不复用旧 `challenge_id`。
+- `/liveness/challenges/submit` 返回 `passed=false` 时，优先把响应里的 `reason` 展示给现场用户，把 `result_reason` 写入排障记录。
 - `terminal_id` 必须稳定，不能每次刷新页面随机生成。
 
 ## 7. 上线检查清单

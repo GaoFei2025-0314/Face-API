@@ -427,6 +427,18 @@ def get_liveness_policy() -> dict:
     }
 
 
+def liveness_failure_reason_text(reason: str) -> str:
+    if reason == "no_frames":
+        return "没有采集到可用于活体检测的连续帧，请重新打开摄像头后重试"
+    if reason.startswith("brightness_variation="):
+        return "活体动作幅度不够，请看着预览画面眨眼，并轻微前后移动或调整光线后重试"
+    if reason.startswith("sample_") and "_face_count=" in reason:
+        return "连续帧中没有稳定检测到单人脸，请让脸保持在预览画面中央，避免遮挡或离开画面"
+    if reason == "sample_face_mismatch":
+        return "连续帧中的人脸不一致，请保持同一个人完成活体动作"
+    return "活体动作未通过，请看着预览画面重新完成动作"
+
+
 def evaluate_blink_frames(frames: list[str]) -> tuple[bool, str, Optional[list[float]]]:
     if not (FACE_CHALLENGE_MIN_FRAMES <= len(frames) <= FACE_CHALLENGE_MAX_FRAMES):
         raise_api_error(400, "LIVENESS_FRAME_COUNT_INVALID")
@@ -865,12 +877,15 @@ def submit_liveness_challenge(req: LivenessChallengeSubmitReq):
     )
     elapsed = round((time.perf_counter() - t0) * 1000, 2)
     if not passed:
+        user_reason = liveness_failure_reason_text(reason)
         log_event("liveness_failed", challenge_id=req.challenge_id, terminal_id=terminal_id, reason=reason)
         return {
             "challenge_id": req.challenge_id,
             "status": "failed",
             "passed": False,
             "message": "请面对摄像头并完成眨眼后重试",
+            "reason": user_reason,
+            "result_reason": reason,
             "elapsed_ms": elapsed,
         }
     return {

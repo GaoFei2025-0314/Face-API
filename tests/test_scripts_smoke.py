@@ -222,6 +222,13 @@ class ScriptSmokeTests(unittest.TestCase):
             self.assertIn("FACE_PORT=8010", args)
             self.assertIn("FACE_PYTHON=C:\\Python310\\python.exe", args)
 
+    def test_camera_integration_uses_actionable_liveness_feedback(self):
+        html = (ROOT / "camera-integration.html").read_text(encoding="utf-8")
+
+        self.assertIn("captureFrames(24, 180", html)
+        self.assertIn("result.reason || result.result_reason", html)
+        self.assertIn("请眨眼并轻微前后移动", html)
+
 
 if __name__ == "__main__":
     unittest.main()

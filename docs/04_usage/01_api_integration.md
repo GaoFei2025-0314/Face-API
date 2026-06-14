@@ -455,6 +455,20 @@ POST /liveness/challenges/submit
 }
 ```
 
+失败返回仍为 HTTP 200，但 `passed=false`。前端应优先展示 `reason` 给现场用户，`result_reason` 用于排障记录：
+
+```json
+{
+  "challenge_id": "...",
+  "status": "failed",
+  "passed": false,
+  "message": "请面对摄像头并完成眨眼后重试",
+  "reason": "活体动作幅度不够，请看着预览画面眨眼，并轻微前后移动或调整光线后重试",
+  "result_reason": "brightness_variation=2.17",
+  "elapsed_ms": 67.51
+}
+```
+
 规则：
 
 - `challenge` 有效期 60 秒。

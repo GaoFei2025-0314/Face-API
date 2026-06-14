@@ -220,6 +220,8 @@ class LivenessChallengeSubmitResp(BaseModel):
     passed: bool
     message: str
     elapsed_ms: float
+    reason: Optional[str] = None
+    result_reason: Optional[str] = None
 
 
 class MaintenanceModeReq(BaseModel):

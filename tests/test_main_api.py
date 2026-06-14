@@ -1004,6 +1004,27 @@ class MainApiContractTests(unittest.TestCase):
             )
         self.assertEqual(exc_info.exception.status_code, 403)
 
+    def test_failed_liveness_challenge_returns_actionable_reason(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda image: module.np.ones((10, 10, 3), dtype=module.np.uint8) * 80
+        created = module.create_liveness_challenge(
+            module.LivenessChallengeCreateReq(purpose="login", terminal_id="door-1")
+        )
+
+        failed = module.submit_liveness_challenge(
+            module.LivenessChallengeSubmitReq(
+                challenge_id=created["challenge_id"],
+                purpose="login",
+                terminal_id="door-1",
+                frames=["flat"] * 10,
+            )
+        )
+
+        self.assertFalse(failed["passed"])
+        self.assertEqual(failed["result_reason"], "brightness_variation=0.0")
+        self.assertIn("动作幅度", failed["reason"])
+        self.assertNotEqual(failed["reason"], failed["message"])
+
     def test_face_login_requires_liveness_challenge_when_enabled(self):
         module = load_main_module(api_key="secret", disable_login_liveness=False)
 

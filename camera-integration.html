@@ -390,12 +390,21 @@
       }
     }
 
-    async function captureFrames(count = 12, intervalMs = 180) {
+    async function captureFrames(count = 24, intervalMs = 180, actionText = "请眨眼并轻微前后移动") {
       await ensureCamera();
       const frames = [];
+      const status = document.getElementById("cameraStatus");
       for (let i = 0; i < count; i += 1) {
+        if (status) {
+          status.className = "status";
+          status.textContent = `${actionText}，正在采集 ${i + 1}/${count}`;
+        }
         frames.push(captureBase64());
         await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+      if (status) {
+        status.className = "status ok";
+        status.textContent = "活体帧采集完成，正在提交";
       }
       return frames;
     }
@@ -410,7 +419,8 @@
 
     async function submitChallenge(challenge) {
       const cfg = getConfig();
-      const frames = await captureFrames(12, 180);
+      setStep("loginStatus", "", "请眨眼并轻微前后移动");
+      const frames = await captureFrames(24, 180, "请眨眼并轻微前后移动");
       const result = await request("/liveness/challenges/submit", {
         method: "POST",
         body: JSON.stringify({
@@ -425,7 +435,7 @@
           detail: {
             code: "LIVENESS_CHALLENGE_FAILED",
             message: "活体动作未通过",
-            reason: result.result_reason || result.message || "请重新完成活体动作"
+            reason: result.reason || result.result_reason || result.message || "请重新完成活体动作"
           }
         });
       }
