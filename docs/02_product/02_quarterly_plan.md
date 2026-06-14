@@ -1,8 +1,8 @@
 # face_api 2026 Q2 季度计划与进度看板
 
-> 当前日期：2026-06-09
+> 当前日期：2026-06-14
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：V1.8 现场交付与维护闭环
+> 当前版本基线：V1.9 现场验收收口与 P1/P2 小修（规划中）
 
 ## 1. 本季度目标
 
@@ -26,6 +26,7 @@
 | V1.8.2 | `main.py` 可维护性拆分 | 已完成 | `06e8555`、`a9625fd`、`0473080`、`1558959` |
 | V1.8.3 | 现场验收台与运行状态总览 | 已完成 | `5968483 feat: improve local field acceptance status` |
 | V1.8.4 | 交互式架构图演示增强 | 已完成 | `fc40854 docs: enhance architecture demo mode` |
+| V1.9 | 现场验收收口与 P1/P2 小修 | 规划中 | `specs/ROADMAP-v1.9.md`、`specs/020-field-acceptance-closure/tasks.md` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -112,7 +113,26 @@ V1.8 已按“现场交付与维护闭环”完成，重点不是新增业务平
 
 V1.8 验收记录见 `docs/90_archive/04_acceptance/02_v1.8_acceptance_record.md`。
 
-## 8. 每周检查节奏
+## 8. V1.9 下一版本计划
+
+V1.9 建议作为本季度最后的收口版本，不继续扩大产品边界。它的目标是把 V1.8 已交付能力放到真实 Windows 工作站、真实摄像头链路和交付文档中验证清楚。
+
+V1.9 执行入口：
+
+```text
+/goal Implement face_api Roadmap V1.9 - Field Acceptance Closure and P1/P2 Fixes
+```
+
+V1.9 验收记录见 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
+
+V1.9 准入和边界：
+
+- 先做现场验收，再做小修。
+- 只修复验收中确认的 P1/P2 问题。
+- 不新增公开 API、环境变量、鉴权机制或大功能。
+- P3/P4 问题只记录，不临时扩范围。
+
+## 9. 每周检查节奏
 
 每周只看 5 件事：
 

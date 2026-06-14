@@ -7,7 +7,7 @@
 - 新同事：先看 `README.md`、`docs/02_product/01_prd.md`、`architecture.html`。
 - 前端接入：先看 `docs/04_usage/01_api_integration.md`、`docs/04_usage/02_frontend_business_integration.md`、`camera-integration.html`。
 - 运维交付：先看 `docs/03_deployment/01_runbook.md`、`admin.html`、`architecture.html` 的演示模式、流程播放和运维流程。
-- 项目负责人：先看 `docs/02_product/02_quarterly_plan.md`、`docs/05_architecture/01_architecture.md`、`docs/90_archive/04_acceptance/01_v1.7_acceptance_record.md`。
+- 项目负责人：先看 `docs/02_product/02_quarterly_plan.md`、`docs/05_architecture/01_architecture.md`、`docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
 
 ## 1. 只想知道项目是什么
 
@@ -107,13 +107,15 @@
 - `specs/README.md`
 - `specs/ROADMAP-v1.2.md`
 - `specs/ROADMAP-v1.7.md`
+- `specs/ROADMAP-v1.9.md`
 - `specs/014-production-runtime-monitoring/`
 - `specs/015-recognition-security-accuracy/`
 - `specs/016-frontend-business-integration/`
 - `specs/017-performance-scale/`
 - `specs/018-camera-acceptance-loop/`
 - `specs/019-windows-long-running/`
-- `docs/90_archive/04_acceptance/01_v1.7_acceptance_record.md`
+- `specs/020-field-acceptance-closure/`
+- `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`
 
 作用：
 
