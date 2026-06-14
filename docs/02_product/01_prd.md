@@ -464,7 +464,7 @@ Goals:
 
 ### Phase 8: Field Delivery And Maintainability
 
-Status: planned for V1.8.
+Status: complete for Roadmap V1.8.
 
 Goals:
 
@@ -472,6 +472,18 @@ Goals:
 - Reduce `main.py` complexity without changing public API behavior.
 - Keep the interactive architecture page useful for training and handoff.
 - Keep documentation entry points aligned with actual completed versions.
+
+### Phase 9: Field Acceptance Closure
+
+Status: planned for Roadmap V1.9.
+
+Goals:
+
+- Verify Windows workstation startup, health, protected status, monitoring, and stop flows.
+- Verify the real camera register + login loop through `camera-integration.html`.
+- Verify Chinese error reasons, recent login audit, maintenance mode, backup, and restore.
+- Fix only confirmed P1/P2 issues found during acceptance; record P3/P4 issues for later.
+- Keep public APIs, environment variables, and authentication behavior stable unless a P1/P2 fix explicitly requires a documented change.
 
 ## 11. Acceptance Criteria
 
