@@ -95,6 +95,9 @@ class FakeFaceDB:
             "target_latency_ms": 1000,
         }
 
+    def get_search_cache_summary(self):
+        return self.get_search_cache_status()
+
     def get_search_benchmark_summary(self):
         return {
             "mode": "exact",
@@ -176,6 +179,9 @@ class FakeFaceDB:
 
     def close(self):
         return None
+
+    def close_all_connections(self):
+        self.close_all_connections_called = True
 
 
 def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None, disable_login_liveness=True):
@@ -1105,6 +1111,18 @@ class MainApiContractTests(unittest.TestCase):
         finally:
             module.set_maintenance_mode(False)
 
+    def test_admin_restore_closes_all_registered_db_connections(self):
+        module = load_main_module(api_key="secret")
+        module.set_maintenance_mode(True)
+        try:
+            module.restore_db_files = lambda backup_dir: ["faces.db"]
+            body = module.admin_restore(module.RestoreReq(backup_dir="backups/ok", confirm=True))
+
+            self.assertTrue(body["ok"])
+            self.assertTrue(module.db.close_all_connections_called)
+        finally:
+            module.set_maintenance_mode(False)
+
     def test_admin_restore_is_disabled_by_default_in_production(self):
         module = load_main_module(api_key="secret", extra_env={"FACE_ENV": "production"})
 
@@ -1292,6 +1310,38 @@ class MainApiContractTests(unittest.TestCase):
             "search_cache",
         ]:
             self.assertIn(key, data)
+
+    def test_system_status_uses_lightweight_search_cache_summary(self):
+        module = load_main_module()
+
+        def fail_if_heavy_cache_loads():
+            raise AssertionError("system status must not load the full search cache")
+
+        module.db.get_search_cache_status = fail_if_heavy_cache_loads
+        module.db.get_search_cache_summary = lambda: {
+            "ready": False,
+            "dirty": True,
+            "record_count": 0,
+            "mode": "exact",
+            "target_record_count": 50000,
+            "target_latency_ms": 1000,
+        }
+
+        data = module.system_status()
+
+        self.assertTrue(data["search_cache"]["dirty"])
+
+    def test_admin_overview_does_not_return_full_face_list(self):
+        module = load_main_module(api_key="secret")
+
+        def fail_if_full_face_list_loads():
+            raise AssertionError("admin overview must not load all face records")
+
+        module.db.list_all = fail_if_full_face_list_loads
+
+        data = module.admin_overview()
+
+        self.assertEqual(data["faces"], {"count": 0})
 
 
 if __name__ == "__main__":

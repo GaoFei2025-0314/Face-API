@@ -585,7 +585,7 @@ def get_system_status() -> dict:
             "backup_count": LOG_BACKUP_COUNT,
         },
         "duplicate_policy": DUPLICATE_POLICY,
-        "search_cache": db.get_search_cache_status(),
+        "search_cache": db.get_search_cache_summary(),
         "liveness": get_liveness_policy(),
         "recognition_policy": get_policy_for_terminal(None),
         "maintenance_mode": is_maintenance_mode(),
@@ -1095,7 +1095,7 @@ def delete_face(face_id: str):
 def admin_overview():
     return {
         "status": get_system_status(),
-        "faces": {"count": db.count(), "items": db.list_all()},
+        "faces": {"count": db.count()},
         "audit_summary": db.get_login_audit_summary(100),
         "maintenance_mode": is_maintenance_mode(),
     }
@@ -1166,7 +1166,7 @@ def admin_restore(req: RestoreReq):
         raise_api_error(503, "MAINTENANCE_MODE_REQUIRED")
     require_confirm(req.confirm)
     t0 = time.perf_counter()
-    db.close()
+    db.close_all_connections()
     restored = restore_db_files(Path(req.backup_dir))
     db.invalidate_search_cache()
     elapsed = round((time.perf_counter() - t0) * 1000, 2)

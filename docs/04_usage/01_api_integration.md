@@ -474,6 +474,8 @@ POST /liveness/challenges/submit
 - `POST /admin/backup`：备份数据库。
 - `POST /admin/restore`：维护模式 + 二次确认后恢复数据库。
 
+`/admin/overview` 只用于控制台概览，返回运行状态、`faces.count`、audit 汇总和维护模式。它不会返回全量人脸列表；需要查看人脸列表时使用 `GET /faces`。
+
 维护模式请求体：
 
 ```json

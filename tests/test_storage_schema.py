@@ -1,5 +1,7 @@
 import os
+import sqlite3
 import tempfile
+import threading
 import unittest
 
 from storage import FaceDB
@@ -96,6 +98,52 @@ class FaceDBSchemaTests(unittest.TestCase):
                 self.assertEqual(removed, 1)
                 self.assertEqual(db.count(), 0)
             finally:
+                db.close()
+
+    def test_search_cache_summary_does_not_load_embedding_matrix(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            db = FaceDB(db_path=db_path)
+            try:
+                db.add("zhangsan", [0.1] * 512, {"department": "研发部"}, 1)
+                self.assertIsNone(db._search_cache)
+
+                summary = db.get_search_cache_summary()
+
+                self.assertEqual(summary["record_count"], 1)
+                self.assertTrue(summary["dirty"])
+                self.assertIsNone(db._search_cache)
+            finally:
+                db.close()
+
+    def test_close_all_connections_closes_thread_local_connections(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            db = FaceDB(db_path=db_path)
+            connections = []
+            try:
+                connections.append(db._conn())
+
+                def open_thread_connection():
+                    connections.append(db._conn())
+
+                worker = threading.Thread(target=open_thread_connection)
+                worker.start()
+                worker.join()
+
+                self.assertGreaterEqual(len(connections), 2)
+
+                db.close_all_connections()
+
+                for conn in connections:
+                    with self.assertRaises(sqlite3.ProgrammingError):
+                        conn.execute("SELECT 1")
+            finally:
+                for conn in connections:
+                    try:
+                        conn.close()
+                    except sqlite3.ProgrammingError:
+                        pass
                 db.close()
 
 

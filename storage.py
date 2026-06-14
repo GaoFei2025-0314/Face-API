@@ -23,6 +23,9 @@ class FaceDB:
         self.db_path = db_path or os.getenv("FACE_DB_PATH", "faces.db")
         # 每个线程独立 connection
         self._local = threading.local()
+        self._connections = set()
+        self._connections_lock = threading.Lock()
+        self._connection_generation = 0
         # 写入计数，每 N 次写入做一次 checkpoint
         self._write_count = 0
         self._checkpoint_threshold = 100
@@ -35,6 +38,11 @@ class FaceDB:
     # ---------- 连接管理（线程安全）----------
     def _conn(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)
+        conn_generation = getattr(self._local, "conn_generation", None)
+        if conn is not None and conn_generation != self._connection_generation:
+            self._local.conn = None
+            self._local.conn_generation = None
+            conn = None
         if conn is None:
             conn = sqlite3.connect(self.db_path, check_same_thread=False)
             conn.row_factory = sqlite3.Row
@@ -44,7 +52,11 @@ class FaceDB:
             conn.execute("PRAGMA synchronous=NORMAL")
             # 缓存提到 64MB（你有 128GB 内存，绰绰有余）
             conn.execute("PRAGMA cache_size=-65536")
+            with self._connections_lock:
+                self._connections.add(conn)
+                conn_generation = self._connection_generation
             self._local.conn = conn
+            self._local.conn_generation = conn_generation
         return conn
 
     # ---------- 表结构 ----------
@@ -279,6 +291,20 @@ class FaceDB:
             "ready": cache["emb_matrix"] is not None or len(cache["ids"]) == 0,
             "dirty": self._search_cache_dirty,
             "record_count": len(cache["ids"]),
+            "mode": "exact",
+            "target_record_count": 50000,
+            "target_latency_ms": 1000,
+        }
+
+    def get_search_cache_summary(self) -> dict:
+        record_count = self.count()
+        cache = self._search_cache
+        cache_count = len(cache["ids"]) if cache else 0
+        cache_ready = cache is not None and not self._search_cache_dirty and cache_count == record_count
+        return {
+            "ready": record_count == 0 or cache_ready,
+            "dirty": self._search_cache_dirty,
+            "record_count": record_count,
             "mode": "exact",
             "target_record_count": 50000,
             "target_latency_ms": 1000,
@@ -646,9 +672,29 @@ class FaceDB:
     def close(self):
         conn = getattr(self._local, "conn", None)
         if conn:
+            with self._connections_lock:
+                self._connections.discard(conn)
             try:
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             except Exception:
                 pass
             conn.close()
             self._local.conn = None
+            self._local.conn_generation = None
+
+    def close_all_connections(self):
+        with self._connections_lock:
+            self._connection_generation += 1
+            connections = list(self._connections)
+            self._connections.clear()
+            for conn in connections:
+                try:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                except Exception:
+                    pass
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        self._local.conn = None
+        self._local.conn_generation = None
