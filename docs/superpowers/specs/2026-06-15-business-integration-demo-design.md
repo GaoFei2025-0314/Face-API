@@ -37,7 +37,8 @@ face_api/
 │  ├─ schemas.py
 │  ├─ face_api_client.py
 │  ├─ static/
-│  │  └─ index.html
+│  │  ├─ index.html
+│  │  └─ terminal.html
 │  └─ README.md
 ├─ scripts/
 │  ├─ run-business-demo.bat
@@ -57,7 +58,7 @@ Web 链路：
 终端链路：
 
 ```text
-terminal-demo.py / 受控终端 -> face_api:8000 -> business-demo:8010
+terminal-demo.py / terminal.html / 受控终端 -> face_api:8000 -> business-demo:8010
 ```
 
 ## 4. 核心流程
@@ -66,7 +67,7 @@ terminal-demo.py / 受控终端 -> face_api:8000 -> business-demo:8010
 
 Web 人脸登录必须走活体。`business-demo` 代理创建和提交 login challenge，再调用 `face_api /auth/face-login`。识别成功后，`business-demo` 查询自己的业务用户表，确认用户可用并签发 demo JWT。
 
-受控终端允许持有 `face_api` 的 `X-API-Key`。终端直接完成活体和 face login 后，把识别结果上报到 `business-demo`，由业务后端决定是否允许业务动作并写业务 audit。
+受控终端允许持有 `face_api` 的 `X-API-Key`。终端页面和命令行脚本直接完成活体和 face login 后，把识别结果上报到 `business-demo`，由业务后端决定是否允许业务动作并写业务 audit。
 
 ## 5. 数据模型
 
@@ -93,6 +94,7 @@ V2.0 后续实现完成时，应能验证：
 
 - `face_api:8000` 和 `business-demo:8010` 能同时启动。
 - `http://localhost:8010` 能展示统一业务接入 demo 页面。
+- `http://localhost:8010/terminal.html` 能展示受控终端 demo 页面。
 - 页面能列出示例业务用户并新增用户。
 - 用户能绑定、解绑、换脸。
 - 已绑定且启用的用户能通过活体 + 人脸登录拿到 demo JWT。

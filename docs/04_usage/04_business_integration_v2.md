@@ -38,6 +38,14 @@ http://localhost:8010
 
 是业务接入页面入口。它只调用 `business-demo`，不直接调用 `face_api`。
 
+V2.0 还规划一个受控终端页面：
+
+```text
+http://localhost:8010/terminal.html
+```
+
+该页面用于演示一体机、闸机、Windows 客户端等受控终端直接调用 `face_api` 的模式。它可以填写 `X-API-Key`，但只适用于受控内网终端，不适用于普通 Web 业务页面。
+
 ## 3. 业务用户和人脸绑定
 
 推荐流程：
@@ -54,8 +62,16 @@ http://localhost:8010
 
 - 一个业务用户只允许一个有效人脸绑定。
 - 已绑定用户再次绑定时，应提示先解绑或执行换脸。
-- 换脸流程是“删除旧 face_id -> 注册新 face_id -> 更新绑定”。
+- 换脸建议采用补偿式流程：“注册新 face_id -> 切换有效绑定 -> 删除或标记清理旧 face_id”。这样新脸注册失败时，旧绑定不会被提前破坏。
 - 业务用户资料不要写入 `face_api`，只传必要的 `user_id`、`username` 和 metadata。
+
+绑定活体由 `business-demo` 配置控制：
+
+```text
+BUSINESS_DEMO_BINDING_LIVENESS_REQUIRED=0
+```
+
+默认关闭，便于现场快速绑定。正式现场如果担心照片代绑，可以开启；开启后绑定流程必须先完成 register challenge。
 
 ## 4. Web 人脸登录
 
@@ -83,6 +99,11 @@ http://localhost:8010
 
 受控终端包括一体机、闸机、Windows 客户端、自助机等。它们由项目方管理，可以配置 `face_api` 的 `X-API-Key`。
 
+V2.0 同时规划两种终端 demo：
+
+- `http://localhost:8010/terminal.html`：页面模式，适合现场演示。
+- `scripts/terminal-demo.py`：命令行模式，适合验收和排障。
+
 推荐流程：
 
 ```text
@@ -100,7 +121,37 @@ http://localhost:8010
 - 终端失败时展示中文原因。
 - 终端上报业务后端时要带上 trace/state，便于排障。
 
-## 6. 业务层错误码建议
+## 6. business-demo API 契约
+
+这些接口属于 `business-demo`，不属于 `face_api`。
+
+| 接口 | 请求核心字段 | 响应核心字段 |
+|---|---|---|
+| `GET /api/users` | `status?` | `users[]` |
+| `POST /api/users` | `user_id`、`username`、`display_name?`、`department?` | `user` |
+| `POST /api/users/{user_id}/face-binding` | `image`、`terminal_id`、`challenge_id?` | `binding.user_id`、`binding.face_id` |
+| `DELETE /api/users/{user_id}/face-binding` | `confirm=true` | `ok`、`removed_face_id` |
+| `POST /api/users/{user_id}/face-binding/replace` | `image`、`terminal_id`、`challenge_id?` | `binding`、`old_face_id` |
+| `POST /api/auth/liveness/challenge` | `purpose=login`、`terminal_id` | `challenge_id`、`action`、`status` |
+| `POST /api/auth/liveness/submit` | `challenge_id`、`terminal_id`、`frames[]` | `passed`、`reason`、`result_reason` |
+| `POST /api/auth/face-login` | `image`、`terminal_id`、`challenge_id`、`state?` | `authenticated`、`token`、`user`、`face`、`audit_id` |
+| `GET /api/auth/me` | `Authorization: Bearer <demo-token>` | `authenticated`、`user` |
+| `POST /api/terminal/login-events` | `terminal_id`、`matched_user_id`、`similarity`、`state?`、`face_api_result` | `accepted`、`user?`、`failure_reason?`、`audit_id` |
+| `GET /api/audit/login` | `limit?`、`terminal_id?`、`success?` | `items[]`、`count` |
+
+统一错误响应：
+
+```json
+{
+  "detail": {
+    "code": "FACE_NOT_BOUND",
+    "message": "业务用户未绑定人脸",
+    "reason": "该业务用户还没有绑定人脸，请先完成绑定后再登录"
+  }
+}
+```
+
+## 7. 业务层错误码建议
 
 | code | 中文原因 |
 |---|---|
@@ -114,10 +165,11 @@ http://localhost:8010
 
 业务页面应优先展示业务层中文原因；如果错误来自 `face_api`，展示 `detail.reason`。
 
-## 7. 上线检查清单
+## 8. 上线检查清单
 
 - [ ] 浏览器不直接访问 `face_api` 受保护接口。
 - [ ] 浏览器不保存、不展示、不打印 `face_api` 的 `X-API-Key`。
+- [ ] 对 `business_demo/static/index.html` 做静态扫描，确认没有 `X-API-Key`、`FACE_API_KEY` 或 `faceApiKey`。
 - [ ] 业务后端能访问 `face_api /health`。
 - [ ] 业务后端已配置 `face_api` 地址和 API Key。
 - [ ] 业务用户先存在，再绑定人脸。
@@ -127,4 +179,5 @@ http://localhost:8010
 - [ ] 业务登录成功和失败都写入业务 audit。
 - [ ] 终端使用稳定 `terminal_id`。
 - [ ] 终端密钥只放在受控设备配置中。
+- [ ] `terminal.html` 和 `terminal-demo.py` 都只用于受控终端或验收场景。
 - [ ] Java / Spring Boot 生产接入已替换 demo JWT。

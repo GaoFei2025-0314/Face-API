@@ -183,3 +183,5 @@ class FaceAuthController {
 - 登录成功后由 Java 后端签发自己的 session、JWT 或 SSO token。
 - 业务 audit 和 `face_api` audit 是两层记录，不要混为一张表。
 - 换脸流程要考虑删除旧 `face_id` 成功但注册新脸失败的补偿策略。
+- V2.0 demo token 可用 Python 标准库 HMAC 实现；Java 生产系统应替换为自己的 session、JWT 或 SSO。
+- 如果启用绑定活体，Java 后端应在绑定前完成 register challenge，并把 `challenge_id` 传给 `face_api /faces/register`。

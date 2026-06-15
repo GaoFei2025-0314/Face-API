@@ -20,7 +20,7 @@ V2.0 的目标是把 `face_api` 从“本地识别服务和现场验收工具”
 |---|---|---|---|
 | V2.0.1 | `specs/021-business-integration-demo` | Mock 业务后端 | 新增独立 `business-demo`，模拟真实业务系统调用 `face_api` |
 | V2.0.2 | `specs/021-business-integration-demo` | Web 业务接入 Demo | 浏览器只访问业务后端，由业务后端代理调用 `face_api` 并签发 demo JWT |
-| V2.0.3 | `specs/021-business-integration-demo` | 受控终端 Demo | 终端直接调用 `face_api`，再把识别结果上报给业务后端 |
+| V2.0.3 | `specs/021-business-integration-demo` | 受控终端 Demo | 终端页面和命令行脚本直接调用 `face_api`，再把识别结果上报给业务后端 |
 | V2.0.4 | `specs/021-business-integration-demo` | Java 接入说明 | 提供 Java / Spring Boot 接口级伪代码和上线注意事项 |
 
 ## 3. 已确认决策
@@ -34,10 +34,11 @@ V2.0 的目标是把 `face_api` 从“本地识别服务和现场验收工具”
 - 业务用户必须先存在，再绑定人脸。
 - 一个业务用户只允许绑定一张人脸。
 - V2.0 支持解绑和换脸流程。
-- 登录必须活体；绑定活体可配置。
+- 登录必须活体；绑定活体通过 `BUSINESS_DEMO_BINDING_LIVENESS_REQUIRED` 可配置，默认关闭。
 - Demo 业务后端保存业务登录 audit。
 - Demo 页面由 `business-demo` 服务提供，入口为 `http://localhost:8010`。
 - 受控内网终端允许配置 `face_api` 的 `X-API-Key`。
+- 终端 demo 同时提供页面和命令行脚本。
 - V2.0 不新增 `face_api` 公开接口。
 
 ## 4. 明确不做
@@ -79,5 +80,6 @@ V2.0 完成时必须满足：
 - 未绑定、禁用、活体失败、识别失败等场景能显示中文原因。
 - 终端 demo 能直接调用 `face_api` 并向 `business-demo` 上报业务登录事件。
 - `business-demo` 能保存并查询业务登录 audit。
+- 普通 Web 页面不包含 `face_api` 的 `X-API-Key` 或 `FACE_API_KEY`。
 - Java / Spring Boot 接入说明能解释 Controller、Service、`face_api` 调用、绑定关系和业务 audit。
 - 不改变现有 `face_api` 公开接口和鉴权规则。

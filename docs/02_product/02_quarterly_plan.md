@@ -57,7 +57,7 @@ V1.9 已完成现场验证和收口。下一阶段建议进入 V2.0：把已稳�
 
 ### P1：受控终端接入 Demo
 
-- 提供 `scripts/terminal-demo.py`。
+- 提供 `http://localhost:8010/terminal.html` 和 `scripts/terminal-demo.py`。
 - 终端可直接调用 `face_api` 完成活体和 face login。
 - 终端用稳定 `terminal_id` 上报业务登录事件。
 - 业务后端能拒绝不存在、禁用或未绑定用户。
