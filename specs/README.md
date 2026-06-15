@@ -10,6 +10,7 @@
 - `ROADMAP-v1.2.md` - V1.1 完成后的 A/B/C/D 四条产品线总规划
 - `ROADMAP-v1.7.md` - 现场闭环与 Windows 长期运行版规划
 - `ROADMAP-v1.9.md` - 现场验收收口与 P1/P2 小修规划
+- `ROADMAP-v2.0.md` - 业务系统正式接入示范版规划
 
 ## 已规划开发阶段
 
@@ -73,6 +74,19 @@ Roadmap v1.9 已确认主定位为“现场验收收口与 P1/P2 小修”。关
 - 不新增公开 API、环境变量、鉴权机制或大功能。
 - P3/P4 问题只记录到验收记录或后续 backlog。
 - `/admin/overview` 保持轻量概览定位，不返回全量人脸列表。
+
+Roadmap v2.0 建议执行顺序：
+
+1. `021-business-integration-demo` - 业务接入 Demo 套件
+
+Roadmap v2.0 已确认主定位为“业务系统正式接入示范版”。关键决策包括：
+
+- `face_api` 只做人脸识别服务，不接管业务用户、登录态和权限。
+- 同时规划 Web 业务系统链路和受控终端链路。
+- Demo 后端使用 FastAPI + SQLite，真实生产接入按 Java / Spring Boot 文档替换。
+- 一个业务用户只允许一个有效人脸绑定，支持解绑和换脸。
+- 登录必须活体，绑定活体可配置。
+- 不新增 `face_api` 公开接口，新增接口只属于 `business-demo`。
 
 ## 推荐流程
 

@@ -475,7 +475,7 @@ Goals:
 
 ### Phase 9: Field Acceptance Closure
 
-Status: planned for Roadmap V1.9.
+Status: complete for Roadmap V1.9.
 
 Goals:
 
@@ -484,6 +484,19 @@ Goals:
 - Verify Chinese error reasons, recent login audit, maintenance mode, backup, and restore.
 - Fix only confirmed P1/P2 issues found during acceptance; record P3/P4 issues for later.
 - Keep public APIs, environment variables, and authentication behavior stable unless a P1/P2 fix explicitly requires a documented change.
+
+### Phase 10: Business System Integration Demo
+
+Status: planned for Roadmap V2.0.
+
+Goals:
+
+- Provide an independent mock business backend that demonstrates the recommended production integration pattern.
+- Keep `face_api` as a recognition service and keep business users, login state, permissions, and business audit in the business system.
+- Demonstrate Web browser -> business backend -> `face_api` so browsers do not hold `X-API-Key`.
+- Demonstrate controlled terminal -> `face_api` -> business backend for kiosk, gate, and Windows client scenarios.
+- Provide binding, unbinding, face replacement, face login, demo JWT, terminal event reporting, and business login audit in the demo layer.
+- Provide Java / Spring Boot pseudocode so a real Java backend can replace the mock backend.
 
 ## 11. Acceptance Criteria
 

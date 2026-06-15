@@ -6,6 +6,7 @@
 
 - 新同事：先看 `README.md`、`docs/02_product/01_prd.md`、`architecture.html`。
 - 前端接入：先看 `docs/04_usage/01_api_integration.md`、`docs/04_usage/02_frontend_business_integration.md`、`camera-integration.html`。
+- 业务系统接入：先看 `docs/04_usage/04_business_integration_v2.md`、`docs/04_usage/05_spring_boot_integration_notes.md`、`specs/ROADMAP-v2.0.md`。
 - 运维交付：先看 `docs/03_deployment/01_runbook.md`、`admin.html`、`architecture.html` 的演示模式、流程播放和运维流程。
 - 项目负责人：先看 `docs/02_product/02_quarterly_plan.md`、`docs/05_architecture/01_architecture.md`、`docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
 
@@ -51,12 +52,16 @@
 
 - `docs/04_usage/01_api_integration.md`
 - `docs/04_usage/02_frontend_business_integration.md`
+- `docs/04_usage/04_business_integration_v2.md`
+- `docs/04_usage/05_spring_boot_integration_notes.md`
 - `camera-integration.html`
 
 作用：
 
 - `04_usage/01_api_integration.md`：接口契约、请求返回、错误码。
 - `04_usage/02_frontend_business_integration.md`：摄像头 login/register 标准流程。
+- `04_usage/04_business_integration_v2.md`：V2.0 业务后端代理、终端链路、绑定、登录和 audit 边界。
+- `04_usage/05_spring_boot_integration_notes.md`：Java / Spring Boot 接入伪代码和生产注意事项。
 - `camera-integration.html`：本机或内网联调、V1.7.1 现场闭环验收页面。
 
 注意：正式前端不要直接持有 face_api 的 `X-API-Key`，应由业务后端代理调用 face_api。
@@ -108,6 +113,7 @@
 - `specs/ROADMAP-v1.2.md`
 - `specs/ROADMAP-v1.7.md`
 - `specs/ROADMAP-v1.9.md`
+- `specs/ROADMAP-v2.0.md`
 - `specs/014-production-runtime-monitoring/`
 - `specs/015-recognition-security-accuracy/`
 - `specs/016-frontend-business-integration/`
@@ -115,6 +121,7 @@
 - `specs/018-camera-acceptance-loop/`
 - `specs/019-windows-long-running/`
 - `specs/020-field-acceptance-closure/`
+- `specs/021-business-integration-demo/`
 - `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`
 
 作用：

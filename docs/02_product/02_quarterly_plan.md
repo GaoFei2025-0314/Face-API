@@ -1,8 +1,8 @@
 # face_api 2026 Q2 季度计划与进度看板
 
-> 当前日期：2026-06-14
+> 当前日期：2026-06-15
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：V1.9 现场验收收口与 P1/P2 小修（已完成）
+> 当前版本基线：V2.0 业务系统正式接入示范版（已规划）
 
 ## 1. 本季度目标
 
@@ -27,6 +27,7 @@
 | V1.8.3 | 现场验收台与运行状态总览 | 已完成 | `5968483 feat: improve local field acceptance status` |
 | V1.8.4 | 交互式架构图演示增强 | 已完成 | `fc40854 docs: enhance architecture demo mode` |
 | V1.9 | 现场验收收口与 P1/P2 小修 | 已完成 | `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`、`specs/020-field-acceptance-closure/tasks.md` |
+| V2.0 | 业务系统正式接入示范版 | 已规划 | `specs/ROADMAP-v2.0.md`、`specs/021-business-integration-demo/tasks.md` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -36,38 +37,36 @@ a1bdf64 feat: complete roadmap v1.3-v1.6
 
 ## 3. 本季度剩余重点
 
-剩余时间建议不再新增大功能，优先做现场验证和收口。
+V1.9 已完成现场验证和收口。下一阶段建议进入 V2.0：把已稳定的识别服务包装成业务系统可参考的正式接入 demo。
 
-### P0：现场运行验收
+### P0：V2.0 规划验收
 
-- 在目标 Windows 工作站启动 `run.bat`。
-- 验证 `GET /health`。
-- 验证 Swagger：`http://localhost:8000/docs`。
-- 验证 `scripts/monitor-service.ps1`。
-- 验证 `scripts/stop-service.ps1`。
-- 验证日志轮转配置能在 `/config/effective` 看到。
+- 确认 `specs/ROADMAP-v2.0.md` 的版本定位、边界和执行入口。
+- 确认 `specs/021-business-integration-demo/spec.md` 覆盖 Web 业务链路和受控终端链路。
+- 确认 `specs/021-business-integration-demo/tasks.md` 能直接作为后续 `/goal` 的任务入口。
+- 确认 `docs/04_usage/04_business_integration_v2.md` 能给业务后端和终端开发者解释清楚接入边界。
+- 确认 `docs/04_usage/05_spring_boot_integration_notes.md` 能让 Java / Spring Boot 团队理解替换方式。
 
-### P0：摄像头链路验收
+### P0：Web 业务接入 Demo
 
-- 打开 `camera-integration.html`。
-- 完成摄像头授权。
-- 完成 login challenge。
-- 完成 `/auth/face-login`。
-- 验证错误码能显示中文提示。
-- 确认正式业务前端不直接持有 `X-API-Key`。
+- 新增独立 `business-demo`，运行在 `http://localhost:8010`。
+- 页面能列出示例业务用户并新增用户。
+- 业务后端代理调用 `face_api`，浏览器不直接持有 `X-API-Key`。
+- 支持绑定、解绑、换脸、活体登录和 demo JWT。
+- 业务登录成功和失败都写入业务 audit。
 
-### P1：识别策略验收
+### P1：受控终端接入 Demo
 
-- 用真实摄像头采集明亮、过暗、过曝、模糊、距离过远样本。
-- 观察 `FACE_DET_SCORE_LOW`、`FACE_TOO_SMALL`、`FACE_TOO_DARK`、`FACE_TOO_BRIGHT`、`FACE_BLURRY` 是否符合预期。
-- 查看 `/audit/login/recent`。
-- 查看 `/policy/tuning-summary`。
+- 提供 `scripts/terminal-demo.py`。
+- 终端可直接调用 `face_api` 完成活体和 face login。
+- 终端用稳定 `terminal_id` 上报业务登录事件。
+- 业务后端能拒绝不存在、禁用或未绑定用户。
 
-### P1：性能验收
+### P1：真实 Java 接入说明
 
-- 跑小规模 benchmark，确认脚本可用。
-- 不要在真实库上使用 `--write-db`。
-- 需要 5 万规模时，先用临时 benchmark 库验证。
+- 提供 Controller、Service、`FaceApiClient`、绑定表和业务 audit 的伪代码。
+- 说明 demo JWT 如何替换成真实 session/JWT/SSO。
+- 明确 `face_api` 错误和业务错误的分层处理方式。
 
 ## 4. 功能把控规则
 
@@ -113,24 +112,33 @@ V1.8 已按“现场交付与维护闭环”完成，重点不是新增业务平
 
 V1.8 验收记录见 `docs/90_archive/04_acceptance/02_v1.8_acceptance_record.md`。
 
-## 8. V1.9 下一版本计划
+## 8. V2.0 下一版本计划
 
-V1.9 建议作为本季度最后的收口版本，不继续扩大产品边界。它的目标是把 V1.8 已交付能力放到真实 Windows 工作站、真实摄像头链路和交付文档中验证清楚。
+V2.0 建议作为下一阶段的业务接入版本。它不改变 `face_api` 公开接口，而是在 `face_api` 外围新增独立 `business-demo`，让真实业务系统能照着接入。
 
-V1.9 执行入口：
+V2.0 执行入口：
 
 ```text
-/goal Implement face_api Roadmap V1.9 - Field Acceptance Closure and P1/P2 Fixes
+/goal Implement face_api Roadmap V2.0 - Business Integration Demo Suite
 ```
 
-V1.9 验收记录见 `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
+V2.0 规划入口见：
 
-V1.9 准入和边界：
+```text
+specs/ROADMAP-v2.0.md
+specs/021-business-integration-demo/spec.md
+specs/021-business-integration-demo/plan.md
+specs/021-business-integration-demo/tasks.md
+```
 
-- 先做现场验收，再做小修。
-- 只修复验收中确认的 P1/P2 问题。
-- 不新增公开 API、环境变量、鉴权机制或大功能。
-- P3/P4 问题只记录，不临时扩范围。
+V2.0 准入和边界：
+
+- `face_api` 只做人脸识别服务。
+- 业务用户、登录态、权限和业务 audit 放在 `business-demo` 或真实业务系统。
+- 同时规划 Web 业务链路和受控终端链路。
+- Demo 用 FastAPI + SQLite，真实环境按 Java / Spring Boot 文档替换。
+- 不新增 `face_api` 公开接口。
+- 不引入完整业务平台、SSO、复杂权限系统或前端框架。
 
 ## 9. 每周检查节奏
 
