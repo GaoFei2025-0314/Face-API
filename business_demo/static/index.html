@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>face_api V2.0 业务接入 Demo</title>
+  <style>
+    :root { color-scheme: light; font-family: "Microsoft YaHei", Arial, sans-serif; }
+    body { margin: 0; background: #f4f6f8; color: #1f2933; }
+    header { background: #17324d; color: #fff; padding: 18px 24px; }
+    main { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 16px; }
+    section { background: #fff; border: 1px solid #d8dee6; border-radius: 8px; padding: 14px; }
+    h1 { margin: 0; font-size: 22px; }
+    h2 { margin: 0 0 12px; font-size: 16px; }
+    label { display: block; margin: 8px 0 4px; font-size: 13px; color: #52606d; }
+    input, textarea, button { box-sizing: border-box; width: 100%; padding: 9px; border: 1px solid #cbd2d9; border-radius: 6px; }
+    button { margin-top: 8px; background: #1769aa; color: #fff; cursor: pointer; }
+    button.secondary { background: #52606d; }
+    video { width: 100%; aspect-ratio: 4 / 3; background: #101820; border-radius: 8px; object-fit: cover; }
+    canvas { display: none; }
+    .status { margin-top: 8px; padding: 9px; border-radius: 6px; background: #e6f0fa; color: #174c7c; line-height: 1.5; }
+    .status.ok { background: #e6f4ed; color: #177245; }
+    .status.fail { background: #fdecea; color: #b42318; }
+    pre { min-height: 120px; overflow: auto; background: #101820; color: #d9e2ec; padding: 12px; border-radius: 6px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .user { padding: 8px; border-bottom: 1px solid #edf1f5; cursor: pointer; }
+    .user.active { background: #e8f2fb; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>face_api V2.0 业务接入 Demo</h1>
+  </header>
+  <main>
+    <section>
+      <h2>业务用户</h2>
+      <div id="users"></div>
+      <label>user_id</label><input id="newUserId" value="200001">
+      <label>username</label><input id="newUsername" value="demo_user">
+      <label>display_name</label><input id="newDisplayName" value="Demo User">
+      <button onclick="createUser()">新增用户</button>
+    </section>
+    <div class="grid">
+      <section>
+        <h2>绑定 / 解绑 / 换脸</h2>
+        <video id="preview" autoplay playsinline muted></video>
+        <canvas id="snapshotCanvas"></canvas>
+        <button type="button" class="secondary" onclick="ensureCamera()">打开摄像头预览</button>
+        <button type="button" class="secondary" onclick="captureToImage()">采集当前画面</button>
+        <div id="cameraStatus" class="status">等待打开摄像头。</div>
+        <label>登录或绑定图片 Base64</label>
+        <textarea id="image" rows="6"></textarea>
+        <label>terminal_id</label><input id="terminalId" value="web-business-01">
+        <button class="secondary" onclick='createChallenge("register")'>创建 Register Challenge</button>
+        <button onclick="bindFace()">绑定人脸</button>
+        <button class="secondary" onclick="replaceFace()">换脸</button>
+        <button class="secondary" onclick="unbindFace()">解绑</button>
+      </section>
+      <section>
+        <h2>Web 人脸登录</h2>
+        <label>challenge_id</label><input id="challengeId">
+        <button onclick='createChallenge("login")'>创建 Login Challenge</button>
+        <button onclick="submitChallenge()">提交活体帧</button>
+        <button onclick="faceLogin()">人脸登录</button>
+        <button class="secondary" onclick="loadAudit()">刷新业务 Audit</button>
+      </section>
+      <section>
+        <h2>当前结果</h2>
+        <pre id="result">{}</pre>
+      </section>
+      <section>
+        <h2>业务 Audit</h2>
+        <pre id="audit">{}</pre>
+      </section>
+    </div>
+  </main>
+  <script>
+    let selectedUserId = "100001";
+    let demoToken = "";
+    let challengePurpose = "login";
+    let stream = null;
+
+    function show(target, data) {
+      document.getElementById(target).textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: {"Content-Type": "application/json", ...(options.headers || {})}
+      });
+      const data = await res.json();
+      if (!res.ok) throw data;
+      return data;
+    }
+
+    async function ensureCamera() {
+      if (stream) return stream;
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      preview.srcObject = stream;
+      cameraStatus.className = "status ok";
+      cameraStatus.textContent = "摄像头预览已打开，请把人脸放在画面中央。";
+      return stream;
+    }
+
+    function captureBase64() {
+      if (!preview.videoWidth || !preview.videoHeight) {
+        throw new Error("摄像头画面尚未就绪");
+      }
+      snapshotCanvas.width = preview.videoWidth;
+      snapshotCanvas.height = preview.videoHeight;
+      snapshotCanvas.getContext("2d").drawImage(preview, 0, 0);
+      return snapshotCanvas.toDataURL("image/jpeg", 0.86);
+    }
+
+    async function captureToImage() {
+      try {
+        await ensureCamera();
+        image.value = captureBase64();
+        cameraStatus.className = "status ok";
+        cameraStatus.textContent = "当前画面已采集。";
+      } catch (err) {
+        cameraStatus.className = "status fail";
+        cameraStatus.textContent = err.message || String(err);
+      }
+    }
+
+    async function captureFrames(count = 24, intervalMs = 180) {
+      await ensureCamera();
+      const frames = [];
+      for (let i = 0; i < count; i += 1) {
+        cameraStatus.className = "status";
+        cameraStatus.textContent = `请眨眼并轻微前后移动，正在采集 ${i + 1}/${count}`;
+        frames.push(captureBase64());
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+      return frames;
+    }
+
+    async function loadUsers() {
+      const data = await api("/api/users");
+      const box = document.getElementById("users");
+      box.innerHTML = "";
+      data.users.forEach(user => {
+        const div = document.createElement("div");
+        div.className = "user" + (user.user_id === selectedUserId ? " active" : "");
+        div.textContent = `${user.user_id} / ${user.username} / ${user.status} / ${user.face_bound ? "已绑定" : "未绑定"}`;
+        div.onclick = () => { selectedUserId = user.user_id; loadUsers(); };
+        box.appendChild(div);
+      });
+    }
+
+    async function createUser() {
+      const data = await api("/api/users", {method: "POST", body: JSON.stringify({
+        user_id: newUserId.value, username: newUsername.value, display_name: newDisplayName.value
+      })});
+      selectedUserId = data.user.user_id;
+      show("result", data);
+      loadUsers();
+    }
+
+    async function bindFace() {
+      const bindImage = image.value.trim() || captureBase64();
+      const data = await api(`/api/users/${selectedUserId}/face-binding`, {method: "POST", body: JSON.stringify({
+        image: bindImage, terminal_id: terminalId.value, challenge_id: challengeId.value || null
+      })});
+      show("result", data); loadUsers();
+    }
+
+    async function replaceFace() {
+      const bindImage = image.value.trim() || captureBase64();
+      const data = await api(`/api/users/${selectedUserId}/face-binding/replace`, {method: "POST", body: JSON.stringify({
+        image: bindImage, terminal_id: terminalId.value, challenge_id: challengeId.value || null
+      })});
+      show("result", data); loadUsers();
+    }
+
+    async function unbindFace() {
+      const data = await api(`/api/users/${selectedUserId}/face-binding?confirm=true`, {method: "DELETE"});
+      show("result", data); loadUsers();
+    }
+
+    async function createChallenge(purpose = "login") {
+      challengePurpose = purpose;
+      const data = await api("/api/auth/liveness/challenge", {method: "POST", body: JSON.stringify({
+        purpose, terminal_id: terminalId.value
+      })});
+      challengeId.value = data.challenge_id;
+      show("result", data);
+    }
+
+    async function submitChallenge() {
+      const frames = await captureFrames(24, 180);
+      const data = await api("/api/auth/liveness/submit", {method: "POST", body: JSON.stringify({
+        challenge_id: challengeId.value, terminal_id: terminalId.value, frames, purpose: challengePurpose
+      })});
+      show("result", data);
+    }
+
+    async function faceLogin() {
+      const loginImage = image.value.trim() || captureBase64();
+      const data = await api("/api/auth/face-login", {method: "POST", body: JSON.stringify({
+        image: loginImage, terminal_id: terminalId.value, challenge_id: challengeId.value, state: `web-${Date.now()}`
+      })});
+      demoToken = data.token;
+      show("result", data);
+      loadAudit();
+    }
+
+    async function loadAudit() {
+      const data = await api(`/api/audit/login?terminal_id=${encodeURIComponent(terminalId.value)}`);
+      show("audit", data);
+    }
+
+    loadUsers().catch(err => show("result", err));
+  </script>
+</body>
+</html>

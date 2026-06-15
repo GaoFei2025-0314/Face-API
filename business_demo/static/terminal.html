@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>受控终端 Demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f6;
+      --panel: #ffffff;
+      --line: #d8dee6;
+      --text: #1f2933;
+      --muted: #52606d;
+      --primary: #1769aa;
+      --ok: #177245;
+      --warn: #a85b00;
+      --fail: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Microsoft YaHei", Arial, sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 1120px; margin: 0 auto; padding: 18px; }
+    h1, h2 { margin: 0 0 10px; letter-spacing: 0; }
+    p { color: var(--muted); line-height: 1.65; }
+    .grid { display: grid; grid-template-columns: minmax(340px, 1.1fr) minmax(320px, 0.9fr); gap: 14px; align-items: start; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+    label { display: block; margin-top: 8px; color: var(--muted); font-size: 13px; }
+    input, textarea, button { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid #cbd2d9; border-radius: 6px; font: inherit; }
+    textarea { min-height: 108px; resize: vertical; }
+    button { margin-top: 10px; background: var(--primary); color: #fff; border-color: var(--primary); cursor: pointer; text-align: center; }
+    button.secondary { background: #fff; color: var(--primary); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    video { width: 100%; aspect-ratio: 4 / 3; background: #101820; border-radius: 8px; object-fit: cover; }
+    canvas { display: none; }
+    .status { margin-top: 10px; padding: 10px; border-radius: 6px; background: #e6f0fa; color: #174c7c; line-height: 1.55; }
+    .status.ok { background: #e6f4ed; color: var(--ok); }
+    .status.warn { background: #fff4e5; color: var(--warn); }
+    .status.fail { background: #fdecea; color: var(--fail); }
+    pre { background: #101820; color: #d9e2ec; min-height: 260px; padding: 12px; border-radius: 6px; overflow: auto; white-space: pre-wrap; }
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>受控终端 Demo</h1>
+      <p>该页面模拟一体机、闸机或 Windows 客户端。受控终端可以配置 face_api 的 X-API-Key，并使用固定 terminal_id。</p>
+    </section>
+
+    <div class="grid">
+      <section>
+        <h2>终端预览</h2>
+        <video id="preview" autoplay playsinline muted></video>
+        <canvas id="snapshotCanvas"></canvas>
+        <button type="button" onclick="ensureCamera()">打开摄像头预览</button>
+        <button type="button" class="secondary" onclick="captureLoginImage()">采集登录图片到 Base64</button>
+        <div id="cameraStatus" class="status">等待打开摄像头。</div>
+      </section>
+
+      <section>
+        <h2>终端配置</h2>
+        <label>face_api URL</label><input id="faceApiUrl" value="http://localhost:8000">
+        <label>X-API-Key</label><input id="faceApiKey" type="password">
+        <label>business-demo URL</label><input id="businessUrl" value="http://localhost:8010">
+        <label>terminal_id</label><input id="terminal_id" value="terminal-gate-01">
+        <label>图片 Base64（可手填；为空时使用摄像头当前画面）</label><textarea id="image" rows="6"></textarea>
+        <button type="button" onclick="runTerminalLogin()">活体识别并上报</button>
+      </section>
+    </div>
+
+    <section>
+      <h2>结果</h2>
+      <pre id="result">{}</pre>
+    </section>
+  </main>
+
+  <script>
+    let stream = null;
+
+    function show(data) {
+      result.textContent = JSON.stringify(data, null, 2);
+    }
+
+    function setStatus(text, cls = "") {
+      cameraStatus.className = `status ${cls}`.trim();
+      cameraStatus.textContent = text;
+    }
+
+    function apiHeaders() {
+      const headers = {"Content-Type": "application/json"};
+      if (faceApiKey.value) headers["X-API-Key"] = faceApiKey.value;
+      return headers;
+    }
+
+    async function ensureCamera() {
+      if (stream) return stream;
+      stream = await navigator.mediaDevices.getUserMedia({video: true, audio: false});
+      preview.srcObject = stream;
+      setStatus("摄像头预览已打开，请把人脸放在画面中央。", "ok");
+      return stream;
+    }
+
+    function captureBase64() {
+      if (!preview.videoWidth || !preview.videoHeight) {
+        throw new Error("摄像头画面尚未就绪");
+      }
+      snapshotCanvas.width = preview.videoWidth;
+      snapshotCanvas.height = preview.videoHeight;
+      snapshotCanvas.getContext("2d").drawImage(preview, 0, 0);
+      return snapshotCanvas.toDataURL("image/jpeg", 0.86);
+    }
+
+    async function captureLoginImage() {
+      try {
+        await ensureCamera();
+        image.value = captureBase64();
+        setStatus("登录图片已采集，可以执行活体识别并上报。", "ok");
+      } catch (err) {
+        setStatus(err.message || String(err), "fail");
+        show({ok: false, error: err.message || String(err)});
+      }
+    }
+
+    async function requestJson(url, payload, headers) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw data;
+      }
+      return data;
+    }
+
+    async function createChallenge(headers) {
+      return requestJson(`${faceApiUrl.value}/liveness/challenges`, {
+        purpose: "login",
+        terminal_id: terminal_id.value,
+        action: "blink"
+      }, headers);
+    }
+
+    async function captureFrames(count = 24, intervalMs = 180) {
+      await ensureCamera();
+      const frames = [];
+      for (let i = 0; i < count; i += 1) {
+        setStatus(`请眨眼并轻微前后移动，正在采集 ${i + 1}/${count}`);
+        frames.push(captureBase64());
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+      return frames;
+    }
+
+    async function submitChallenge(challenge, frames, headers) {
+      return requestJson(`${faceApiUrl.value}/liveness/challenges/submit`, {
+        challenge_id: challenge.challenge_id,
+        purpose: challenge.purpose || "login",
+        terminal_id: terminal_id.value,
+        frames
+      }, headers);
+    }
+
+    async function runTerminalLogin() {
+      const headers = apiHeaders();
+      try {
+        setStatus("创建 login challenge。");
+        const challenge = await createChallenge(headers);
+        const frames = await captureFrames();
+        setStatus("提交活体帧。");
+        const liveness = await submitChallenge(challenge, frames, headers);
+        if (liveness.passed === false) {
+          setStatus(liveness.reason || liveness.result_reason || "活体未通过", "warn");
+          show({ok: false, liveness});
+          return;
+        }
+
+        const loginImage = image.value.trim() || captureBase64();
+        setStatus("活体通过，提交 face login。");
+        const eventId = `${terminal_id.value}-${Date.now()}`;
+        const recognizedAtEpoch = Date.now() / 1000;
+        const faceData = await requestJson(`${faceApiUrl.value}/auth/face-login`, {
+          image: loginImage,
+          terminal_id: terminal_id.value,
+          challenge_id: liveness.challenge_id,
+          state: eventId
+        }, headers);
+
+        setStatus("识别成功，上报 business-demo。");
+        const report = await requestJson(`${businessUrl.value}/api/terminal/login-events`, {
+          event_id: eventId,
+          terminal_id: terminal_id.value,
+          matched_user_id: String((faceData.match || {}).user_id || ""),
+          similarity: faceData.similarity || null,
+          recognized_at_epoch: recognizedAtEpoch,
+          state: eventId,
+          face_api_result: faceData
+        }, {"Content-Type": "application/json"});
+        setStatus("终端链路完成。", "ok");
+        show({ok: true, liveness, face: faceData, business: report});
+      } catch (err) {
+        setStatus("终端链路失败，请查看结果中的中文原因。", "fail");
+        show(err);
+      }
+    }
+  </script>
+</body>
+</html>

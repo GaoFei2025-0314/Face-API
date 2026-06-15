@@ -2,7 +2,7 @@
 
 > 当前日期：2026-06-15
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：V2.0 业务系统正式接入示范版（已规划）
+> 当前版本基线：V2.0 业务系统正式接入示范版（已完成）
 
 ## 1. 本季度目标
 
@@ -27,7 +27,7 @@
 | V1.8.3 | 现场验收台与运行状态总览 | 已完成 | `5968483 feat: improve local field acceptance status` |
 | V1.8.4 | 交互式架构图演示增强 | 已完成 | `fc40854 docs: enhance architecture demo mode` |
 | V1.9 | 现场验收收口与 P1/P2 小修 | 已完成 | `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`、`specs/020-field-acceptance-closure/tasks.md` |
-| V2.0 | 业务系统正式接入示范版 | 已规划 | `specs/ROADMAP-v2.0.md`、`specs/021-business-integration-demo/tasks.md` |
+| V2.0 | 业务系统正式接入示范版 | 已完成 | `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`、`specs/021-business-integration-demo/tasks.md` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -37,36 +37,36 @@ a1bdf64 feat: complete roadmap v1.3-v1.6
 
 ## 3. 本季度剩余重点
 
-V1.9 已完成现场验证和收口。下一阶段建议进入 V2.0：把已稳定的识别服务包装成业务系统可参考的正式接入 demo。
+V2.0 已完成业务系统正式接入示范版。当前重点从“继续规划 V2.0”转为“按验收记录维护 business-demo、终端 demo 和 Java 接入文档的一致性”。
 
 ### P0：V2.0 规划验收
 
-- 确认 `specs/ROADMAP-v2.0.md` 的版本定位、边界和执行入口。
-- 确认 `specs/021-business-integration-demo/spec.md` 覆盖 Web 业务链路和受控终端链路。
-- 确认 `specs/021-business-integration-demo/tasks.md` 能直接作为后续 `/goal` 的任务入口。
-- 确认 `docs/04_usage/04_business_integration_v2.md` 能给业务后端和终端开发者解释清楚接入边界。
-- 确认 `docs/04_usage/05_spring_boot_integration_notes.md` 能让 Java / Spring Boot 团队理解替换方式。
+- [x] 确认 `specs/ROADMAP-v2.0.md` 的版本定位、边界和执行入口。
+- [x] 确认 `specs/021-business-integration-demo/spec.md` 覆盖 Web 业务链路和受控终端链路。
+- [x] 确认 `specs/021-business-integration-demo/tasks.md` 能直接作为后续 `/goal` 的任务入口。
+- [x] 确认 `docs/04_usage/04_business_integration_v2.md` 能给业务后端和终端开发者解释清楚接入边界。
+- [x] 确认 `docs/04_usage/05_spring_boot_integration_notes.md` 能让 Java / Spring Boot 团队理解替换方式。
 
 ### P0：Web 业务接入 Demo
 
-- 新增独立 `business-demo`，运行在 `http://localhost:8010`。
-- 页面能列出示例业务用户并新增用户。
-- 业务后端代理调用 `face_api`，浏览器不直接持有 `X-API-Key`。
-- 支持绑定、解绑、换脸、活体登录和 demo JWT。
-- 业务登录成功和失败都写入业务 audit。
+- [x] 新增独立 `business-demo`，运行在 `http://localhost:8010`。
+- [x] 页面能列出示例业务用户并新增用户。
+- [x] 业务后端代理调用 `face_api`，浏览器不直接持有 `X-API-Key`。
+- [x] 支持绑定、解绑、换脸、活体登录和 demo JWT。
+- [x] 业务登录成功和失败都写入业务 audit。
 
 ### P1：受控终端接入 Demo
 
-- 提供 `http://localhost:8010/terminal.html` 和 `scripts/terminal-demo.py`。
-- 终端可直接调用 `face_api` 完成活体和 face login。
-- 终端用稳定 `terminal_id` 上报业务登录事件。
-- 业务后端能拒绝不存在、禁用或未绑定用户。
+- [x] 提供 `http://localhost:8010/terminal.html` 和 `scripts/terminal-demo.py`。
+- [x] 终端可直接调用 `face_api` 完成活体和 face login。
+- [x] 终端用稳定 `terminal_id` 上报业务登录事件。
+- [x] 业务后端能拒绝不存在、禁用或未绑定用户。
 
 ### P1：真实 Java 接入说明
 
-- 提供 Controller、Service、`FaceApiClient`、绑定表和业务 audit 的伪代码。
-- 说明 demo JWT 如何替换成真实 session/JWT/SSO。
-- 明确 `face_api` 错误和业务错误的分层处理方式。
+- [x] 提供 Controller、Service、`FaceApiClient`、绑定表和业务 audit 的伪代码。
+- [x] 说明 demo JWT 如何替换成真实 session/JWT/SSO。
+- [x] 明确 `face_api` 错误和业务错误的分层处理方式。
 
 ## 4. 功能把控规则
 
@@ -112,9 +112,9 @@ V1.8 已按“现场交付与维护闭环”完成，重点不是新增业务平
 
 V1.8 验收记录见 `docs/90_archive/04_acceptance/02_v1.8_acceptance_record.md`。
 
-## 8. V2.0 下一版本计划
+## 8. V2.0 完成状态
 
-V2.0 建议作为下一阶段的业务接入版本。它不改变 `face_api` 公开接口，而是在 `face_api` 外围新增独立 `business-demo`，让真实业务系统能照着接入。
+V2.0 已作为业务接入版本完成。它不改变 `face_api` 公开接口，而是在 `face_api` 外围新增独立 `business-demo`，让真实业务系统能照着接入。
 
 V2.0 执行入口：
 
@@ -122,13 +122,14 @@ V2.0 执行入口：
 /goal Implement face_api Roadmap V2.0 - Business Integration Demo Suite
 ```
 
-V2.0 规划入口见：
+V2.0 规格和验收入口见：
 
 ```text
 specs/ROADMAP-v2.0.md
 specs/021-business-integration-demo/spec.md
 specs/021-business-integration-demo/plan.md
 specs/021-business-integration-demo/tasks.md
+docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md
 ```
 
 V2.0 准入和边界：

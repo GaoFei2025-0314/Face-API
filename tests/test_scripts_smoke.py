@@ -1,3 +1,6 @@
+import contextlib
+import importlib.util
+import io
 import json
 import os
 import shutil
@@ -6,6 +9,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+from urllib.error import HTTPError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -228,6 +233,103 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn("captureFrames(24, 180", html)
         self.assertIn("result.reason || result.result_reason", html)
         self.assertIn("请眨眼并轻微前后移动", html)
+
+    def test_business_demo_web_page_does_not_expose_face_api_key(self):
+        html = (ROOT / "business_demo" / "static" / "index.html").read_text(encoding="utf-8")
+
+        self.assertNotIn("X-API-Key", html)
+        self.assertNotIn("FACE_API_KEY", html)
+        self.assertNotIn("faceApiKey", html)
+        self.assertNotIn("cdn", html.lower())
+        self.assertNotIn("import ", html)
+        self.assertNotIn("require(", html)
+
+    def test_business_demo_web_page_supports_register_liveness_for_binding(self):
+        html = (ROOT / "business_demo" / "static" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('createChallenge("register")', html)
+        self.assertIn('purpose: challengePurpose', html)
+        self.assertIn("创建 Register Challenge", html)
+
+    def test_business_demo_web_page_has_camera_liveness_preview(self):
+        html = (ROOT / "business_demo" / "static" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("navigator.mediaDevices.getUserMedia", html)
+        self.assertIn("captureFrames(24", html)
+        self.assertIn("captureBase64", html)
+        self.assertIn("cameraStatus", html)
+
+    def test_business_demo_terminal_page_has_local_dependencies_only(self):
+        html = (ROOT / "business_demo" / "static" / "terminal.html").read_text(encoding="utf-8")
+
+        self.assertIn("terminal_id", html)
+        self.assertIn("X-API-Key", html)
+        self.assertIn("navigator.mediaDevices.getUserMedia", html)
+        self.assertIn("captureFrames", html)
+        self.assertIn("/liveness/challenges", html)
+        self.assertIn("/liveness/challenges/submit", html)
+        self.assertIn("challenge_id: liveness.challenge_id", html)
+        self.assertIn("event_id", html)
+        self.assertIn("recognized_at_epoch", html)
+        self.assertNotIn("cdn", html.lower())
+        self.assertNotIn("import ", html)
+        self.assertNotIn("require(", html)
+
+    def test_run_business_demo_uses_project_root_python_and_port_validation(self):
+        script = (ROOT / "scripts" / "run-business-demo.bat").read_text(encoding="utf-8")
+
+        self.assertIn('cd /d "%~dp0\\.."', script)
+        self.assertIn("FACE_PYTHON", script)
+        self.assertIn("BUSINESS_DEMO_PORT must be an integer from 1 to 65535", script)
+        self.assertIn('"%FACE_PYTHON%" -m uvicorn business_demo.app:app', script)
+
+    def test_terminal_demo_script_help(self):
+        result = self.run_script("scripts/terminal-demo.py", "--help")
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("--terminal-id", result.stdout)
+        self.assertIn("--business-url", result.stdout)
+        self.assertIn("--camera-index", result.stdout)
+        self.assertIn("--liveness-frame", result.stdout)
+        self.assertIn("--skip-liveness", result.stdout)
+        self.assertIn("--event-id", result.stdout)
+
+    def test_terminal_demo_script_outputs_face_api_error_reason(self):
+        spec = importlib.util.spec_from_file_location("terminal_demo", ROOT / "scripts" / "terminal-demo.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        body = json.dumps(
+            {
+                "detail": {
+                    "code": "LIVENESS_CHALLENGE_REQUIRED",
+                    "message": "需要先完成活体挑战",
+                    "reason": "请先完成活体动作",
+                }
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        http_error = HTTPError("http://face-api.test/auth/face-login", 403, "Forbidden", {}, io.BytesIO(body))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            image_path = Path(tmp) / "login.jpg"
+            image_path.write_bytes(b"fake image")
+            with mock.patch.object(module.request, "urlopen", side_effect=http_error):
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    code = module.main(
+                        [
+                            "--terminal-id",
+                            "gate-1",
+                            "--image",
+                            str(image_path),
+                            "--skip-liveness",
+                        ]
+                    )
+
+        self.assertEqual(code, 1)
+        output = stdout.getvalue()
+        self.assertIn("LIVENESS_CHALLENGE_REQUIRED", output)
+        self.assertIn("请先完成活体动作", output)
 
 
 if __name__ == "__main__":

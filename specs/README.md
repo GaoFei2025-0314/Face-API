@@ -79,7 +79,7 @@ Roadmap v2.0 建议执行顺序：
 
 1. `021-business-integration-demo` - 业务接入 Demo 套件
 
-Roadmap v2.0 已确认主定位为“业务系统正式接入示范版”。关键决策包括：
+Roadmap v2.0 已完成，主定位为“业务系统正式接入示范版”。关键决策包括：
 
 - `face_api` 只做人脸识别服务，不接管业务用户、登录态和权限。
 - 同时规划 Web 业务系统链路和受控终端链路。
@@ -87,6 +87,7 @@ Roadmap v2.0 已确认主定位为“业务系统正式接入示范版”。关�
 - 一个业务用户只允许一个有效人脸绑定，支持解绑和换脸。
 - 登录必须活体，绑定活体可配置。
 - 不新增 `face_api` 公开接口，新增接口只属于 `business-demo`。
+- 验收记录见 `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`。
 
 ## 推荐流程
 

@@ -111,6 +111,25 @@ class FaceBindingService {
         faceApi.deleteFace(binding.getFaceId());
         bindings.markRemoved(binding.getId());
     }
+
+    FaceBinding replaceFace(String userId, String imageBase64, String terminalId) {
+        BusinessUser user = users.findActiveByUserId(userId)
+            .orElseThrow(() -> new BusinessException("BUSINESS_USER_NOT_FOUND"));
+
+        FaceBinding oldBinding = bindings.findActiveByUserId(userId).orElse(null);
+        FaceRegisterResponse response = faceApi.registerFace(new RegisterFaceRequest(
+            userId,
+            user.getUsername(),
+            terminalId,
+            imageBase64
+        ));
+
+        FaceBinding newBinding = bindings.replaceActiveBinding(userId, response.getFaceId(), "web_demo");
+        if (oldBinding != null) {
+            faceApi.deleteFace(oldBinding.getFaceId());
+        }
+        return newBinding;
+    }
 }
 ```
 
@@ -155,7 +174,48 @@ class FaceLoginService {
 }
 ```
 
-## 6. Controller 伪代码
+## 6. 终端上报 Service 伪代码
+
+```java
+class TerminalLoginService {
+    BusinessUserRepository users;
+    FaceBindingRepository bindings;
+    BusinessAuditService audit;
+
+    TerminalLoginResult acceptTerminalEvent(TerminalLoginEvent event) {
+        BusinessLoginAudit existing = audit.findByTerminalEventId(event.getEventId()).orElse(null);
+        if (existing != null) {
+            return TerminalLoginResult.duplicate(existing.getId());
+        }
+        if (event.isExpired()) {
+            String auditId = audit.recordFailure(
+                event.getMatchedUserId(),
+                event.getTerminalId(),
+                "TERMINAL_EVENT_EXPIRED",
+                event.getEventId()
+            );
+            return TerminalLoginResult.reject("TERMINAL_EVENT_EXPIRED", auditId);
+        }
+        BusinessUser user = users.findByUserId(event.getMatchedUserId()).orElse(null);
+        if (user == null) {
+            audit.recordFailure(event.getMatchedUserId(), event.getTerminalId(), "BUSINESS_USER_NOT_FOUND", event.getEventId());
+            return TerminalLoginResult.reject("BUSINESS_USER_NOT_FOUND");
+        }
+        if (!user.isActive()) {
+            audit.recordFailure(user.getUserId(), event.getTerminalId(), "USER_DISABLED", event.getEventId());
+            return TerminalLoginResult.reject("USER_DISABLED");
+        }
+        if (!bindings.hasActiveBinding(user.getUserId())) {
+            audit.recordFailure(user.getUserId(), event.getTerminalId(), "FACE_NOT_BOUND", event.getEventId());
+            return TerminalLoginResult.reject("FACE_NOT_BOUND");
+        }
+        audit.recordSuccess(user.getUserId(), event.getTerminalId(), event.getSimilarity(), null, event.getEventId());
+        return TerminalLoginResult.accept(user);
+    }
+}
+```
+
+## 7. Controller 伪代码
 
 ```java
 @RestController
@@ -172,9 +232,30 @@ class FaceAuthController {
         );
     }
 }
+
+@RestController
+class TerminalLoginController {
+    TerminalLoginService terminalLoginService;
+
+    @PostMapping("/api/terminal/login-events")
+    TerminalLoginResult loginEvent(@RequestBody TerminalLoginEvent event) {
+        return terminalLoginService.acceptTerminalEvent(event);
+    }
+}
 ```
 
-## 7. 生产注意事项
+## 8. 错误分层
+
+推荐分三层处理：
+
+| 层级 | 示例 code | 处理方式 |
+|---|---|---|
+| `face_api` 识别层 | `NO_FACE`、`NO_MATCH`、`LIVENESS_CHALLENGE_INVALID` | Java 后端解析 `detail.code/message/reason`，原样转成业务可展示原因 |
+| 业务规则层 | `BUSINESS_USER_NOT_FOUND`、`USER_DISABLED`、`FACE_NOT_BOUND` | Java Service 根据用户表、绑定表和状态自行判断 |
+| 接入配置层 | `FACE_API_AUTH_FAILED`、`FACE_API_UNAVAILABLE`、`VALIDATION_ERROR` | 运维或后端配置问题，写 audit 并提示检查服务地址、API Key 和请求字段 |
+| 登录态层 | `TOKEN_INVALID` | 替换成生产系统自己的 session、JWT 或 SSO 过期处理 |
+
+## 9. 生产注意事项
 
 - `face_api` 的 `X-API-Key` 只能放在后端配置或受控终端配置中。
 - Web 浏览器不要直接调用 `face_api` 受保护接口。

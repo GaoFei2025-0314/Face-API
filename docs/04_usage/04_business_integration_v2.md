@@ -37,6 +37,7 @@ http://localhost:8010
 ```
 
 是业务接入页面入口。它只调用 `business-demo`，不直接调用 `face_api`。
+页面包含摄像头预览、业务用户列表、绑定、解绑、换脸、Web 活体登录和业务 audit 面板。
 
 V2.0 还规划一个受控终端页面：
 
@@ -117,9 +118,27 @@ V2.0 同时规划两种终端 demo：
 终端要求：
 
 - 每台终端使用稳定 `terminal_id`。
+- 每次上报使用稳定唯一的 `event_id`，用于重试幂等处理。
+- 上报 `recognized_at_epoch`，业务后端拒绝过期识别结果。
 - 终端不要把 API Key 打印到界面、日志或错误信息里。
 - 终端失败时展示中文原因。
 - 终端上报业务后端时要带上 trace/state，便于排障。
+
+`terminal.html` 会先打开摄像头预览，采集连续帧提交 `/liveness/challenges/submit`，再把通过后的 `challenge_id` 带入 `/auth/face-login`。
+
+`terminal-demo.py` 支持三种方式：
+
+```bat
+python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-001 --camera-index 0 --api-key your-secret
+python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-002 --image login.jpg --liveness-frame frame01.jpg --liveness-frame frame02.jpg --api-key your-secret
+python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-003 --image login.jpg --challenge-id passed-login-challenge-id --api-key your-secret
+```
+
+只有当 `face_api` 明确关闭 login 活体时，才使用：
+
+```bat
+python scripts\terminal-demo.py --terminal-id gate-01 --image login.jpg --skip-liveness --api-key your-secret
+```
 
 ## 6. business-demo API 契约
 
@@ -136,7 +155,7 @@ V2.0 同时规划两种终端 demo：
 | `POST /api/auth/liveness/submit` | `challenge_id`、`terminal_id`、`frames[]` | `passed`、`reason`、`result_reason` |
 | `POST /api/auth/face-login` | `image`、`terminal_id`、`challenge_id`、`state?` | `authenticated`、`token`、`user`、`face`、`audit_id` |
 | `GET /api/auth/me` | `Authorization: Bearer <demo-token>` | `authenticated`、`user` |
-| `POST /api/terminal/login-events` | `terminal_id`、`matched_user_id`、`similarity`、`state?`、`face_api_result` | `accepted`、`user?`、`failure_reason?`、`audit_id` |
+| `POST /api/terminal/login-events` | `event_id?`、`terminal_id`、`matched_user_id`、`similarity`、`recognized_at_epoch?`、`state?`、`face_api_result` | `accepted`、`duplicate?`、`user?`、`failure_reason?`、`audit_id` |
 | `GET /api/audit/login` | `limit?`、`terminal_id?`、`success?` | `items[]`、`count` |
 
 统一错误响应：
@@ -162,6 +181,10 @@ V2.0 同时规划两种终端 demo：
 | `TOKEN_INVALID` | 登录凭证无效或已过期，请重新登录 |
 | `FACE_API_UNAVAILABLE` | 人脸识别服务不可用，请检查 face_api 是否启动 |
 | `FACE_API_AUTH_FAILED` | 人脸识别服务认证失败，请检查服务端 API Key 配置 |
+| `LIVENESS_CHALLENGE_REQUIRED` | 当前流程需要先完成活体 challenge |
+| `VALIDATION_ERROR` | 请求参数格式或取值不符合业务 demo 接口要求 |
+| `TERMINAL_EVENT_EXPIRED` | 终端识别结果已过期，请重新识别后再上报 |
+| `DUPLICATE_TERMINAL_EVENT` | 终端事件已经处理过，本次重试不会重复写入 audit |
 
 业务页面应优先展示业务层中文原因；如果错误来自 `face_api`，展示 `detail.reason`。
 
@@ -178,6 +201,7 @@ V2.0 同时规划两种终端 demo：
 - [ ] 登录成功后由业务系统签发 token/session。
 - [ ] 业务登录成功和失败都写入业务 audit。
 - [ ] 终端使用稳定 `terminal_id`。
+- [ ] 终端上报使用唯一 `event_id` 并传入 `recognized_at_epoch`。
 - [ ] 终端密钥只放在受控设备配置中。
 - [ ] `terminal.html` 和 `terminal-demo.py` 都只用于受控终端或验收场景。
 - [ ] Java / Spring Boot 生产接入已替换 demo JWT。

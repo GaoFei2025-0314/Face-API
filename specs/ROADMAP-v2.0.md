@@ -2,7 +2,7 @@
 
 > 创建时间：2026-06-15
 > 用途：定义 V2.0 业务系统正式接入示范版的范围、边界和执行入口
-> 状态：已规划
+> 状态：已完成
 
 ## 1. 版本定位
 
@@ -53,7 +53,7 @@ V2.0 的目标是把 `face_api` 从“本地识别服务和现场验收工具”
 
 ## 5. 推荐执行入口
 
-后续实现建议使用：
+本版本实现使用：
 
 ```text
 /goal Implement face_api Roadmap V2.0 - Business Integration Demo Suite
@@ -73,13 +73,13 @@ docs/04_usage/05_spring_boot_integration_notes.md
 
 V2.0 完成时必须满足：
 
-- `face_api:8000` 和 `business-demo:8010` 能同时启动。
-- 浏览器打开 `http://localhost:8010` 能完成业务用户列表、新增用户、绑定、登录、解绑和换脸。
-- Web 登录链路不向浏览器暴露 `face_api` 的 `X-API-Key`。
-- 已绑定且启用的业务用户能通过活体和人脸登录拿到 demo JWT。
-- 未绑定、禁用、活体失败、识别失败等场景能显示中文原因。
-- 终端 demo 能直接调用 `face_api` 并向 `business-demo` 上报业务登录事件。
-- `business-demo` 能保存并查询业务登录 audit。
-- 普通 Web 页面不包含 `face_api` 的 `X-API-Key` 或 `FACE_API_KEY`。
-- Java / Spring Boot 接入说明能解释 Controller、Service、`face_api` 调用、绑定关系和业务 audit。
-- 不改变现有 `face_api` 公开接口和鉴权规则。
+- [x] `face_api:8000` 和 `business-demo:8010` 能同时启动。
+- [x] 浏览器打开 `http://localhost:8010` 能完成业务用户列表、新增用户、绑定、登录、解绑和换脸。
+- [x] Web 登录链路不向浏览器暴露 `face_api` 的 `X-API-Key`。
+- [x] 已绑定且启用的业务用户能通过活体和人脸登录拿到 demo JWT。
+- [x] 未绑定、禁用、活体失败、识别失败等场景能显示中文原因。
+- [x] 终端 demo 能直接调用 `face_api` 并向 `business-demo` 上报业务登录事件。
+- [x] `business-demo` 能保存并查询业务登录 audit。
+- [x] 普通 Web 页面不包含 `face_api` 的 `X-API-Key` 或 `FACE_API_KEY`。
+- [x] Java / Spring Boot 接入说明能解释 Controller、Service、`face_api` 调用、绑定关系和业务 audit。
+- [x] 不改变现有 `face_api` 公开接口和鉴权规则。

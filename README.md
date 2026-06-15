@@ -1,7 +1,7 @@
 # 人脸识别 API 运行与使用说明
 
-> 最后同步：2026-06-14
-> 适用阶段：V1.9 现场验收收口与 P1/P2 小修
+> 最后同步：2026-06-15
+> 适用阶段：V2.0 业务系统正式接入示范版
 
 这是 **首次接手时优先阅读** 的文档。
 
@@ -40,6 +40,7 @@
 - 人脸库增删查
 - 轻量人脸登录认证
 - 最小运维状态 / 配置 / 审计查询
+- 独立 `business-demo` 业务接入示范服务
 
 它当前更适合被理解为：
 
@@ -58,7 +59,7 @@
 
 ---
 
-## 2. 唯一推荐启动路径
+## 2. face_api 唯一推荐启动路径
 
 当前仓库同时保留了 conda 和 venv 两套说明，但：
 
@@ -89,6 +90,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - OpenAPI：`http://localhost:8000/openapi.json`
 - 联调页：直接打开 `test.html`
 - 摄像头接入示例：直接打开 `camera-integration.html`，可做服务检查、注册、登录、活体和 audit 验收
+- 业务接入 demo：启动 `scripts\run-business-demo.bat` 后打开 `http://localhost:8010`
 
 ---
 
@@ -124,6 +126,55 @@ curl http://localhost:8000/openapi.json
 - 服务起来了
 - 路由注册正常
 - 文档可访问
+
+---
+
+## 3.1 V2.0 业务接入 Demo
+
+V2.0 新增独立 `business-demo`，用来模拟真实业务后端接入 `face_api`。它不属于 `face_api` 主服务，不新增 `face_api` 公开接口。
+
+先启动 `face_api`：
+
+```bat
+set FACE_API_KEY=your-secret
+run.bat
+```
+
+再启动业务 demo：
+
+```bat
+set FACE_API_KEY=your-secret
+scripts\run-business-demo.bat
+```
+
+打开：
+
+```text
+http://localhost:8010
+http://localhost:8010/terminal.html
+```
+
+两个入口的区别：
+
+- `http://localhost:8010`：普通 Web 业务接入 demo，浏览器不直接持有 `face_api` 的 `X-API-Key`。
+- `http://localhost:8010/terminal.html`：受控终端 demo，适合一体机、闸机、Windows 客户端演示。
+
+命令行终端 demo：
+
+```bat
+python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-001 --image login.jpg --liveness-frame frame01.jpg --liveness-frame frame02.jpg --api-key your-secret
+```
+
+如果要直接从受控 Windows 终端摄像头采集活体帧和登录图片：
+
+```bat
+python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-002 --camera-index 0 --api-key your-secret
+```
+
+V2.0 详细接入说明见：
+
+- `docs/04_usage/04_business_integration_v2.md`
+- `docs/04_usage/05_spring_boot_integration_notes.md`
 
 ---
 
@@ -309,6 +360,12 @@ set FACE_FORCE_CPU=1
 | `FACE_MAX_BASE64_CHARS` | `11185068` | Base64 图片字符串最大长度 |
 | `FACE_MAX_IMAGE_BYTES` | `8388608` | 解码后图片字节最大值 |
 | `FACE_MAX_IMAGE_PIXELS` | `4096000` | 解码后图片最大像素数 |
+| `FACE_API_BASE_URL` | `http://localhost:8000` | `business-demo` 调用 `face_api` 的地址 |
+| `BUSINESS_DEMO_PORT` | `8010` | `business-demo` 监听端口 |
+| `BUSINESS_DEMO_DB_PATH` | `business-demo.db` | `business-demo` 自己的 SQLite 数据库路径 |
+| `BUSINESS_DEMO_BINDING_LIVENESS_REQUIRED` | `0` | 绑定人脸是否要求 register 活体 |
+| `BUSINESS_DEMO_TOKEN_SECRET` | `business-demo-dev-secret` | demo token 签名密钥；正式系统请替换为自己的登录态方案 |
+| `BUSINESS_DEMO_TOKEN_TTL_SECONDS` | `3600` | demo token 有效期 |
 
 ---
 
@@ -456,6 +513,17 @@ http://localhost:8000/admin.html
 - 接摄像头 login / register
 - 看错误码中文映射、业务系统调用示例和上线检查清单
 - 明确 face_api 识别结果和业务系统 session 的边界
+
+### `docs/04_usage/04_business_integration_v2.md`
+适合：
+- 看 V2.0 `business-demo` 怎么模拟正式业务后端
+- 理解 Web 业务链路和受控终端链路
+- 看绑定、解绑、换脸、业务 audit 和上线检查清单
+
+### `docs/04_usage/05_spring_boot_integration_notes.md`
+适合：
+- Java / Spring Boot 团队照着替换 `business-demo`
+- 看 Controller、Service、FaceApiClient 和业务 audit 的伪代码
 
 ### `docs/05_architecture/01_architecture.md`
 适合：

@@ -561,6 +561,23 @@
         notes: ["它不是完整登录平台，不签发 token 或 session。"]
       },
       {
+        id: "terminal",
+        type: "user",
+        lane: "users",
+        size: "normal",
+        x: 830,
+        y: 108,
+        title: "受控终端",
+        subtitle: "一体机 / Windows 客户端",
+        fileLabel: "terminal_id",
+        talkTrack: "讲受控终端由项目方管理，可以在内网设备配置 face_api 的服务密钥。",
+        summary: "受控终端代表闸机、一体机或 Windows 客户端，能直接调用 face_api，再把识别结果上报业务后端。",
+        inputs: ["摄像头画面", "terminal_id", "受控设备配置"],
+        outputs: ["识别请求", "业务登录事件"],
+        links: ["business_demo/static/terminal.html", "scripts/terminal-demo.py", "docs/04_usage/04_business_integration_v2.md"],
+        notes: ["只有受控终端可以配置 X-API-Key，普通 Web 页面不能持有服务密钥。"]
+      },
+      {
         id: "frontend",
         type: "user",
         lane: "users",
@@ -595,6 +612,40 @@
         notes: ["face_api 只返回 user_id 和 username，不维护业务权限体系。"]
       },
       {
+        id: "business-pages",
+        type: "page",
+        lane: "pages",
+        size: "normal",
+        x: 450,
+        y: 246,
+        title: "业务 Demo 页面",
+        subtitle: "统一业务页面",
+        fileLabel: "business_demo/static/index.html",
+        talkTrack: "讲浏览器只访问 business-demo，由后端代理调用 face_api。",
+        summary: "V2.0 的统一业务页面覆盖业务用户、新增用户、人脸绑定、解绑、换脸、Web 活体登录和业务 audit。",
+        inputs: ["摄像头图片", "业务操作", "demo token"],
+        outputs: ["业务 API 请求", "登录状态", "中文错误原因"],
+        links: ["business_demo/static/index.html", "business_demo/README.md", "docs/04_usage/04_business_integration_v2.md"],
+        notes: ["该页面不得包含 X-API-Key、FACE_API_KEY 或 faceApiKey。"]
+      },
+      {
+        id: "terminal-demo",
+        type: "page",
+        lane: "pages",
+        size: "normal",
+        x: 720,
+        y: 246,
+        title: "终端页面 / 脚本",
+        subtitle: "terminal.html / CLI",
+        fileLabel: "terminal.html / terminal-demo.py",
+        talkTrack: "讲页面和命令行脚本演示同一条受控终端链路。",
+        summary: "终端页面和 terminal-demo.py 用于受控设备演示：直接调用 face_api，拿到识别结果后上报 business-demo。",
+        inputs: ["API Key", "terminal_id", "图片或摄像头"],
+        outputs: ["face_api 登录结果", "业务登录事件"],
+        links: ["business_demo/static/terminal.html", "scripts/terminal-demo.py", "docs/04_usage/04_business_integration_v2.md"],
+        notes: ["这是受控终端验收工具，不是普通浏览器业务页面。"]
+      },
+      {
         id: "pages",
         type: "page",
         lane: "pages",
@@ -610,6 +661,23 @@
         outputs: ["接口请求", "验收结果", "运维观察信息"],
         links: ["test.html", "camera-integration.html", "admin.html"],
         notes: ["这些页面是轻量工具，不改造成前端框架。"]
+      },
+      {
+        id: "business-demo",
+        type: "api",
+        lane: "api",
+        size: "core",
+        x: 250,
+        y: 372,
+        title: "business-demo",
+        subtitle: "业务接入示范后端",
+        fileLabel: "business_demo/app.py",
+        talkTrack: "讲 V2.0 用它模拟真实 Java 业务后端，验证正式接入边界。",
+        summary: "business-demo 是独立 FastAPI 服务，运行在 8010 端口，负责业务用户、人脸绑定、Web 登录代理、demo token 和业务 audit。",
+        inputs: ["业务页面请求", "FACE_API_BASE_URL", "FACE_API_KEY", "业务 SQLite"],
+        outputs: ["业务用户列表", "绑定结果", "demo token", "业务 audit"],
+        links: ["business_demo/app.py", "business_demo/README.md", "scripts/run-business-demo.bat"],
+        notes: ["它持有 face_api 的服务密钥，浏览器只访问 business-demo。"]
       },
       {
         id: "fastapi",
@@ -697,6 +765,23 @@
         notes: ["embedding 以 float32 BLOB 存储，不返回给前端。"]
       },
       {
+        id: "business-db",
+        type: "data",
+        lane: "engine-data",
+        size: "normal",
+        x: 250,
+        y: 514,
+        title: "Business SQLite",
+        subtitle: "业务用户 / 绑定 / audit",
+        fileLabel: "business_demo/storage.py",
+        talkTrack: "讲业务数据和 face_api 的 faces.db 分开保存，职责边界更清楚。",
+        summary: "business_demo/storage.py 管理示例业务用户、有效人脸绑定、换脸状态和业务登录 audit。",
+        inputs: ["user_id", "face_id", "terminal_id", "登录结果"],
+        outputs: ["业务用户", "绑定状态", "业务 audit"],
+        links: ["business_demo/storage.py", "docs/04_usage/04_business_integration_v2.md"],
+        notes: ["业务 audit 和 face_api audit 是两层记录，不混成一张表。"]
+      },
+      {
         id: "ops",
         type: "ops",
         lane: "ops-docs",
@@ -752,12 +837,19 @@
     const edges = [
       { id: "frontend-pages", from: "frontend", to: "pages", label: "打开页面", kind: "primary", flows: ["register", "login", "search"] },
       { id: "frontend-backend", from: "frontend", to: "backend", label: "提交图片", kind: "primary", flows: ["register", "login"] },
+      { id: "frontend-business-pages", from: "frontend", to: "business-pages", label: "打开业务页面", kind: "primary", flows: ["businessBind", "webBusinessLogin"] },
+      { id: "business-pages-demo", from: "business-pages", to: "business-demo", label: "调用业务 API", kind: "primary", flows: ["businessBind", "webBusinessLogin"] },
+      { id: "business-demo-faceapi", from: "business-demo", to: "fastapi", label: "服务端代理调用", kind: "primary", flows: ["businessBind", "webBusinessLogin"] },
+      { id: "business-demo-db", from: "business-demo", to: "business-db", label: "用户 / 绑定 / audit", kind: "primary", flows: ["businessBind", "webBusinessLogin", "terminalFlow"] },
+      { id: "terminal-terminal-demo", from: "terminal", to: "terminal-demo", label: "打开终端工具", kind: "primary", flows: ["terminalFlow"] },
+      { id: "terminal-demo-faceapi", from: "terminal-demo", to: "fastapi", label: "直接识别", kind: "primary", flows: ["terminalFlow"] },
+      { id: "terminal-demo-business-demo", from: "terminal-demo", to: "business-demo", label: "上报登录事件", kind: "primary", flows: ["terminalFlow"] },
       { id: "backend-fastapi", from: "backend", to: "fastapi", label: "代理调用 API", kind: "primary", flows: ["register", "login", "search"] },
       { id: "pages-fastapi", from: "pages", to: "fastapi", label: "本机联调", kind: "primary", flows: ["register", "login", "search"] },
       { id: "fastapi-auth", from: "fastapi", to: "auth", label: "鉴权 / CORS", kind: "secondary", flows: ["register", "login", "search"] },
-      { id: "fastapi-engine", from: "fastapi", to: "engine", label: "图片识别", kind: "primary", flows: ["register", "login", "search"] },
-      { id: "engine-models", from: "engine", to: "models", label: "模型推理", kind: "primary", flows: ["register", "login", "search"] },
-      { id: "fastapi-sqlite", from: "fastapi", to: "sqlite", label: "写入 / 搜索", kind: "primary", flows: ["register", "login", "search", "backup"] },
+      { id: "fastapi-engine", from: "fastapi", to: "engine", label: "图片识别", kind: "primary", flows: ["register", "login", "search", "businessBind", "webBusinessLogin", "terminalFlow"] },
+      { id: "engine-models", from: "engine", to: "models", label: "模型推理", kind: "primary", flows: ["register", "login", "search", "businessBind", "webBusinessLogin", "terminalFlow"] },
+      { id: "fastapi-sqlite", from: "fastapi", to: "sqlite", label: "写入 / 搜索", kind: "primary", flows: ["register", "login", "search", "backup", "businessBind", "webBusinessLogin", "terminalFlow"] },
       { id: "ops-fastapi", from: "ops", to: "fastapi", label: "启动服务", kind: "secondary", flows: ["startup"] },
       { id: "ops-health", from: "ops", to: "health", label: "检查状态", kind: "secondary", flows: ["startup"] },
       { id: "health-fastapi", from: "health", to: "fastapi", label: "GET /health", kind: "secondary", flows: ["startup"] },
@@ -778,6 +870,12 @@
         subtitle: "重点看摄像头页面、接口、X-API-Key 和登录注册链路。",
         focusNode: "frontend"
       },
+      business: {
+        label: "业务接入",
+        title: "业务接入视图",
+        subtitle: "重点看 business-demo、Web 代理登录、绑定关系和终端上报。",
+        focusNode: "business-demo"
+      },
       ops: {
         label: "运维人员",
         title: "运维视图",
@@ -793,6 +891,41 @@
     };
 
     const flows = {
+      businessBind: {
+        label: "业务绑定",
+        focusNode: "business-demo",
+        steps: [
+          { nodeId: "frontend", title: "浏览器采集绑定图片", edgeIds: ["frontend-business-pages"] },
+          { nodeId: "business-pages", title: "业务页面提交绑定请求", edgeIds: ["business-pages-demo"] },
+          { nodeId: "business-demo", title: "校验业务用户和绑定状态", edgeIds: ["business-pages-demo", "business-demo-faceapi"] },
+          { nodeId: "fastapi", title: "调用 /faces/register 注册人脸", edgeIds: ["business-demo-faceapi", "fastapi-engine", "fastapi-sqlite"] },
+          { nodeId: "business-db", title: "保存 user_id 与 face_id 的有效绑定", edgeIds: ["business-demo-db"] }
+        ]
+      },
+      webBusinessLogin: {
+        label: "Web 代理登录",
+        focusNode: "business-demo",
+        steps: [
+          { nodeId: "frontend", title: "浏览器只访问业务页面", edgeIds: ["frontend-business-pages"] },
+          { nodeId: "business-pages", title: "业务页面发起活体和登录", edgeIds: ["business-pages-demo"] },
+          { nodeId: "business-demo", title: "服务端持有 X-API-Key 代理调用", edgeIds: ["business-pages-demo", "business-demo-faceapi"] },
+          { nodeId: "fastapi", title: "face_api 完成活体和 face login", edgeIds: ["business-demo-faceapi", "fastapi-engine", "fastapi-sqlite"] },
+          { nodeId: "business-db", title: "校验业务用户、绑定和状态并写 audit", edgeIds: ["business-demo-db"] },
+          { nodeId: "business-demo", title: "签发 demo token 返回浏览器", edgeIds: ["business-pages-demo"] }
+        ]
+      },
+      terminalFlow: {
+        label: "受控终端",
+        focusNode: "terminal-demo",
+        steps: [
+          { nodeId: "terminal", title: "受控设备配置 terminal_id 和 API Key", edgeIds: ["terminal-terminal-demo"] },
+          { nodeId: "terminal-demo", title: "终端页面或脚本直接调用 face_api", edgeIds: ["terminal-demo-faceapi"] },
+          { nodeId: "fastapi", title: "face_api 返回 matched_user_id 和 similarity", edgeIds: ["terminal-demo-faceapi", "fastapi-engine", "fastapi-sqlite"] },
+          { nodeId: "terminal-demo", title: "终端把识别结果上报业务后端", edgeIds: ["terminal-demo-business-demo"] },
+          { nodeId: "business-demo", title: "业务后端校验用户并写业务 audit", edgeIds: ["terminal-demo-business-demo", "business-demo-db"] },
+          { nodeId: "business-db", title: "保存终端来源登录记录", edgeIds: ["business-demo-db"] }
+        ]
+      },
       register: {
         label: "注册流程",
         focusNode: "fastapi",

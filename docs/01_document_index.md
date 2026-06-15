@@ -9,6 +9,7 @@
 - 业务系统接入：先看 `docs/04_usage/04_business_integration_v2.md`、`docs/04_usage/05_spring_boot_integration_notes.md`、`specs/ROADMAP-v2.0.md`。
 - 运维交付：先看 `docs/03_deployment/01_runbook.md`、`admin.html`、`architecture.html` 的演示模式、流程播放和运维流程。
 - 项目负责人：先看 `docs/02_product/02_quarterly_plan.md`、`docs/05_architecture/01_architecture.md`、`docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
+- V2.0 验收复盘：看 `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`。
 
 ## 1. 只想知道项目是什么
 
@@ -55,6 +56,10 @@
 - `docs/04_usage/04_business_integration_v2.md`
 - `docs/04_usage/05_spring_boot_integration_notes.md`
 - `camera-integration.html`
+- `business_demo/README.md`
+- `http://localhost:8010`
+- `http://localhost:8010/terminal.html`
+- `scripts/terminal-demo.py`
 
 作用：
 
@@ -63,6 +68,10 @@
 - `04_usage/04_business_integration_v2.md`：V2.0 业务后端代理、终端链路、绑定、登录和 audit 边界。
 - `04_usage/05_spring_boot_integration_notes.md`：Java / Spring Boot 接入伪代码和生产注意事项。
 - `camera-integration.html`：本机或内网联调、V1.7.1 现场闭环验收页面。
+- `business_demo/README.md`：V2.0 mock 业务后端启动说明。
+- `http://localhost:8010`：业务 Web 接入 demo。
+- `http://localhost:8010/terminal.html`：受控终端页面 demo。
+- `scripts/terminal-demo.py`：受控终端命令行 demo，支持图片、活体帧文件或本机摄像头采集。
 
 注意：正式前端不要直接持有 face_api 的 `X-API-Key`，应由业务后端代理调用 face_api。
 
@@ -123,6 +132,7 @@
 - `specs/020-field-acceptance-closure/`
 - `specs/021-business-integration-demo/`
 - `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`
+- `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`
 
 作用：
 
