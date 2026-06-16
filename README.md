@@ -105,8 +105,10 @@ curl http://localhost:8000/health
 期望返回类似：
 
 ```json
-{ "status": "ok", "device": "CPU", "faces": 0 }
+{ "status": "ok", "service": "face_api" }
 ```
+
+如果要看 CPU/GPU、模型、底库数量等运行细节，使用带 `X-API-Key` 的 `GET /system/status`。
 
 ### 2）打开 Swagger
 
@@ -147,6 +149,12 @@ set FACE_API_KEY=your-secret
 scripts\run-business-demo.bat
 ```
 
+`business-demo` 也会读取 `FACE_PYTHON`。如果你的 Python 不在默认路径，先设置：
+
+```bat
+set FACE_PYTHON=D:\anaconda3\envs\face_api\python.exe
+```
+
 打开：
 
 ```text
@@ -162,8 +170,10 @@ http://localhost:8010/terminal.html
 命令行终端 demo：
 
 ```bat
-python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-001 --image login.jpg --liveness-frame frame01.jpg --liveness-frame frame02.jpg --api-key your-secret
+python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-001 --image login.jpg --liveness-frame frame01.jpg --liveness-frame frame02.jpg --liveness-frame frame03.jpg --liveness-frame frame04.jpg --liveness-frame frame05.jpg --liveness-frame frame06.jpg --liveness-frame frame07.jpg --liveness-frame frame08.jpg --liveness-frame frame09.jpg --liveness-frame frame10.jpg --api-key your-secret
 ```
+
+文件帧模式至少传 10 帧；更推荐现场使用摄像头模式。
 
 如果要直接从受控 Windows 终端摄像头采集活体帧和登录图片：
 
@@ -222,9 +232,21 @@ V2.0 详细接入说明见：
 - `POST /extract/base64`
 - `GET /system/status`
 - `GET /config/effective`
+- `GET /policy/tuning-summary`
+- `GET /search/benchmark-summary`
+- `GET /search/index-status`
+- `GET /performance/scale-plan`
+- `POST /liveness/challenges`
+- `POST /liveness/challenges/submit`
 - `POST /auth/face-login`
 - `GET /audit/login/recent`
 - `GET /audit/login/summary`
+- `GET /admin/overview`
+- `GET /admin/maintenance`
+- `POST /admin/maintenance`
+- `POST /admin/faces/{face_id}/delete`
+- `POST /admin/backup`
+- `POST /admin/restore`
 
 ### 条件启用鉴权
 这些接口保留原有兼容行为：
@@ -233,6 +255,7 @@ V2.0 详细接入说明见：
 - `POST /compare`
 - `POST /faces/register`
 - `GET /faces`
+- `GET /faces/by-user/{user_id}`
 - `DELETE /faces/{face_id}`
 - `POST /search`
 
@@ -330,11 +353,11 @@ set FACE_FORCE_CPU=1
 | `FACE_DB_PATH` | `faces.db` | SQLite 数据库路径 |
 | `FACE_ENV` | `development` | 运行环境；`production` 会启用更严格启动校验 |
 | `FACE_PORT` | `8000` | `run-prod.bat` 监听端口 |
-| `FACE_PYTHON` | `D:\anaconda3\envs\face_api\python.exe` | `run-prod.bat` 使用的 Python 解释器路径 |
+| `FACE_PYTHON` | `D:\anaconda3\envs\face_api\python.exe` | `run-prod.bat` 和 `scripts\run-business-demo.bat` 使用的 Python 解释器路径 |
 | `FACE_USE_GPU` | `0` | 设为 `1` 时允许优先使用 GPU |
 | `FACE_FORCE_CPU` | `0` | 设为 `1` 时强制 CPU，并覆盖 `FACE_USE_GPU` |
 | `FACE_API_KEY` | 空 | 启用 API Key 鉴权 |
-| `FACE_CORS_ORIGINS` | `*` | 允许跨域访问的前端来源，多个用英文逗号分隔 |
+| `FACE_CORS_ORIGINS` | `*` | 允许跨域访问的前端来源，多个用英文逗号分隔；`FACE_ENV=production` 时不能使用 `*` |
 | `FACE_LOG_PATH` | `logs/face_api.log` | 服务日志文件路径 |
 | `FACE_LOG_MAX_BYTES` | `10485760` | 单个日志文件最大字节数 |
 | `FACE_LOG_BACKUP_COUNT` | `5` | 日志轮转保留文件数 |
@@ -361,10 +384,11 @@ set FACE_FORCE_CPU=1
 | `FACE_MAX_IMAGE_BYTES` | `8388608` | 解码后图片字节最大值 |
 | `FACE_MAX_IMAGE_PIXELS` | `4096000` | 解码后图片最大像素数 |
 | `FACE_API_BASE_URL` | `http://localhost:8000` | `business-demo` 调用 `face_api` 的地址 |
+| `BUSINESS_DEMO_ENV` | `development` | `business-demo` 运行环境；`production` 会拒绝默认 demo token 密钥 |
 | `BUSINESS_DEMO_PORT` | `8010` | `business-demo` 监听端口 |
 | `BUSINESS_DEMO_DB_PATH` | `business-demo.db` | `business-demo` 自己的 SQLite 数据库路径 |
 | `BUSINESS_DEMO_BINDING_LIVENESS_REQUIRED` | `0` | 绑定人脸是否要求 register 活体 |
-| `BUSINESS_DEMO_TOKEN_SECRET` | `business-demo-dev-secret` | demo token 签名密钥；正式系统请替换为自己的登录态方案 |
+| `BUSINESS_DEMO_TOKEN_SECRET` | `business-demo-dev-secret` | demo token 签名密钥；仅适合开发，`BUSINESS_DEMO_ENV=production` 时必须替换为随机长密钥 |
 | `BUSINESS_DEMO_TOKEN_TTL_SECONDS` | `3600` | demo token 有效期 |
 
 ---

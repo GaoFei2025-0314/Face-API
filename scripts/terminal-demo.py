@@ -103,6 +103,8 @@ def submit_liveness_challenge(face_api_url, api_key, terminal_id, challenge, fra
 
 def collect_liveness_frames(args):
     if args.liveness_frame:
+        if len(args.liveness_frame) < 10:
+            raise RuntimeError("活体帧数量不足：文件模式至少 10 帧，请增加 --liveness-frame 或改用 --camera-index")
         return [image_to_data_url(path) for path in args.liveness_frame], None
     if args.camera_index is not None:
         return capture_camera_frames(

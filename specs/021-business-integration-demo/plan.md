@@ -114,8 +114,15 @@ specs/021-business-integration-demo/
 | `POST /api/auth/liveness/submit` | `challenge_id`、`terminal_id`、`frames[]` | `passed`、`reason`、`result_reason` |
 | `POST /api/auth/face-login` | `image`、`terminal_id`、`challenge_id`、`state?` | `authenticated`、`token`、`user`、`face`、`audit_id` |
 | `GET /api/auth/me` | `Authorization: Bearer <demo-token>` | `authenticated`、`user` |
-| `POST /api/terminal/login-events` | `terminal_id`、`matched_user_id`、`similarity`、`state?`、`face_api_result` | `accepted`、`user?`、`failure_reason?`、`audit_id` |
+| `POST /api/terminal/login-events` | `event_id`、`terminal_id`、`matched_user_id`、`similarity`、`recognized_at_epoch`、`state?`、`face_api_result` | `accepted`、`duplicate?`、`user?`、`failure_reason?`、`audit_id` |
 | `GET /api/audit/login` | `limit?`、`terminal_id?`、`success?` | `items[]`、`count` |
+
+终端事件要求：
+
+- `event_id` 必填，用于终端重试幂等。
+- `recognized_at_epoch` 必填，用于拒绝过期或未来时间异常的识别结果。
+- `face_api_result.authenticated` 必须为 `true`。
+- `face_api_result.match.user_id` 必须等于 `matched_user_id`；如果存在 `match.face_id`，还要等于当前业务有效绑定的 `face_id`。
 
 统一错误响应：
 

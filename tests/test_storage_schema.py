@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 from storage import FaceDB
 
@@ -144,6 +145,42 @@ class FaceDBSchemaTests(unittest.TestCase):
                         conn.close()
                     except sqlite3.ProgrammingError:
                         pass
+                db.close()
+
+    def test_checkpoint_failure_is_logged(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            db = FaceDB(db_path=db_path)
+            try:
+                db._checkpoint_threshold = 1
+                failing_conn = mock.Mock()
+                failing_conn.execute.side_effect = RuntimeError("checkpoint failed")
+                with mock.patch.object(db, "_conn", return_value=failing_conn):
+                    with self.assertLogs("storage", level="ERROR") as logs:
+                        db._maybe_checkpoint()
+
+                self.assertIn("WAL checkpoint failed", "\n".join(logs.output))
+            finally:
+                db.close()
+
+    def test_close_all_connection_failures_are_logged(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            db = FaceDB(db_path=db_path)
+            failing_conn = mock.Mock()
+            failing_conn.execute.side_effect = RuntimeError("checkpoint close failed")
+            failing_conn.close.side_effect = RuntimeError("close failed")
+            try:
+                with db._connections_lock:
+                    db._connections.add(failing_conn)
+
+                with self.assertLogs("storage", level="ERROR") as logs:
+                    db.close_all_connections()
+
+                output = "\n".join(logs.output)
+                self.assertIn("WAL checkpoint failed while closing connection", output)
+                self.assertIn("SQLite connection close failed", output)
+            finally:
                 db.close()
 
 

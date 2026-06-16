@@ -813,7 +813,9 @@ class MainApiContractTests(unittest.TestCase):
                 "age": 30,
             }
         ]
-        module.db.search = lambda *args, **kwargs: [{"user_id": 7, "username": "zhangsan", "similarity": 0.91}]
+        module.db.search = lambda *args, **kwargs: [
+            {"id": "face-7", "user_id": 7, "username": "zhangsan", "similarity": 0.91}
+        ]
 
         body = module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1", state="s-1"))
 
@@ -824,6 +826,9 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(module.db.audit_entries[0]["matched_user_id"], 7)
         self.assertEqual(module.db.audit_entries[0]["quality_metrics"]["det_score"], 0.99)
         self.assertEqual(body["quality_metrics"]["det_score"], 0.99)
+        self.assertEqual(body["match"]["face_id"], "face-7")
+        self.assertEqual(body["similarity"], 0.91)
+        self.assertEqual(body["threshold"], 0.6)
 
     def test_face_login_records_low_similarity_for_no_match(self):
         module = load_main_module(api_key="secret")
@@ -1145,7 +1150,10 @@ class MainApiContractTests(unittest.TestCase):
             module.set_maintenance_mode(False)
 
     def test_admin_restore_is_disabled_by_default_in_production(self):
-        module = load_main_module(api_key="secret", extra_env={"FACE_ENV": "production"})
+        module = load_main_module(
+            api_key="secret",
+            extra_env={"FACE_ENV": "production", "FACE_CORS_ORIGINS": "http://app.local"},
+        )
 
         with self.assertRaises(HTTPException) as exc_info:
             module.admin_restore(module.RestoreReq(backup_dir="backups/ok", confirm=True))
@@ -1163,6 +1171,15 @@ class MainApiContractTests(unittest.TestCase):
             self.assert_error_detail(exc_info.exception.detail, "BACKUP_PATH_INVALID", "备份路径不合法")
         finally:
             module.set_maintenance_mode(False)
+
+    def test_restore_db_files_uses_source_project_root_for_path_validation(self):
+        module = load_main_module(api_key="secret")
+        with patch.object(module.admin_ops, "restore_db_files", return_value=["faces.db"]) as restore_mock:
+            restored = module.restore_db_files(module.Path("backups/ok"))
+
+        self.assertEqual(restored, ["faces.db"])
+        _args, kwargs = restore_mock.call_args
+        self.assertEqual(kwargs["project_root"].resolve(), module.Path(module.__file__).parent.resolve())
 
     def test_restore_removes_stale_wal_when_backup_has_main_db_only(self):
         module = load_main_module(api_key="secret")

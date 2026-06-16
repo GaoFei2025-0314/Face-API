@@ -6,6 +6,7 @@
 - 路径可通过环境变量 FACE_DB_PATH 配置
 """
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -17,8 +18,11 @@ from typing import Optional
 import numpy as np
 
 
+logger = logging.getLogger(__name__)
+
+
 class FaceDB:
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: Optional[str] = None):
         # 优先读环境变量，方便部署时切换路径
         self.db_path = db_path or os.getenv("FACE_DB_PATH", "faces.db")
         # 每个线程独立 connection
@@ -162,7 +166,7 @@ class FaceDB:
             try:
                 self._conn().execute("PRAGMA wal_checkpoint(PASSIVE)")
             except Exception:
-                pass
+                logger.exception("WAL checkpoint failed")
             self._write_count = 0
 
     # ---------- CRUD ----------
@@ -677,8 +681,11 @@ class FaceDB:
             try:
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             except Exception:
-                pass
-            conn.close()
+                logger.exception("WAL checkpoint failed while closing connection")
+            try:
+                conn.close()
+            except Exception:
+                logger.exception("SQLite connection close failed")
             self._local.conn = None
             self._local.conn_generation = None
 
@@ -691,10 +698,10 @@ class FaceDB:
                 try:
                     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
                 except Exception:
-                    pass
+                    logger.exception("WAL checkpoint failed while closing connection")
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logger.exception("SQLite connection close failed")
         self._local.conn = None
         self._local.conn_generation = None

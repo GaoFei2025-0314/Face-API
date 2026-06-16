@@ -59,6 +59,20 @@ class AppConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "FACE_CHALLENGE_MAX_FRAMES 必须大于等于 40"):
                 load_settings()
 
+    def test_production_rejects_wildcard_cors_origins(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FACE_ENV": "production",
+                "FACE_API_KEY": "secret",
+                "FACE_DB_PATH": "faces.db",
+                "FACE_CORS_ORIGINS": "*",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "FACE_CORS_ORIGINS"):
+                load_settings()
+
 
 if __name__ == "__main__":
     unittest.main()

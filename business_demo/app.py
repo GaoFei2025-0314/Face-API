@@ -1,8 +1,11 @@
 import base64
 import hmac
 import json
+import math
 import os
+import sqlite3
 import time
+import uuid
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -47,12 +50,18 @@ def env_bool(name, default=False):
 
 
 def load_settings():
+    environment = os.getenv("BUSINESS_DEMO_ENV", "development").strip().lower()
+    token_secret = os.getenv("BUSINESS_DEMO_TOKEN_SECRET", "business-demo-dev-secret").strip()
+    if environment in {"prod", "production"} and (
+        not token_secret or token_secret == "business-demo-dev-secret"
+    ):
+        raise RuntimeError("BUSINESS_DEMO_TOKEN_SECRET 在 production 环境不能为空，且不能使用默认开发密钥")
     return BusinessDemoSettings(
         db_path=os.getenv("BUSINESS_DEMO_DB_PATH", "business-demo.db"),
         face_api_base_url=os.getenv("FACE_API_BASE_URL", "http://localhost:8000"),
         face_api_key=os.getenv("FACE_API_KEY", ""),
         binding_liveness_required=env_bool("BUSINESS_DEMO_BINDING_LIVENESS_REQUIRED", False),
-        token_secret=os.getenv("BUSINESS_DEMO_TOKEN_SECRET", "business-demo-dev-secret"),
+        token_secret=token_secret,
         token_ttl_seconds=int(os.getenv("BUSINESS_DEMO_TOKEN_TTL_SECONDS", "3600")),
         port=int(os.getenv("BUSINESS_DEMO_PORT", "8010")),
     )
@@ -91,6 +100,48 @@ def verify_demo_token(token, secret):
     if int(payload.get("exp", 0)) < int(time.time()):
         raise_business_error("TOKEN_INVALID")
     return payload
+
+
+def _value_to_text(value):
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _login_match(face_result):
+    if not isinstance(face_result, dict):
+        return {}
+    match = face_result.get("match")
+    return match if isinstance(match, dict) else {}
+
+
+def _login_similarity(face_result):
+    if not isinstance(face_result, dict):
+        return None
+    similarity = face_result.get("similarity")
+    if similarity is None and isinstance(face_result.get("face"), dict):
+        similarity = face_result["face"].get("similarity")
+    return similarity
+
+
+def _matched_face_id(face_result):
+    match = _login_match(face_result)
+    return match.get("face_id") or match.get("id") or (
+        face_result.get("face_id") if isinstance(face_result, dict) else None
+    )
+
+
+def _validate_face_login_result(face_result, expected_user_id=None, active_binding=None):
+    if not isinstance(face_result, dict) or face_result.get("authenticated") is not True:
+        return "FACE_API_LOGIN_REJECTED"
+    match = _login_match(face_result)
+    matched_user_id = _value_to_text(match.get("user_id"))
+    if expected_user_id is not None and matched_user_id != _value_to_text(expected_user_id):
+        return "FACE_API_MATCH_MISMATCH"
+    face_id = _matched_face_id(face_result)
+    if active_binding and face_id and face_id != active_binding["face_id"]:
+        return "FACE_API_MATCH_MISMATCH"
+    return None
 
 
 def create_app(settings=None, face_api_client=None):
@@ -245,9 +296,13 @@ def create_app(settings=None, face_api_client=None):
                 "threshold": req.threshold,
             }
         )
-        match = face_result.get("match") or {}
+        match = _login_match(face_result)
         user_id = str(match.get("user_id") or "")
-        similarity = face_result.get("similarity") or (face_result.get("face") or {}).get("similarity")
+        similarity = _login_similarity(face_result)
+        validation_failure = _validate_face_login_result(face_result)
+        if validation_failure:
+            reject_login(user_id, req.terminal_id, "web", validation_failure, req.state, similarity)
+            raise_business_error(validation_failure)
         user = db.get_user(user_id)
         if not user:
             reject_login(user_id, req.terminal_id, "web", "BUSINESS_USER_NOT_FOUND", req.state, similarity)
@@ -259,6 +314,10 @@ def create_app(settings=None, face_api_client=None):
         if not binding:
             reject_login(user_id, req.terminal_id, "web", "FACE_NOT_BOUND", req.state, similarity)
             raise_business_error("FACE_NOT_BOUND")
+        validation_failure = _validate_face_login_result(face_result, expected_user_id=user_id, active_binding=binding)
+        if validation_failure:
+            reject_login(user_id, req.terminal_id, "web", validation_failure, req.state, similarity)
+            raise_business_error(validation_failure)
         token = issue_demo_token(user, settings.token_secret, settings.token_ttl_seconds)
         audit_id = db.add_audit(
             user_id=user_id,
@@ -268,7 +327,7 @@ def create_app(settings=None, face_api_client=None):
             face_similarity=similarity,
             face_liveness_status="passed",
             face_liveness_reason="ok",
-            issued_token_id=token.split(".", 1)[1][:12],
+            issued_token_id=uuid.uuid4().hex,
             state=req.state,
         )
         return {
@@ -302,28 +361,61 @@ def create_app(settings=None, face_api_client=None):
         user = db.get_user(user_id)
         failure_reason = None
         accepted = True
-        if req.recognized_at_epoch is not None and time.time() - float(req.recognized_at_epoch) > 120:
+        recognized_delta = time.time() - float(req.recognized_at_epoch)
+        if not math.isfinite(float(req.recognized_at_epoch)) or recognized_delta < -5:
+            failure_reason = "TERMINAL_EVENT_TIME_INVALID"
+            accepted = False
+        elif recognized_delta > 120:
             failure_reason = "TERMINAL_EVENT_EXPIRED"
             accepted = False
-        elif not user:
-            failure_reason = "BUSINESS_USER_NOT_FOUND"
-            accepted = False
-        elif user["status"] != "active":
-            failure_reason = "USER_DISABLED"
-            accepted = False
-        elif not db.get_active_binding(user_id):
-            failure_reason = "FACE_NOT_BOUND"
-            accepted = False
-        audit_id = db.add_audit(
-            terminal_event_id=req.event_id,
-            user_id=user_id,
-            terminal_id=req.terminal_id,
-            source="terminal",
-            success=accepted,
-            failure_reason=failure_reason,
-            face_similarity=req.similarity,
-            state=req.state,
-        )
+        else:
+            result_failure = _validate_face_login_result(req.face_api_result, expected_user_id=user_id)
+            if result_failure:
+                failure_reason = result_failure
+                accepted = False
+        if accepted:
+            if not user:
+                failure_reason = "BUSINESS_USER_NOT_FOUND"
+                accepted = False
+            elif user["status"] != "active":
+                failure_reason = "USER_DISABLED"
+                accepted = False
+        if accepted:
+            binding = db.get_active_binding(user_id)
+            if not binding:
+                failure_reason = "FACE_NOT_BOUND"
+                accepted = False
+            else:
+                binding_failure = _validate_face_login_result(
+                    req.face_api_result,
+                    expected_user_id=user_id,
+                    active_binding=binding,
+                )
+                if binding_failure:
+                    failure_reason = binding_failure
+                    accepted = False
+        try:
+            audit_id = db.add_audit(
+                terminal_event_id=req.event_id,
+                user_id=user_id,
+                terminal_id=req.terminal_id,
+                source="terminal",
+                success=accepted,
+                failure_reason=failure_reason,
+                face_similarity=req.similarity,
+                state=req.state,
+            )
+        except sqlite3.IntegrityError:
+            existing = db.get_audit_by_terminal_event_id(req.event_id)
+            if not existing:
+                raise
+            return {
+                "accepted": False,
+                "duplicate": True,
+                "user": None,
+                "failure_reason": "DUPLICATE_TERMINAL_EVENT",
+                "audit_id": existing["id"],
+            }
         return {
             "accepted": accepted,
             "user": user if accepted else None,

@@ -73,7 +73,8 @@ Required capability:
 
 Expected result:
 
-- Returns service status, runtime device, and current registered face count.
+- Returns minimal service status for unauthenticated probing.
+- Runtime device and current registered face count are exposed through authenticated `/system/status`.
 
 ### 4.2 Runtime Status and Configuration
 

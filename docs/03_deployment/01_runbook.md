@@ -98,7 +98,7 @@ set FACE_LOG_BACKUP_COUNT=5
 
 开发环境可以使用默认 `*`。
 
-生产类环境建议设置明确前端地址：
+生产类环境必须设置明确前端地址，不能继续使用默认 `*`：
 
 ```bat
 set FACE_CORS_ORIGINS=http://localhost:3000,http://192.168.1.100:3000

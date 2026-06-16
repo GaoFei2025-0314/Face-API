@@ -71,6 +71,7 @@ class BusinessDB:
                     state TEXT,
                     created_at TEXT NOT NULL
                 );
+
                 """
             )
             existing_columns = {
@@ -78,6 +79,61 @@ class BusinessDB:
             }
             if "terminal_event_id" not in existing_columns:
                 conn.execute("ALTER TABLE business_login_audits ADD COLUMN terminal_event_id TEXT")
+            self._dedupe_for_unique_indexes(conn)
+            conn.executescript(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_face_bindings_one_active_user
+                ON face_bindings(user_id)
+                WHERE bind_status = 'active';
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_business_login_audits_terminal_event
+                ON business_login_audits(terminal_event_id)
+                WHERE terminal_event_id IS NOT NULL;
+                """
+            )
+
+    def _dedupe_for_unique_indexes(self, conn):
+        now = utc_now()
+        conn.execute(
+            """
+            UPDATE face_bindings
+            SET bind_status = 'removed',
+                removed_at = COALESCE(removed_at, ?)
+            WHERE bind_status = 'active'
+              AND id IN (
+                SELECT id FROM (
+                    SELECT id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY user_id
+                               ORDER BY bound_at DESC, id DESC
+                           ) AS rn
+                    FROM face_bindings
+                    WHERE bind_status = 'active'
+                )
+                WHERE rn > 1
+              )
+            """,
+            (now,),
+        )
+        conn.execute(
+            """
+            UPDATE business_login_audits
+            SET terminal_event_id = NULL
+            WHERE terminal_event_id IS NOT NULL
+              AND id IN (
+                SELECT id FROM (
+                    SELECT id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY terminal_event_id
+                               ORDER BY created_at DESC, id DESC
+                           ) AS rn
+                    FROM business_login_audits
+                    WHERE terminal_event_id IS NOT NULL
+                )
+                WHERE rn > 1
+              )
+            """
+        )
 
     def _seed_users(self):
         seeds = [
@@ -188,6 +244,36 @@ class BusinessDB:
             )
         return self.get_active_binding(user_id)
 
+    def _create_binding_in_conn(self, conn, user_id, face_id, source, metadata=None):
+        existing = conn.execute(
+            """
+            SELECT id FROM face_bindings
+            WHERE user_id = ? AND bind_status = 'active'
+            LIMIT 1
+            """,
+            (str(user_id),),
+        ).fetchone()
+        if existing:
+            raise_business_error("FACE_ALREADY_BOUND")
+        binding_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO face_bindings
+            (id, user_id, face_id, bind_status, bound_at, source, metadata_json)
+            VALUES (?, ?, ?, 'active', ?, ?, ?)
+            """,
+            (
+                binding_id,
+                str(user_id),
+                face_id,
+                utc_now(),
+                source,
+                json.dumps(metadata or {}, ensure_ascii=False),
+            ),
+        )
+        row = conn.execute("SELECT * FROM face_bindings WHERE id = ?", (binding_id,)).fetchone()
+        return dict(row) if row else None
+
     def remove_binding(self, user_id):
         binding = self.get_active_binding(user_id)
         if not binding:
@@ -225,10 +311,33 @@ class BusinessDB:
         return dict(updated) if updated else None
 
     def replace_binding(self, user_id, new_face_id, source, metadata=None):
-        old = self.get_active_binding(user_id)
-        if old:
-            self.remove_binding(user_id)
-        new_binding = self.create_binding(user_id, new_face_id, source=source, metadata=metadata)
+        with self._conn() as conn:
+            old_row = conn.execute(
+                """
+                SELECT * FROM face_bindings
+                WHERE user_id = ? AND bind_status = 'active'
+                ORDER BY bound_at DESC
+                LIMIT 1
+                """,
+                (str(user_id),),
+            ).fetchone()
+            old = dict(old_row) if old_row else None
+            if old:
+                conn.execute(
+                    """
+                    UPDATE face_bindings
+                    SET bind_status = 'removed', removed_at = ?
+                    WHERE id = ?
+                    """,
+                    (utc_now(), old["id"]),
+                )
+            new_binding = self._create_binding_in_conn(
+                conn=conn,
+                user_id=user_id,
+                face_id=new_face_id,
+                source=source,
+                metadata=metadata,
+            )
         return old, new_binding
 
     def add_audit(

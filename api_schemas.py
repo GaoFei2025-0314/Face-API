@@ -92,6 +92,7 @@ class SearchResp(BaseModel):
 
 
 class FaceLoginMatch(BaseModel):
+    face_id: Optional[str] = None
     user_id: Optional[int] = None
     username: str
 
@@ -100,6 +101,8 @@ class FaceLoginResp(BaseModel):
     authenticated: bool
     message: str
     match: FaceLoginMatch
+    similarity: float
+    threshold: float
     state: Optional[str] = None
     quality_metrics: dict
     elapsed_ms: float

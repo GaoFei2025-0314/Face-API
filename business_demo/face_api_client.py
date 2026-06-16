@@ -42,7 +42,9 @@ class FaceApiClient:
                     reason=detail.get("reason"),
                     status_code=exc.code,
                 )
-            raise_business_error("FACE_API_UNAVAILABLE")
+            if isinstance(detail, str) and detail.strip():
+                raise_business_error("FACE_API_REQUEST_FAILED", reason=detail, status_code=exc.code)
+            raise_business_error("FACE_API_REQUEST_FAILED", status_code=exc.code)
         except OSError:
             raise_business_error("FACE_API_UNAVAILABLE")
 

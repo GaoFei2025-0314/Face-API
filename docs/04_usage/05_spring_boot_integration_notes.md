@@ -62,18 +62,22 @@ class FaceApiClient {
         // POST {baseUrl}/auth/face-login
         // Header: X-API-Key: apiKey
         // Body: image, terminal_id, challenge_id, threshold, state
+        // Response: authenticated, match.face_id, match.user_id, match.username, similarity, threshold
     }
 
     LivenessChallengeResponse createChallenge(String purpose, String terminalId) {
         // POST {baseUrl}/liveness/challenges
+        // Header: X-API-Key: apiKey
     }
 
     LivenessSubmitResponse submitChallenge(String challengeId, List<String> frames) {
         // POST {baseUrl}/liveness/challenges/submit
+        // Header: X-API-Key: apiKey
     }
 
     void deleteFace(String faceId) {
         // DELETE {baseUrl}/faces/{faceId}
+        // Header: X-API-Key: apiKey
     }
 }
 ```
@@ -152,12 +156,20 @@ class FaceLoginService {
                 state
             ));
 
+            if (!faceResult.isAuthenticated()) {
+                throw new BusinessException("FACE_API_LOGIN_REJECTED");
+            }
+
             String userId = faceResult.getMatchedUserId();
             BusinessUser user = users.findActiveByUserId(userId)
                 .orElseThrow(() -> new BusinessException("BUSINESS_USER_NOT_FOUND"));
 
-            if (!bindings.hasActiveBinding(userId)) {
-                throw new BusinessException("FACE_NOT_BOUND");
+            FaceBinding binding = bindings.findActiveByUserId(userId)
+                .orElseThrow(() -> new BusinessException("FACE_NOT_BOUND"));
+
+            if (faceResult.getMatchedFaceId() != null
+                    && !faceResult.getMatchedFaceId().equals(binding.getFaceId())) {
+                throw new BusinessException("FACE_API_MATCH_MISMATCH");
             }
 
             String token = tokenService.issue(user);
@@ -196,6 +208,11 @@ class TerminalLoginService {
             );
             return TerminalLoginResult.reject("TERMINAL_EVENT_EXPIRED", auditId);
         }
+        if (!event.getFaceApiResult().isAuthenticated()
+                || !event.getMatchedUserId().equals(event.getFaceApiResult().getMatchedUserId())) {
+            audit.recordFailure(event.getMatchedUserId(), event.getTerminalId(), "FACE_API_MATCH_MISMATCH", event.getEventId());
+            return TerminalLoginResult.reject("FACE_API_MATCH_MISMATCH");
+        }
         BusinessUser user = users.findByUserId(event.getMatchedUserId()).orElse(null);
         if (user == null) {
             audit.recordFailure(event.getMatchedUserId(), event.getTerminalId(), "BUSINESS_USER_NOT_FOUND", event.getEventId());
@@ -205,9 +222,15 @@ class TerminalLoginService {
             audit.recordFailure(user.getUserId(), event.getTerminalId(), "USER_DISABLED", event.getEventId());
             return TerminalLoginResult.reject("USER_DISABLED");
         }
-        if (!bindings.hasActiveBinding(user.getUserId())) {
+        FaceBinding binding = bindings.findActiveByUserId(user.getUserId()).orElse(null);
+        if (binding == null) {
             audit.recordFailure(user.getUserId(), event.getTerminalId(), "FACE_NOT_BOUND", event.getEventId());
             return TerminalLoginResult.reject("FACE_NOT_BOUND");
+        }
+        if (event.getFaceApiResult().getMatchedFaceId() != null
+                && !event.getFaceApiResult().getMatchedFaceId().equals(binding.getFaceId())) {
+            audit.recordFailure(user.getUserId(), event.getTerminalId(), "FACE_API_MATCH_MISMATCH", event.getEventId());
+            return TerminalLoginResult.reject("FACE_API_MATCH_MISMATCH");
         }
         audit.recordSuccess(user.getUserId(), event.getTerminalId(), event.getSimilarity(), null, event.getEventId());
         return TerminalLoginResult.accept(user);

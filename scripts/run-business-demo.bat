@@ -12,6 +12,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if not exist "%FACE_PYTHON%" (
+  echo [business-demo] ERROR: FACE_PYTHON does not exist: %FACE_PYTHON%
+  echo [business-demo] Fix: set FACE_PYTHON=C:\path\to\python.exe
+  echo [business-demo] Example: set FACE_PYTHON=D:\anaconda3\envs\face_api\python.exe
+  exit /b 1
+)
+
 echo ================================================
 echo    face_api business-demo - Starting
 echo ================================================

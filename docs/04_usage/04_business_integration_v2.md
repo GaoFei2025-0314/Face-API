@@ -74,6 +74,15 @@ BUSINESS_DEMO_BINDING_LIVENESS_REQUIRED=0
 
 默认关闭，便于现场快速绑定。正式现场如果担心照片代绑，可以开启；开启后绑定流程必须先完成 register challenge。
 
+生产类演示部署时，`business-demo` 还需要替换默认 token 签名密钥：
+
+```text
+BUSINESS_DEMO_ENV=production
+BUSINESS_DEMO_TOKEN_SECRET=<随机长密钥>
+```
+
+默认 `business-demo-dev-secret` 只用于本机开发。设置 `BUSINESS_DEMO_ENV=production` 后，如果仍使用默认密钥，服务会拒绝启动。
+
 ## 4. Web 人脸登录
 
 推荐流程：
@@ -130,9 +139,11 @@ V2.0 同时规划两种终端 demo：
 
 ```bat
 python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-001 --camera-index 0 --api-key your-secret
-python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-002 --image login.jpg --liveness-frame frame01.jpg --liveness-frame frame02.jpg --api-key your-secret
+python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-002 --image login.jpg --liveness-frame frame01.jpg --liveness-frame frame02.jpg --liveness-frame frame03.jpg --liveness-frame frame04.jpg --liveness-frame frame05.jpg --liveness-frame frame06.jpg --liveness-frame frame07.jpg --liveness-frame frame08.jpg --liveness-frame frame09.jpg --liveness-frame frame10.jpg --api-key your-secret
 python scripts\terminal-demo.py --terminal-id gate-01 --event-id event-003 --image login.jpg --challenge-id passed-login-challenge-id --api-key your-secret
 ```
+
+文件帧模式至少传 10 帧。现场验收更推荐摄像头模式，因为它能连续采集活体帧和登录图片。
 
 只有当 `face_api` 明确关闭 login 活体时，才使用：
 
@@ -155,8 +166,10 @@ python scripts\terminal-demo.py --terminal-id gate-01 --image login.jpg --skip-l
 | `POST /api/auth/liveness/submit` | `challenge_id`、`terminal_id`、`frames[]` | `passed`、`reason`、`result_reason` |
 | `POST /api/auth/face-login` | `image`、`terminal_id`、`challenge_id`、`state?` | `authenticated`、`token`、`user`、`face`、`audit_id` |
 | `GET /api/auth/me` | `Authorization: Bearer <demo-token>` | `authenticated`、`user` |
-| `POST /api/terminal/login-events` | `event_id?`、`terminal_id`、`matched_user_id`、`similarity`、`recognized_at_epoch?`、`state?`、`face_api_result` | `accepted`、`duplicate?`、`user?`、`failure_reason?`、`audit_id` |
+| `POST /api/terminal/login-events` | `event_id`、`terminal_id`、`matched_user_id`、`similarity`、`recognized_at_epoch`、`state?`、`face_api_result` | `accepted`、`duplicate?`、`user?`、`failure_reason?`、`audit_id` |
 | `GET /api/audit/login` | `limit?`、`terminal_id?`、`success?` | `items[]`、`count` |
+
+终端上报时，`business-demo` 会校验 `face_api_result.authenticated=true`，并确认 `face_api_result.match.user_id` 等于 `matched_user_id`。如果 `face_api_result.match.face_id` 存在，还会确认它等于当前业务有效绑定的 `face_id`。
 
 统一错误响应：
 
@@ -181,9 +194,13 @@ python scripts\terminal-demo.py --terminal-id gate-01 --image login.jpg --skip-l
 | `TOKEN_INVALID` | 登录凭证无效或已过期，请重新登录 |
 | `FACE_API_UNAVAILABLE` | 人脸识别服务不可用，请检查 face_api 是否启动 |
 | `FACE_API_AUTH_FAILED` | 人脸识别服务认证失败，请检查服务端 API Key 配置 |
+| `FACE_API_REQUEST_FAILED` | 人脸识别服务拒绝了本次请求 |
+| `FACE_API_LOGIN_REJECTED` | 人脸识别服务没有返回认证成功 |
+| `FACE_API_MATCH_MISMATCH` | 人脸识别返回的用户或人脸记录与业务绑定不一致 |
 | `LIVENESS_CHALLENGE_REQUIRED` | 当前流程需要先完成活体 challenge |
 | `VALIDATION_ERROR` | 请求参数格式或取值不符合业务 demo 接口要求 |
 | `TERMINAL_EVENT_EXPIRED` | 终端识别结果已过期，请重新识别后再上报 |
+| `TERMINAL_EVENT_TIME_INVALID` | 终端识别时间不在允许窗口内 |
 | `DUPLICATE_TERMINAL_EVENT` | 终端事件已经处理过，本次重试不会重复写入 audit |
 
 业务页面应优先展示业务层中文原因；如果错误来自 `face_api`，展示 `detail.reason`。

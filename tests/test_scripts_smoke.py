@@ -281,7 +281,19 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn('cd /d "%~dp0\\.."', script)
         self.assertIn("FACE_PYTHON", script)
         self.assertIn("BUSINESS_DEMO_PORT must be an integer from 1 to 65535", script)
+        self.assertIn("FACE_PYTHON does not exist", script)
         self.assertIn('"%FACE_PYTHON%" -m uvicorn business_demo.app:app', script)
+
+    def test_run_business_demo_rejects_missing_python_path(self):
+        result = self.run_batch_with_env(
+            "scripts\\run-business-demo.bat",
+            {"FACE_PYTHON": "Z:\\missing\\python.exe", "BUSINESS_DEMO_PORT": "8010"},
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        output = result.stderr + result.stdout
+        self.assertIn("FACE_PYTHON does not exist", output)
+        self.assertIn("set FACE_PYTHON=", output)
 
     def test_terminal_demo_script_help(self):
         result = self.run_script("scripts/terminal-demo.py", "--help")
@@ -330,6 +342,38 @@ class ScriptSmokeTests(unittest.TestCase):
         output = stdout.getvalue()
         self.assertIn("LIVENESS_CHALLENGE_REQUIRED", output)
         self.assertIn("请先完成活体动作", output)
+
+    def test_terminal_demo_rejects_too_few_liveness_frames_locally(self):
+        spec = importlib.util.spec_from_file_location("terminal_demo", ROOT / "scripts" / "terminal-demo.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            frame1 = Path(tmp) / "frame01.jpg"
+            frame2 = Path(tmp) / "frame02.jpg"
+            login = Path(tmp) / "login.jpg"
+            frame1.write_bytes(b"frame1")
+            frame2.write_bytes(b"frame2")
+            login.write_bytes(b"login")
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                code = module.main(
+                    [
+                        "--terminal-id",
+                        "gate-1",
+                        "--image",
+                        str(login),
+                        "--liveness-frame",
+                        str(frame1),
+                        "--liveness-frame",
+                        str(frame2),
+                    ]
+                )
+
+        self.assertEqual(code, 1)
+        output = stdout.getvalue()
+        self.assertIn("活体帧数量不足", output)
+        self.assertIn("至少 10 帧", output)
 
 
 if __name__ == "__main__":

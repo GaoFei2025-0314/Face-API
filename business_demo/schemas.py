@@ -37,10 +37,10 @@ class FaceLoginReq(BaseModel):
 
 
 class TerminalLoginEventReq(BaseModel):
-    event_id: Optional[str] = None
+    event_id: str = Field(..., min_length=1)
     terminal_id: str
     matched_user_id: str
     similarity: Optional[float] = None
-    recognized_at_epoch: Optional[float] = None
+    recognized_at_epoch: float
     state: Optional[str] = None
     face_api_result: dict[str, Any] = Field(default_factory=dict)

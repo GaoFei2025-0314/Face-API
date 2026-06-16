@@ -92,12 +92,18 @@ V1.5 明确边界：
 | 强制鉴权 | `/extract/base64` | 是 |
 | 强制鉴权 | `/system/status` | 是 |
 | 强制鉴权 | `/config/effective` | 是 |
+| 强制鉴权 | `/policy/tuning-summary` | 是 |
+| 强制鉴权 | `/search/benchmark-summary` | 是 |
+| 强制鉴权 | `/search/index-status` | 是 |
+| 强制鉴权 | `/performance/scale-plan` | 是 |
 | 强制鉴权 | `/auth/face-login` | 是 |
 | 强制鉴权 | `/audit/login/recent` | 是 |
 | 强制鉴权 | `/audit/login/summary` | 是 |
 | 强制鉴权 | `/liveness/challenges` | 是 |
 | 强制鉴权 | `/liveness/challenges/submit` | 是 |
 | 强制鉴权 | `/admin/overview` | 是 |
+| 强制鉴权 | `/admin/maintenance` | 是 |
+| 强制鉴权 | `/admin/faces/{face_id}/delete` | 是 |
 | 强制鉴权 | `/admin/backup` | 是 |
 | 强制鉴权 | `/admin/restore` | 是 |
 | 条件鉴权 | `/detect` | 取决于后端是否配置 `FACE_API_KEY` |
@@ -105,6 +111,7 @@ V1.5 明确边界：
 | 条件鉴权 | `/compare` | 同上 |
 | 条件鉴权 | `/faces/register` | 同上 |
 | 条件鉴权 | `/faces` | 同上 |
+| 条件鉴权 | `/faces/by-user/{user_id}` | 同上 |
 | 条件鉴权 | `/faces/{face_id}` | 同上 |
 | 条件鉴权 | `/search` | 同上 |
 
@@ -249,8 +256,10 @@ function fileToBase64(file) {
 示例返回：
 
 ```json
-{ "status": "ok", "device": "CPU", "faces": 12 }
+{ "status": "ok", "service": "face_api" }
 ```
+
+CPU/GPU、模型和底库数量等细节请看带鉴权的 `GET /system/status`。
 
 ---
 
@@ -538,7 +547,9 @@ terminal 上线前至少验证：
 {
   "authenticated": true,
   "message": "认证成功",
-  "match": { "user_id": 10001, "username": "zhangsan" },
+  "match": { "face_id": "face-record-id", "user_id": 10001, "username": "zhangsan" },
+  "similarity": 0.782,
+  "threshold": 0.6,
   "state": "trace-001",
   "elapsed_ms": 45.6
 }
@@ -799,7 +810,9 @@ export interface RegisteredFace {
 export interface FaceLoginResp {
   authenticated: boolean;
   message: string;
-  match: { user_id: number | null; username: string };
+  match: { face_id?: string | null; user_id: number | null; username: string };
+  similarity: number;
+  threshold: number;
   state?: string | null;
   elapsed_ms: number;
 }

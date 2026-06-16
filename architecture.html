@@ -811,9 +811,9 @@
         talkTrack: "讲服务起来后如何确认它健康，以及出问题去哪看。",
         summary: "运维通过 /health、日志、Swagger 和 admin 页面确认服务是否正常。",
         inputs: ["GET /health", "日志文件", "admin 页面请求"],
-        outputs: ["运行状态", "device", "faces", "错误定位线索"],
+        outputs: ["status=ok", "service=face_api", "错误定位线索"],
         links: ["docs/03_deployment/01_runbook.md", "admin.html"],
-        notes: ["/health 始终公开，便于基础监控。"]
+        notes: ["/health 始终公开，便于基础监控；device 和 faces_count 看 /system/status。"]
       },
       {
         id: "docs",
@@ -920,9 +920,9 @@
         steps: [
           { nodeId: "terminal", title: "受控设备配置 terminal_id 和 API Key", edgeIds: ["terminal-terminal-demo"] },
           { nodeId: "terminal-demo", title: "终端页面或脚本直接调用 face_api", edgeIds: ["terminal-demo-faceapi"] },
-          { nodeId: "fastapi", title: "face_api 返回 matched_user_id 和 similarity", edgeIds: ["terminal-demo-faceapi", "fastapi-engine", "fastapi-sqlite"] },
+          { nodeId: "fastapi", title: "face_api 返回 user_id、face_id 和 similarity", edgeIds: ["terminal-demo-faceapi", "fastapi-engine", "fastapi-sqlite"] },
           { nodeId: "terminal-demo", title: "终端把识别结果上报业务后端", edgeIds: ["terminal-demo-business-demo"] },
-          { nodeId: "business-demo", title: "业务后端校验用户并写业务 audit", edgeIds: ["terminal-demo-business-demo", "business-demo-db"] },
+          { nodeId: "business-demo", title: "业务后端校验识别结果、用户和绑定", edgeIds: ["terminal-demo-business-demo", "business-demo-db"] },
           { nodeId: "business-db", title: "保存终端来源登录记录", edgeIds: ["business-demo-db"] }
         ]
       },

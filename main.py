@@ -505,7 +505,7 @@ def copy_existing_db_files(target_dir: Path) -> list[str]:
 
 
 def restore_db_files(backup_dir: Path) -> list[str]:
-    return admin_ops.restore_db_files(backup_dir, db_path=DB_PATH)
+    return admin_ops.restore_db_files(backup_dir, db_path=DB_PATH, project_root=Path(__file__).parent)
 
 
 def get_available_providers() -> list[str]:
@@ -1364,9 +1364,12 @@ def face_login(req: FaceLoginReq):
         "authenticated": True,
         "message": "认证成功",
         "match": {
+            "face_id": best_match.get("id"),
             "user_id": best_match.get("user_id"),
             "username": username,
         },
+        "similarity": float(best_match.get("similarity")),
+        "threshold": threshold,
         "state": req.state,
         "quality_metrics": quality_metrics,
         "elapsed_ms": round(elapsed, 2),

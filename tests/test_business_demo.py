@@ -1,6 +1,7 @@
 import asyncio
 import io
 import json
+import os
 import sqlite3
 import tempfile
 import time
@@ -146,6 +147,208 @@ class BusinessDemoStorageTests(unittest.TestCase):
             self.assertEqual(removed["face_id"], "face-a")
             self.assertIsNone(db.get_active_binding("200001"))
 
+    def test_storage_enforces_unique_active_binding_and_terminal_event_id(self):
+        from business_demo.storage import BusinessDB, utc_now
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "business.db"
+            db = BusinessDB(db_path)
+            active = db.create_binding("100001", "face-a", source="web_demo")
+
+            conn = sqlite3.connect(db_path)
+            try:
+                with self.assertRaises(sqlite3.IntegrityError):
+                    conn.execute(
+                        """
+                        INSERT INTO face_bindings
+                        (id, user_id, face_id, bind_status, bound_at, source, metadata_json)
+                        VALUES (?, ?, ?, 'active', ?, ?, '{}')
+                        """,
+                        ("manual-active", active["user_id"], "face-b", utc_now(), "test"),
+                    )
+                conn.rollback()
+            finally:
+                conn.close()
+
+            db.add_audit(
+                terminal_event_id="event-unique-1",
+                user_id="100001",
+                terminal_id="gate-1",
+                source="terminal",
+                success=True,
+            )
+            with self.assertRaises(sqlite3.IntegrityError):
+                db.add_audit(
+                    terminal_event_id="event-unique-1",
+                    user_id="100001",
+                    terminal_id="gate-1",
+                    source="terminal",
+                    success=True,
+                )
+
+    def test_storage_migrates_old_audit_table_before_creating_event_index(self):
+        from business_demo.storage import BusinessDB
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "business.db"
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.executescript(
+                    """
+                    CREATE TABLE business_users (
+                        user_id TEXT PRIMARY KEY,
+                        username TEXT NOT NULL,
+                        display_name TEXT,
+                        department TEXT,
+                        status TEXT NOT NULL DEFAULT 'active',
+                        created_at TEXT NOT NULL
+                    );
+
+                    CREATE TABLE face_bindings (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        face_id TEXT NOT NULL,
+                        bind_status TEXT NOT NULL,
+                        bound_at TEXT NOT NULL,
+                        removed_at TEXT,
+                        source TEXT NOT NULL,
+                        metadata_json TEXT NOT NULL DEFAULT '{}'
+                    );
+
+                    CREATE TABLE business_login_audits (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT,
+                        terminal_id TEXT,
+                        source TEXT NOT NULL,
+                        success INTEGER NOT NULL,
+                        failure_reason TEXT,
+                        face_similarity REAL,
+                        face_liveness_status TEXT,
+                        face_liveness_reason TEXT,
+                        issued_token_id TEXT,
+                        state TEXT,
+                        created_at TEXT NOT NULL
+                    );
+                    """
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            db = BusinessDB(db_path)
+            db.add_audit(
+                terminal_event_id="migrated-event-1",
+                user_id="100001",
+                terminal_id="gate-1",
+                source="terminal",
+                success=True,
+            )
+
+            conn = sqlite3.connect(db_path)
+            try:
+                columns = {row[1] for row in conn.execute("PRAGMA table_info(business_login_audits)")}
+                indexes = {row[1] for row in conn.execute("PRAGMA index_list(business_login_audits)")}
+            finally:
+                conn.close()
+
+            self.assertIn("terminal_event_id", columns)
+            self.assertIn("idx_business_login_audits_terminal_event", indexes)
+
+    def test_storage_migrates_duplicate_rows_before_creating_unique_indexes(self):
+        from business_demo.storage import BusinessDB
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "business.db"
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.executescript(
+                    """
+                    CREATE TABLE business_users (
+                        user_id TEXT PRIMARY KEY,
+                        username TEXT NOT NULL,
+                        display_name TEXT,
+                        department TEXT,
+                        status TEXT NOT NULL DEFAULT 'active',
+                        created_at TEXT NOT NULL
+                    );
+
+                    CREATE TABLE face_bindings (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        face_id TEXT NOT NULL,
+                        bind_status TEXT NOT NULL,
+                        bound_at TEXT NOT NULL,
+                        removed_at TEXT,
+                        source TEXT NOT NULL,
+                        metadata_json TEXT NOT NULL DEFAULT '{}'
+                    );
+
+                    CREATE TABLE business_login_audits (
+                        id TEXT PRIMARY KEY,
+                        terminal_event_id TEXT,
+                        user_id TEXT,
+                        terminal_id TEXT,
+                        source TEXT NOT NULL,
+                        success INTEGER NOT NULL,
+                        failure_reason TEXT,
+                        face_similarity REAL,
+                        face_liveness_status TEXT,
+                        face_liveness_reason TEXT,
+                        issued_token_id TEXT,
+                        state TEXT,
+                        created_at TEXT NOT NULL
+                    );
+
+                    INSERT INTO face_bindings
+                    (id, user_id, face_id, bind_status, bound_at, source, metadata_json)
+                    VALUES
+                    ('binding-old', '100001', 'face-old', 'active', '2026-01-01 00:00:00', 'test', '{}'),
+                    ('binding-new', '100001', 'face-new', 'active', '2026-01-02 00:00:00', 'test', '{}');
+
+                    INSERT INTO business_login_audits
+                    (id, terminal_event_id, user_id, terminal_id, source, success, created_at)
+                    VALUES
+                    ('audit-old', 'event-dup', '100001', 'gate-1', 'terminal', 1, '2026-01-01 00:00:00'),
+                    ('audit-new', 'event-dup', '100001', 'gate-1', 'terminal', 1, '2026-01-02 00:00:00');
+                    """
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            db = BusinessDB(db_path)
+            active = db.get_active_binding("100001")
+            event = db.get_audit_by_terminal_event_id("event-dup")
+
+            conn = sqlite3.connect(db_path)
+            try:
+                active_count = conn.execute(
+                    "SELECT COUNT(*) FROM face_bindings WHERE user_id = '100001' AND bind_status = 'active'"
+                ).fetchone()[0]
+                event_count = conn.execute(
+                    "SELECT COUNT(*) FROM business_login_audits WHERE terminal_event_id = 'event-dup'"
+                ).fetchone()[0]
+            finally:
+                conn.close()
+
+            self.assertEqual(active["face_id"], "face-new")
+            self.assertEqual(event["id"], "audit-new")
+            self.assertEqual(active_count, 1)
+            self.assertEqual(event_count, 1)
+
+    def test_replace_binding_rolls_back_when_new_binding_cannot_be_created(self):
+        from business_demo.storage import BusinessDB
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db = BusinessDB(Path(tmp) / "business.db")
+            db.create_binding("100001", "face-a", source="web_demo")
+
+            with self.assertRaises(TypeError):
+                db.replace_binding("100001", "face-b", source="web_demo", metadata={"bad": object()})
+
+            active = db.get_active_binding("100001")
+            self.assertEqual(active["face_id"], "face-a")
+
     def test_demo_token_round_trip_and_tamper_rejection(self):
         from business_demo.app import issue_demo_token, verify_demo_token
 
@@ -155,6 +358,26 @@ class BusinessDemoStorageTests(unittest.TestCase):
         self.assertEqual(payload["user_id"], "100001")
         with self.assertRaises(Exception):
             verify_demo_token(token + "tamper", "secret")
+
+
+class BusinessDemoSettingsTests(unittest.TestCase):
+    def test_load_settings_rejects_default_token_secret_in_production(self):
+        from business_demo.app import load_settings
+
+        with mock.patch.dict(os.environ, {"BUSINESS_DEMO_ENV": "production"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "BUSINESS_DEMO_TOKEN_SECRET"):
+                load_settings()
+
+    def test_load_settings_rejects_empty_token_secret_in_production(self):
+        from business_demo.app import load_settings
+
+        with mock.patch.dict(
+            os.environ,
+            {"BUSINESS_DEMO_ENV": "production", "BUSINESS_DEMO_TOKEN_SECRET": "   "},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "BUSINESS_DEMO_TOKEN_SECRET"):
+                load_settings()
 
 
 class BusinessDemoFaceApiClientTests(unittest.TestCase):
@@ -196,6 +419,21 @@ class BusinessDemoFaceApiClientTests(unittest.TestCase):
             with self.assertRaises(BusinessDemoError) as unavailable_ctx:
                 FaceApiClient("http://face-api.test", "secret").face_login({"image": "x"})
         self.assertEqual(unavailable_ctx.exception.code, "FACE_API_UNAVAILABLE")
+
+    def test_face_api_client_preserves_string_detail_http_errors(self):
+        from business_demo.app import BusinessDemoError
+        from business_demo.face_api_client import FaceApiClient, request as urllib_request
+
+        body = json.dumps({"detail": "图片中没有检测到人脸"}, ensure_ascii=False).encode("utf-8")
+        http_error = HTTPError("http://face-api.test/search", 400, "Bad Request", {}, io.BytesIO(body))
+
+        with mock.patch.object(urllib_request, "urlopen", side_effect=http_error):
+            with self.assertRaises(BusinessDemoError) as ctx:
+                FaceApiClient("http://face-api.test", "secret").face_login({"image": "x"})
+
+        self.assertEqual(ctx.exception.code, "FACE_API_REQUEST_FAILED")
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("图片中没有检测到人脸", ctx.exception.reason)
 
 
 class BusinessDemoApiTests(unittest.TestCase):
@@ -324,6 +562,46 @@ class BusinessDemoApiTests(unittest.TestCase):
             self.assertEqual(response.json()["detail"]["code"], "VALIDATION_ERROR")
             self.assertIn("请求参数", response.json()["detail"]["reason"])
 
+    def test_terminal_event_requires_id_and_recognition_time(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_test_app(Path(tmp) / "business.db", FakeFaceApiClient())
+            request(
+                app,
+                "POST",
+                "/api/users/100001/face-binding",
+                {"image": "data:image/jpeg;base64,aaa", "terminal_id": "web-1"},
+            )
+
+            missing_event_id = request(
+                app,
+                "POST",
+                "/api/terminal/login-events",
+                {
+                    "terminal_id": "gate-1",
+                    "matched_user_id": "100001",
+                    "similarity": 0.91,
+                    "recognized_at_epoch": time.time(),
+                    "face_api_result": {"authenticated": True},
+                },
+            )
+            self.assertEqual(missing_event_id.status_code, 422)
+            self.assertEqual(missing_event_id.json()["detail"]["code"], "VALIDATION_ERROR")
+
+            missing_recognized_at = request(
+                app,
+                "POST",
+                "/api/terminal/login-events",
+                {
+                    "event_id": "terminal-event-missing-time",
+                    "terminal_id": "gate-1",
+                    "matched_user_id": "100001",
+                    "similarity": 0.91,
+                    "face_api_result": {"authenticated": True},
+                },
+            )
+            self.assertEqual(missing_recognized_at.status_code, 422)
+            self.assertEqual(missing_recognized_at.json()["detail"]["code"], "VALIDATION_ERROR")
+
     def test_web_login_issues_token_and_records_business_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
             fake = FakeFaceApiClient()
@@ -376,6 +654,10 @@ class BusinessDemoApiTests(unittest.TestCase):
             self.assertEqual(audit.status_code, 200, audit.text)
             self.assertEqual(audit.json()["count"], 1)
             self.assertTrue(audit.json()["items"][0]["success"])
+            token_signature_prefix = body["token"].split(".", 1)[1][:12]
+            issued_token_id = audit.json()["items"][0]["issued_token_id"]
+            self.assertNotEqual(issued_token_id, token_signature_prefix)
+            self.assertEqual(len(issued_token_id), 32)
 
     def test_web_login_rejects_disabled_or_unbound_business_user(self):
         from business_demo.storage import BusinessDB
@@ -414,6 +696,53 @@ class BusinessDemoApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 403)
             self.assertEqual(response.json()["detail"]["code"], "FACE_NOT_BOUND")
 
+    def test_web_login_rejects_unauthenticated_or_mismatched_face_api_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = FakeFaceApiClient()
+            app = make_test_app(Path(tmp) / "business.db", fake)
+            request(
+                app,
+                "POST",
+                "/api/users/100001/face-binding",
+                {"image": "data:image/jpeg;base64,aaa", "terminal_id": "web-1"},
+            )
+
+            fake.login_response = {
+                "authenticated": False,
+                "match": {"user_id": 100001, "username": "GAOFEI"},
+                "similarity": 0.91,
+            }
+            rejected = request(
+                app,
+                "POST",
+                "/api/auth/face-login",
+                {
+                    "image": "data:image/jpeg;base64,login",
+                    "terminal_id": "web-1",
+                    "challenge_id": "challenge-1",
+                },
+            )
+            self.assertEqual(rejected.status_code, 403)
+            self.assertEqual(rejected.json()["detail"]["code"], "FACE_API_LOGIN_REJECTED")
+
+            fake.login_response = {
+                "authenticated": True,
+                "match": {"user_id": 100001, "username": "GAOFEI", "face_id": "other-face"},
+                "similarity": 0.91,
+            }
+            mismatched = request(
+                app,
+                "POST",
+                "/api/auth/face-login",
+                {
+                    "image": "data:image/jpeg;base64,login",
+                    "terminal_id": "web-1",
+                    "challenge_id": "challenge-1",
+                },
+            )
+            self.assertEqual(mismatched.status_code, 403)
+            self.assertEqual(mismatched.json()["detail"]["code"], "FACE_API_MATCH_MISMATCH")
+
     def test_terminal_event_reports_business_decision_and_audit(self):
         from business_demo.storage import BusinessDB
 
@@ -436,8 +765,12 @@ class BusinessDemoApiTests(unittest.TestCase):
                     "terminal_id": "gate-1",
                     "matched_user_id": "100001",
                     "similarity": 0.91,
+                    "recognized_at_epoch": time.time(),
                     "state": "trace-terminal",
-                    "face_api_result": {"authenticated": True},
+                    "face_api_result": {
+                        "authenticated": True,
+                        "match": {"user_id": 100001, "username": "GAOFEI"},
+                    },
                 },
             )
             self.assertEqual(accepted.status_code, 200, accepted.text)
@@ -454,7 +787,11 @@ class BusinessDemoApiTests(unittest.TestCase):
                     "terminal_id": "gate-1",
                     "matched_user_id": "100001",
                     "similarity": 0.88,
-                    "face_api_result": {"authenticated": True},
+                    "recognized_at_epoch": time.time(),
+                    "face_api_result": {
+                        "authenticated": True,
+                        "match": {"user_id": 100001, "username": "GAOFEI"},
+                    },
                 },
             )
             self.assertEqual(rejected.status_code, 200, rejected.text)
@@ -463,6 +800,74 @@ class BusinessDemoApiTests(unittest.TestCase):
 
             audit = request(app, "GET", "/api/audit/login", params={"terminal_id": "gate-1"})
             self.assertEqual(audit.json()["count"], 2)
+
+    def test_terminal_event_rejects_untrusted_face_api_result_and_future_time(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = make_test_app(Path(tmp) / "business.db", FakeFaceApiClient())
+            request(
+                app,
+                "POST",
+                "/api/users/100001/face-binding",
+                {"image": "data:image/jpeg;base64,aaa", "terminal_id": "web-1"},
+            )
+
+            unauthenticated = request(
+                app,
+                "POST",
+                "/api/terminal/login-events",
+                {
+                    "event_id": "terminal-event-unauthenticated",
+                    "terminal_id": "gate-1",
+                    "matched_user_id": "100001",
+                    "similarity": 0.91,
+                    "recognized_at_epoch": time.time(),
+                    "face_api_result": {
+                        "authenticated": False,
+                        "match": {"user_id": 100001, "username": "GAOFEI"},
+                    },
+                },
+            )
+            self.assertEqual(unauthenticated.status_code, 200)
+            self.assertFalse(unauthenticated.json()["accepted"])
+            self.assertEqual(unauthenticated.json()["failure_reason"], "FACE_API_LOGIN_REJECTED")
+
+            mismatched_user = request(
+                app,
+                "POST",
+                "/api/terminal/login-events",
+                {
+                    "event_id": "terminal-event-mismatch",
+                    "terminal_id": "gate-1",
+                    "matched_user_id": "100001",
+                    "similarity": 0.91,
+                    "recognized_at_epoch": time.time(),
+                    "face_api_result": {
+                        "authenticated": True,
+                        "match": {"user_id": 100002, "username": "DEMO_ADMIN"},
+                    },
+                },
+            )
+            self.assertFalse(mismatched_user.json()["accepted"])
+            self.assertEqual(mismatched_user.json()["failure_reason"], "FACE_API_MATCH_MISMATCH")
+
+            future = request(
+                app,
+                "POST",
+                "/api/terminal/login-events",
+                {
+                    "event_id": "terminal-event-future",
+                    "terminal_id": "gate-1",
+                    "matched_user_id": "100001",
+                    "similarity": 0.91,
+                    "recognized_at_epoch": time.time() + 3600,
+                    "face_api_result": {
+                        "authenticated": True,
+                        "match": {"user_id": 100001, "username": "GAOFEI"},
+                    },
+                },
+            )
+            self.assertFalse(future.json()["accepted"])
+            self.assertEqual(future.json()["failure_reason"], "TERMINAL_EVENT_TIME_INVALID")
 
     def test_terminal_event_rejects_unbound_expired_and_duplicate_events(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -478,7 +883,11 @@ class BusinessDemoApiTests(unittest.TestCase):
                     "terminal_id": "gate-2",
                     "matched_user_id": "100001",
                     "similarity": 0.91,
-                    "face_api_result": {"authenticated": True},
+                    "recognized_at_epoch": time.time(),
+                    "face_api_result": {
+                        "authenticated": True,
+                        "match": {"user_id": 100001, "username": "GAOFEI"},
+                    },
                 },
             )
             self.assertEqual(unbound.status_code, 200, unbound.text)
@@ -501,7 +910,10 @@ class BusinessDemoApiTests(unittest.TestCase):
                     "matched_user_id": "100001",
                     "similarity": 0.91,
                     "recognized_at_epoch": time.time() - 999,
-                    "face_api_result": {"authenticated": True},
+                    "face_api_result": {
+                        "authenticated": True,
+                        "match": {"user_id": 100001, "username": "GAOFEI"},
+                    },
                 },
             )
             self.assertFalse(expired.json()["accepted"])
@@ -517,7 +929,10 @@ class BusinessDemoApiTests(unittest.TestCase):
                     "matched_user_id": "100001",
                     "similarity": 0.91,
                     "recognized_at_epoch": time.time(),
-                    "face_api_result": {"authenticated": True},
+                    "face_api_result": {
+                        "authenticated": True,
+                        "match": {"user_id": 100001, "username": "GAOFEI"},
+                    },
                 },
             )
             self.assertTrue(accepted.json()["accepted"])
@@ -531,7 +946,10 @@ class BusinessDemoApiTests(unittest.TestCase):
                     "matched_user_id": "100001",
                     "similarity": 0.91,
                     "recognized_at_epoch": time.time(),
-                    "face_api_result": {"authenticated": True},
+                    "face_api_result": {
+                        "authenticated": True,
+                        "match": {"user_id": 100001, "username": "GAOFEI"},
+                    },
                 },
             )
             self.assertFalse(duplicate.json()["accepted"])

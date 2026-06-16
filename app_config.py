@@ -127,6 +127,8 @@ def load_settings() -> RuntimeSettings:
 def validate_settings(settings: RuntimeSettings) -> None:
     if settings.production_like and not settings.api_key:
         raise RuntimeError("FACE_API_KEY 在 production 环境不能为空")
+    if settings.production_like and "*" in settings.cors_origins:
+        raise RuntimeError("FACE_CORS_ORIGINS 在 production 环境不能使用 *，请配置明确的前端来源白名单")
     if settings.duplicate_policy not in {"allow", "reject", "replace"}:
         raise RuntimeError("FACE_DUPLICATE_POLICY 必须是 allow、reject 或 replace")
     if "blink" not in settings.face_challenge_actions:
