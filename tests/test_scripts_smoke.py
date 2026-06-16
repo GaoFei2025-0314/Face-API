@@ -234,6 +234,37 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn("result.reason || result.result_reason", html)
         self.assertIn("请眨眼并轻微前后移动", html)
 
+    def test_camera_integration_displays_anti_spoof_risk_without_metrics(self):
+        html = (ROOT / "camera-integration.html").read_text(encoding="utf-8")
+
+        self.assertIn("formatAntiSpoofRisk", html)
+        self.assertIn("anti_spoof_risk", html)
+        self.assertIn("防翻拍", html)
+        self.assertNotIn("anti_spoof_risk.metrics", html)
+
+    def test_v21_acceptance_record_and_docs_cover_anti_spoofing(self):
+        acceptance = (ROOT / "docs" / "90_archive" / "04_acceptance" / "05_v2.1_acceptance_record.md").read_text(
+            encoding="utf-8"
+        )
+        api_doc = (ROOT / "docs" / "04_usage" / "01_api_integration.md").read_text(encoding="utf-8")
+        security_doc = (ROOT / "docs" / "04_usage" / "03_recognition_security_accuracy.md").read_text(
+            encoding="utf-8"
+        )
+        business_doc = (ROOT / "docs" / "04_usage" / "04_business_integration_v2.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("真人正脸", acceptance)
+        self.assertIn("打印照片", acceptance)
+        self.assertIn("手机屏幕显示照片", acceptance)
+        self.assertIn("电脑屏幕显示照片", acceptance)
+        self.assertIn("手机播放眨眼视频", acceptance)
+        self.assertIn("anti_spoof_risk", api_doc)
+        self.assertIn("ANTI_SPOOF_HIGH_RISK", api_doc)
+        self.assertIn("轻量防翻拍", security_doc)
+        self.assertIn("不承诺覆盖", security_doc)
+        self.assertIn("anti_spoof_risk", business_doc)
+
     def test_business_demo_web_page_does_not_expose_face_api_key(self):
         html = (ROOT / "business_demo" / "static" / "index.html").read_text(encoding="utf-8")
 
@@ -258,6 +289,16 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn("captureFrames(24", html)
         self.assertIn("captureBase64", html)
         self.assertIn("cameraStatus", html)
+
+    def test_business_demo_pages_display_anti_spoof_risk_without_metrics(self):
+        index_html = (ROOT / "business_demo" / "static" / "index.html").read_text(encoding="utf-8")
+        terminal_html = (ROOT / "business_demo" / "static" / "terminal.html").read_text(encoding="utf-8")
+
+        for html in (index_html, terminal_html):
+            self.assertIn("formatAntiSpoofRisk", html)
+            self.assertIn("anti_spoof_risk", html)
+            self.assertIn("防翻拍", html)
+            self.assertNotIn("anti_spoof_risk.metrics", html)
 
     def test_business_demo_terminal_page_has_local_dependencies_only(self):
         html = (ROOT / "business_demo" / "static" / "terminal.html").read_text(encoding="utf-8")
@@ -342,6 +383,13 @@ class ScriptSmokeTests(unittest.TestCase):
         output = stdout.getvalue()
         self.assertIn("LIVENESS_CHALLENGE_REQUIRED", output)
         self.assertIn("请先完成活体动作", output)
+
+    def test_terminal_demo_script_formats_anti_spoof_risk(self):
+        script = (ROOT / "scripts" / "terminal-demo.py").read_text(encoding="utf-8")
+
+        self.assertIn("format_anti_spoof_risk", script)
+        self.assertIn("anti_spoof_risk", script)
+        self.assertIn("防翻拍", script)
 
     def test_terminal_demo_rejects_too_few_liveness_frames_locally(self):
         spec = importlib.util.spec_from_file_location("terminal_demo", ROOT / "scripts" / "terminal-demo.py")

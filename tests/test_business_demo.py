@@ -659,6 +659,44 @@ class BusinessDemoApiTests(unittest.TestCase):
             self.assertNotEqual(issued_token_id, token_signature_prefix)
             self.assertEqual(len(issued_token_id), 32)
 
+    def test_web_login_records_anti_spoof_risk_in_business_audit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = FakeFaceApiClient()
+            fake.login_response = {
+                "authenticated": True,
+                "match": {"face_id": "face-1", "user_id": 100001, "username": "GAOFEI"},
+                "similarity": 0.91,
+                "anti_spoof_risk": {
+                    "level": "low",
+                    "reasons": ["normal_motion"],
+                    "action": "allow",
+                    "message": "活体检测通过",
+                },
+            }
+            app = make_test_app(Path(tmp) / "business.db", fake)
+            request(
+                app,
+                "POST",
+                "/api/users/100001/face-binding",
+                {"image": "data:image/jpeg;base64,aaa", "terminal_id": "web-1"},
+            )
+
+            login = request(
+                app,
+                "POST",
+                "/api/auth/face-login",
+                {
+                    "image": "data:image/jpeg;base64,login",
+                    "terminal_id": "web-1",
+                    "challenge_id": "challenge-1",
+                },
+            )
+            self.assertEqual(login.status_code, 200, login.text)
+
+            audit = request(app, "GET", "/api/audit/login", params={"terminal_id": "web-1"})
+            self.assertEqual(audit.status_code, 200, audit.text)
+            self.assertEqual(audit.json()["items"][0]["anti_spoof_risk"]["level"], "low")
+
     def test_web_login_rejects_disabled_or_unbound_business_user(self):
         from business_demo.storage import BusinessDB
 
@@ -695,6 +733,42 @@ class BusinessDemoApiTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 403)
             self.assertEqual(response.json()["detail"]["code"], "FACE_NOT_BOUND")
+
+    def test_web_login_rejects_high_anti_spoof_risk_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = FakeFaceApiClient()
+            fake.login_response = {
+                "authenticated": True,
+                "match": {"face_id": "face-1", "user_id": 100001, "username": "GAOFEI"},
+                "similarity": 0.91,
+                "anti_spoof_risk": {
+                    "level": "high",
+                    "reasons": ["repeated_frames", "static_face_box"],
+                    "action": "block",
+                    "message": "疑似翻拍或静态画面，请重新面对摄像头",
+                },
+            }
+            app = make_test_app(Path(tmp) / "business.db", fake)
+            request(
+                app,
+                "POST",
+                "/api/users/100001/face-binding",
+                {"image": "data:image/jpeg;base64,aaa", "terminal_id": "web-1"},
+            )
+
+            response = request(
+                app,
+                "POST",
+                "/api/auth/face-login",
+                {
+                    "image": "data:image/jpeg;base64,login",
+                    "terminal_id": "web-1",
+                    "challenge_id": "challenge-1",
+                },
+            )
+
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.json()["detail"]["code"], "FACE_API_ANTI_SPOOF_HIGH_RISK")
 
     def test_web_login_rejects_unauthenticated_or_mismatched_face_api_result(self):
         with tempfile.TemporaryDirectory() as tmp:

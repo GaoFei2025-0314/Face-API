@@ -172,6 +172,7 @@
       LIVENESS_CHALLENGE_FAILED: ["活体动作未通过，请重新眨眼", "检查连续帧数量、用户动作和摄像头帧率"],
       LIVENESS_FRAME_COUNT_INVALID: ["采集帧数不足，请重新尝试", "按后端 action_window_seconds 采集 10 到 30 帧"],
       LIVENESS_ACTION_WINDOW_EXPIRED: ["活体动作超时，请重新开始", "动作需要在后端 action_window_seconds 内完成"],
+      ANTI_SPOOF_HIGH_RISK: ["疑似翻拍风险，请重新面对摄像头", "检查是否为照片、屏幕或静态画面，必要时复核 audit 的防翻拍原因"],
       NO_MATCH: ["未匹配到已注册用户", "检查用户是否已注册、阈值是否过高、现场图像质量"],
       VALIDATION_ERROR: ["请求参数不完整，请刷新后重试", "检查必填字段、JSON 格式和字段类型"],
       INVALID_USERNAME: ["姓名不符合要求，请重新输入", "检查 username 是否为空或格式不合法"],
@@ -230,6 +231,14 @@
       return cfg;
     }
 
+    function formatAntiSpoofRisk(risk) {
+      if (!risk || typeof risk !== "object") return "防翻拍风险：未返回";
+      const label = { low: "低", medium: "中", high: "高" }[risk.level] || risk.level || "未知";
+      const message = risk.message || "请按页面提示重新采集";
+      const reasons = Array.isArray(risk.reasons) && risk.reasons.length ? `（${risk.reasons.join(", ")}）` : "";
+      return `防翻拍风险：${label}，${message}${reasons}`;
+    }
+
     function show(data) {
       document.getElementById("output").textContent = JSON.stringify(sanitize(data), null, 2);
     }
@@ -251,9 +260,10 @@
         const name = item.matched_username || item.matched_user_id || "-";
         const sim = item.similarity == null ? "-" : Number(item.similarity).toFixed(4);
         const reason = item.failure_reason || item.liveness_reason || "-";
-        return `<tr><td>${escapeHtml(item.created_at || "-")}</td><td class="${cls}">${ok}</td><td>${escapeHtml(String(name))}</td><td>${sim}</td><td>${escapeHtml(reason)}</td><td>${escapeHtml(item.terminal_id || "-")}</td></tr>`;
+        const risk = item.anti_spoof_risk ? formatAntiSpoofRisk(item.anti_spoof_risk) : "-";
+        return `<tr><td>${escapeHtml(item.created_at || "-")}</td><td class="${cls}">${ok}</td><td>${escapeHtml(String(name))}</td><td>${sim}</td><td>${escapeHtml(reason)}</td><td>${escapeHtml(risk)}</td><td>${escapeHtml(item.terminal_id || "-")}</td></tr>`;
       }).join("");
-      target.innerHTML = `<table class="audit-table"><thead><tr><th>时间</th><th>结果</th><th>用户</th><th>similarity</th><th>原因</th><th>terminal</th></tr></thead><tbody>${rows}</tbody></table>`;
+      target.innerHTML = `<table class="audit-table"><thead><tr><th>时间</th><th>结果</th><th>用户</th><th>similarity</th><th>原因</th><th>防翻拍</th><th>terminal</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
 
     function escapeHtml(value) {
@@ -273,8 +283,10 @@
       for (const [key, item] of Object.entries(value)) {
         if (key.toLowerCase().includes("embedding")) continue;
         if (key.toLowerCase().includes("api_key") || key.toLowerCase().includes("apikey")) continue;
+        if (key === "metrics") continue;
         clean[key] = sanitize(item);
       }
+      if (clean.anti_spoof_risk) clean.anti_spoof_summary = formatAntiSpoofRisk(clean.anti_spoof_risk);
       return clean;
     }
 
@@ -431,11 +443,12 @@
         })
       });
       if (result && result.passed === false) {
+        const riskText = result.anti_spoof_risk ? formatAntiSpoofRisk(result.anti_spoof_risk) : "";
         throw explainError({
           detail: {
-            code: "LIVENESS_CHALLENGE_FAILED",
+            code: result.result_reason === "anti_spoof_high_risk" ? "ANTI_SPOOF_HIGH_RISK" : "LIVENESS_CHALLENGE_FAILED",
             message: "活体动作未通过",
-            reason: result.reason || result.result_reason || result.message || "请重新完成活体动作"
+            reason: riskText || result.reason || result.result_reason || result.message || "请重新完成活体动作"
           }
         });
       }
@@ -459,7 +472,7 @@
       try {
         if (!lastChallenge) throw explainError({ detail: { code: "LIVENESS_CHALLENGE_INVALID" } });
         const result = await submitChallenge(lastChallenge);
-        setStep("loginStatus", "ok", "活体通过");
+        setStep("loginStatus", "ok", result.anti_spoof_risk ? formatAntiSpoofRisk(result.anti_spoof_risk) : "活体通过");
         show({ challenge_result: result });
       } catch (err) {
         setStep("loginStatus", "err", "活体失败");
@@ -487,7 +500,7 @@
             state: "web-" + Date.now()
           })
         });
-        setStep("loginStatus", "ok", "登录成功");
+        setStep("loginStatus", "ok", data.anti_spoof_risk ? `登录成功，${formatAntiSpoofRisk(data.anti_spoof_risk)}` : "登录成功");
         show({ step: "login_complete", data, business_next_step: "业务系统拿 match.user_id/username 查询用户表并签发自己的 session" });
       } catch (err) {
         setStep("loginStatus", "err", "登录失败");

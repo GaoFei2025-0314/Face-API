@@ -1,7 +1,7 @@
 # 人脸识别 API 前端对接文档
 
-> 最后同步：2026-05-27  
-> 适用阶段：face_api modularization phase-1
+> 最后同步：2026-06-16
+> 适用阶段：face_api V2.1 轻量防翻拍活体增强
 
 这是 **联调手册**。  
 如果你是前端 / 全栈 / Electron 集成方，优先看这一份。
@@ -228,6 +228,7 @@ function fileToBase64(file) {
 | `LIVENESS_CHALLENGE_FAILED` | 活体动作未通过，请重新眨眼。 | 检查连续帧数量、用户动作和摄像头帧率。 |
 | `LIVENESS_ACTION_WINDOW_EXPIRED` | 活体动作超时，请重新开始。 | 用户必须在 `FACE_CHALLENGE_ACTION_SECONDS` 时间窗口内完成动作。 |
 | `LIVENESS_FRAME_COUNT_INVALID` | 采集帧数不足，请重新尝试。 | 按后端配置采集 10 到 30 帧。 |
+| `ANTI_SPOOF_HIGH_RISK` | 疑似翻拍风险，请重新面对摄像头。 | 检查是否为照片、屏幕或静态画面，结合 audit 的 `anti_spoof_risk` 复核。 |
 | `NO_MATCH` | 未匹配到已注册用户。 | 检查用户是否已注册、阈值是否过高、现场图像质量。 |
 | `VALIDATION_ERROR` | 请求参数不完整，请刷新后重试。 | 检查必填字段、JSON 格式和字段类型。 |
 | `MAINTENANCE_MODE_ACTIVE` | 系统维护中，请稍后再试。 | 等待运维退出维护模式。 |
@@ -478,6 +479,45 @@ POST /liveness/challenges/submit
 }
 ```
 
+V2.1 起，活体提交和 face login 会返回可选 `anti_spoof_risk`：
+
+```json
+{
+  "level": "low",
+  "reasons": ["normal_motion"],
+  "action": "allow",
+  "message": "活体检测通过"
+}
+```
+
+字段含义：
+
+- `level`：`low`、`medium`、`high`。
+- `reasons`：稳定原因码，给运维和验收记录使用。
+- `action`：`allow`、`review`、`retry`、`block`。
+- `message`：简短中文提示，适合页面展示。
+- `metrics`：可选诊断指标，前端可以忽略，不要直接展示给普通用户。
+
+高风险 challenge 示例：
+
+```json
+{
+  "challenge_id": "...",
+  "status": "failed",
+  "passed": false,
+  "message": "请面对摄像头并完成眨眼后重试",
+  "reason": "疑似翻拍或静态画面，请重新面对摄像头",
+  "result_reason": "anti_spoof_high_risk",
+  "anti_spoof_risk": {
+    "level": "high",
+    "reasons": ["repeated_frames", "static_face_box"],
+    "action": "block",
+    "message": "疑似翻拍或静态画面，请重新面对摄像头"
+  },
+  "elapsed_ms": 67.51
+}
+```
+
 规则：
 
 - `challenge` 有效期 60 秒。
@@ -551,6 +591,12 @@ terminal 上线前至少验证：
   "similarity": 0.782,
   "threshold": 0.6,
   "state": "trace-001",
+  "anti_spoof_risk": {
+    "level": "low",
+    "reasons": ["normal_motion"],
+    "action": "allow",
+    "message": "活体检测通过"
+  },
   "elapsed_ms": 45.6
 }
 ```
@@ -559,6 +605,7 @@ terminal 上线前至少验证：
 - 必须启用 API Key
 - 图片必须且只能有 1 张脸
 - 无人脸 / 多人脸 / 无匹配 / 脏底库记录都走结构化失败语义
+- 高风险防翻拍结果返回 `ANTI_SPOOF_HIGH_RISK`，不应继续发起业务登录
 - 只返回匹配结果，不负责 token/session 签发
 
 ---
@@ -591,6 +638,12 @@ X-API-Key: <你的密钥>
   "db_path": "faces.db",
   "log_path": "logs/face_api.log",
   "duplicate_policy": "allow",
+  "anti_spoof": {
+    "enabled": true,
+    "mode": "lightweight-risk-score",
+    "default_block_level": "high",
+    "medium_action": "review"
+  },
   "search_cache": {
     "ready": true,
     "dirty": false,
@@ -630,7 +683,13 @@ X-API-Key: <你的密钥>
   "db_path": "faces.db",
   "max_base64_image_chars": 11185068,
   "max_image_bytes": 8388608,
-  "max_image_pixels": 4096000
+  "max_image_pixels": 4096000,
+  "anti_spoof": {
+    "enabled": true,
+    "mode": "lightweight-risk-score",
+    "default_block_level": "high",
+    "medium_action": "review"
+  }
 }
 ```
 
@@ -647,6 +706,8 @@ X-API-Key: <你的密钥>
 - `limit`：返回条数，范围由后端保护
 - `success`：按成功或失败筛选，例如 `true` / `false`
 - `terminal_id`：按终端标识筛选
+
+V2.1 起，每条记录可能包含 `anti_spoof_risk`，用于区分普通活体失败、画面质量问题和疑似翻拍高风险。页面只展示风险等级和中文提示，运维可以结合 `reasons` 复核。
 
 ### `GET /audit/login/summary`
 用途：
@@ -814,7 +875,16 @@ export interface FaceLoginResp {
   similarity: number;
   threshold: number;
   state?: string | null;
+  anti_spoof_risk?: AntiSpoofRisk | null;
   elapsed_ms: number;
+}
+
+export interface AntiSpoofRisk {
+  level: "low" | "medium" | "high";
+  reasons: string[];
+  action: "allow" | "review" | "retry" | "block";
+  message: string;
+  metrics?: Record<string, number | string | null>;
 }
 ```
 

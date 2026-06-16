@@ -59,6 +59,30 @@ class AppConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "FACE_CHALLENGE_MAX_FRAMES 必须大于等于 40"):
                 load_settings()
 
+    def test_anti_spoof_defaults_keep_lightweight_user_experience(self):
+        with patch.dict(os.environ, {"FACE_DB_PATH": "faces.db"}, clear=True):
+            settings = load_settings()
+
+        self.assertTrue(settings.face_anti_spoof_enabled)
+        self.assertEqual(settings.face_anti_spoof_block_level, "high")
+        self.assertEqual(settings.face_anti_spoof_medium_action, "review")
+        self.assertEqual(settings.face_anti_spoof_min_frame_variation, 5.0)
+        self.assertEqual(settings.face_anti_spoof_min_face_motion, 0.015)
+        self.assertEqual(settings.face_anti_spoof_min_sharpness_variation, 1.0)
+
+    def test_anti_spoof_rejects_invalid_policy_values(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FACE_DB_PATH": "faces.db",
+                "FACE_ANTI_SPOOF_BLOCK_LEVEL": "medium",
+                "FACE_ANTI_SPOOF_MEDIUM_ACTION": "block",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "FACE_ANTI_SPOOF_BLOCK_LEVEL"):
+                load_settings()
+
     def test_production_rejects_wildcard_cors_origins(self):
         with patch.dict(
             os.environ,

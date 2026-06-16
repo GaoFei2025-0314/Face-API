@@ -79,8 +79,28 @@
   <script>
     let stream = null;
 
+    function formatAntiSpoofRisk(risk) {
+      if (!risk || typeof risk !== "object") return "防翻拍风险：未返回";
+      const label = { low: "低", medium: "中", high: "高" }[risk.level] || risk.level || "未知";
+      const message = risk.message || "请按页面提示重新采集";
+      const reasons = Array.isArray(risk.reasons) && risk.reasons.length ? `（${risk.reasons.join(", ")}）` : "";
+      return `防翻拍风险：${label}，${message}${reasons}`;
+    }
+
+    function sanitizeResult(value) {
+      if (Array.isArray(value)) return value.map(sanitizeResult);
+      if (!value || typeof value !== "object") return value;
+      const clean = {};
+      for (const [key, item] of Object.entries(value)) {
+        if (key === "metrics") continue;
+        clean[key] = sanitizeResult(item);
+      }
+      if (clean.anti_spoof_risk) clean.anti_spoof_summary = formatAntiSpoofRisk(clean.anti_spoof_risk);
+      return clean;
+    }
+
     function show(data) {
-      result.textContent = JSON.stringify(data, null, 2);
+      result.textContent = JSON.stringify(sanitizeResult(data), null, 2);
     }
 
     function setStatus(text, cls = "") {
@@ -173,7 +193,7 @@
         setStatus("提交活体帧。");
         const liveness = await submitChallenge(challenge, frames, headers);
         if (liveness.passed === false) {
-          setStatus(liveness.reason || liveness.result_reason || "活体未通过", "warn");
+          setStatus(liveness.anti_spoof_risk ? formatAntiSpoofRisk(liveness.anti_spoof_risk) : (liveness.reason || liveness.result_reason || "活体未通过"), "warn");
           show({ok: false, liveness});
           return;
         }
@@ -189,7 +209,7 @@
           state: eventId
         }, headers);
 
-        setStatus("识别成功，上报 business-demo。");
+        setStatus(faceData.anti_spoof_risk ? `识别成功，${formatAntiSpoofRisk(faceData.anti_spoof_risk)}` : "识别成功，上报 business-demo。");
         const report = await requestJson(`${businessUrl.value}/api/terminal/login-events`, {
           event_id: eventId,
           terminal_id: terminal_id.value,

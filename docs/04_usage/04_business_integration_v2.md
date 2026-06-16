@@ -12,7 +12,7 @@
 - 业务登录 audit。
 - 最终是否允许登录、开门、签到或执行业务动作。
 
-`face_api` 返回的是识别证据，包括 `user_id`、`username`、`similarity`、`threshold`、活体状态和失败原因。业务系统根据这些证据做最终判断。
+`face_api` 返回的是识别证据，包括 `user_id`、`username`、`similarity`、`threshold`、活体状态、轻量防翻拍风险和失败原因。业务系统根据这些证据做最终判断。
 
 ## 2. Web 业务系统推荐链路
 
@@ -103,6 +103,8 @@ BUSINESS_DEMO_TOKEN_SECRET=<随机长密钥>
 - 登录必须启用活体。
 - `face_api` 不签发业务 token。
 - `matched_user_id` 必须回到业务用户表校验。
+- V2.1 起，业务后端应保存 `anti_spoof_risk` 到业务 audit。
+- 如果 `anti_spoof_risk.level=high` 或 `action=block`，业务后端不应签发 token/session。
 - 用户不存在、禁用、未绑定或绑定不一致时，业务后端必须拒绝登录。
 
 ## 5. 受控终端链路
@@ -167,9 +169,36 @@ python scripts\terminal-demo.py --terminal-id gate-01 --image login.jpg --skip-l
 | `POST /api/auth/face-login` | `image`、`terminal_id`、`challenge_id`、`state?` | `authenticated`、`token`、`user`、`face`、`audit_id` |
 | `GET /api/auth/me` | `Authorization: Bearer <demo-token>` | `authenticated`、`user` |
 | `POST /api/terminal/login-events` | `event_id`、`terminal_id`、`matched_user_id`、`similarity`、`recognized_at_epoch`、`state?`、`face_api_result` | `accepted`、`duplicate?`、`user?`、`failure_reason?`、`audit_id` |
-| `GET /api/audit/login` | `limit?`、`terminal_id?`、`success?` | `items[]`、`count` |
+| `GET /api/audit/login` | `limit?`、`terminal_id?`、`success?` | `items[]`、`count`，V2.1 起可包含 `anti_spoof_risk` |
 
 终端上报时，`business-demo` 会校验 `face_api_result.authenticated=true`，并确认 `face_api_result.match.user_id` 等于 `matched_user_id`。如果 `face_api_result.match.face_id` 存在，还会确认它等于当前业务有效绑定的 `face_id`。
+
+`challenge_id` 的存在性、过期时间、是否已消费、是否属于本次活体流程，由 `face_api` 作为权威服务校验。`business-demo` 只做薄代理和结果校验；真实 Java / Spring Boot 后端如果需要更强审计，可以额外保存本地 challenge 跟踪记录，但不能绕过 `face_api` 的最终校验结果。
+
+## 7. V2.1 防翻拍风险传递
+
+`business-demo` 不重新做人脸算法判断，只透传和校验 `face_api` 返回的 `anti_spoof_risk`。真实 Java / Spring Boot 后端替换 demo 时，建议保持同样规则：
+
+- `low`：按现有业务登录流程继续。
+- `medium`：可以允许继续，但必须写业务 audit，现场可提示用户调整采集条件。
+- `high`：拒绝本次业务登录，不签发 token/session。
+- `metrics`：只作为服务端排障信息，不直接展示给普通用户。
+
+示例：
+
+```json
+{
+  "authenticated": true,
+  "match": { "user_id": 100001, "username": "GAOFEI" },
+  "similarity": 0.91,
+  "anti_spoof_risk": {
+    "level": "low",
+    "reasons": ["normal_motion"],
+    "action": "allow",
+    "message": "活体检测通过"
+  }
+}
+```
 
 统一错误响应：
 
@@ -183,7 +212,7 @@ python scripts\terminal-demo.py --terminal-id gate-01 --image login.jpg --skip-l
 }
 ```
 
-## 7. 业务层错误码建议
+## 8. 业务层错误码建议
 
 | code | 中文原因 |
 |---|---|
@@ -196,6 +225,7 @@ python scripts\terminal-demo.py --terminal-id gate-01 --image login.jpg --skip-l
 | `FACE_API_AUTH_FAILED` | 人脸识别服务认证失败，请检查服务端 API Key 配置 |
 | `FACE_API_REQUEST_FAILED` | 人脸识别服务拒绝了本次请求 |
 | `FACE_API_LOGIN_REJECTED` | 人脸识别服务没有返回认证成功 |
+| `FACE_API_ANTI_SPOOF_HIGH_RISK` | 人脸识别服务判断疑似翻拍高风险 |
 | `FACE_API_MATCH_MISMATCH` | 人脸识别返回的用户或人脸记录与业务绑定不一致 |
 | `LIVENESS_CHALLENGE_REQUIRED` | 当前流程需要先完成活体 challenge |
 | `VALIDATION_ERROR` | 请求参数格式或取值不符合业务 demo 接口要求 |
@@ -205,7 +235,7 @@ python scripts\terminal-demo.py --terminal-id gate-01 --image login.jpg --skip-l
 
 业务页面应优先展示业务层中文原因；如果错误来自 `face_api`，展示 `detail.reason`。
 
-## 8. 上线检查清单
+## 9. 上线检查清单
 
 - [ ] 浏览器不直接访问 `face_api` 受保护接口。
 - [ ] 浏览器不保存、不展示、不打印 `face_api` 的 `X-API-Key`。

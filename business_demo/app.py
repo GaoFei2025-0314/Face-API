@@ -131,7 +131,17 @@ def _matched_face_id(face_result):
     )
 
 
+def _anti_spoof_risk(face_result):
+    if not isinstance(face_result, dict):
+        return {}
+    risk = face_result.get("anti_spoof_risk")
+    return risk if isinstance(risk, dict) else {}
+
+
 def _validate_face_login_result(face_result, expected_user_id=None, active_binding=None):
+    risk = _anti_spoof_risk(face_result)
+    if risk.get("level") == "high" or risk.get("action") == "block":
+        return "FACE_API_ANTI_SPOOF_HIGH_RISK"
     if not isinstance(face_result, dict) or face_result.get("authenticated") is not True:
         return "FACE_API_LOGIN_REJECTED"
     match = _login_match(face_result)
@@ -273,7 +283,7 @@ def create_app(settings=None, face_api_client=None):
             }
         )
 
-    def reject_login(user_id, terminal_id, source, code, state=None, similarity=None):
+    def reject_login(user_id, terminal_id, source, code, state=None, similarity=None, anti_spoof_risk=None):
         audit_id = db.add_audit(
             user_id=user_id,
             terminal_id=terminal_id,
@@ -281,6 +291,7 @@ def create_app(settings=None, face_api_client=None):
             success=False,
             failure_reason=code,
             face_similarity=similarity,
+            anti_spoof_risk=anti_spoof_risk,
             state=state,
         )
         return audit_id
@@ -299,24 +310,25 @@ def create_app(settings=None, face_api_client=None):
         match = _login_match(face_result)
         user_id = str(match.get("user_id") or "")
         similarity = _login_similarity(face_result)
+        anti_spoof_risk = _anti_spoof_risk(face_result) or None
         validation_failure = _validate_face_login_result(face_result)
         if validation_failure:
-            reject_login(user_id, req.terminal_id, "web", validation_failure, req.state, similarity)
+            reject_login(user_id, req.terminal_id, "web", validation_failure, req.state, similarity, anti_spoof_risk)
             raise_business_error(validation_failure)
         user = db.get_user(user_id)
         if not user:
-            reject_login(user_id, req.terminal_id, "web", "BUSINESS_USER_NOT_FOUND", req.state, similarity)
+            reject_login(user_id, req.terminal_id, "web", "BUSINESS_USER_NOT_FOUND", req.state, similarity, anti_spoof_risk)
             raise_business_error("BUSINESS_USER_NOT_FOUND")
         if user["status"] != "active":
-            reject_login(user_id, req.terminal_id, "web", "USER_DISABLED", req.state, similarity)
+            reject_login(user_id, req.terminal_id, "web", "USER_DISABLED", req.state, similarity, anti_spoof_risk)
             raise_business_error("USER_DISABLED")
         binding = db.get_active_binding(user_id)
         if not binding:
-            reject_login(user_id, req.terminal_id, "web", "FACE_NOT_BOUND", req.state, similarity)
+            reject_login(user_id, req.terminal_id, "web", "FACE_NOT_BOUND", req.state, similarity, anti_spoof_risk)
             raise_business_error("FACE_NOT_BOUND")
         validation_failure = _validate_face_login_result(face_result, expected_user_id=user_id, active_binding=binding)
         if validation_failure:
-            reject_login(user_id, req.terminal_id, "web", validation_failure, req.state, similarity)
+            reject_login(user_id, req.terminal_id, "web", validation_failure, req.state, similarity, anti_spoof_risk)
             raise_business_error(validation_failure)
         token = issue_demo_token(user, settings.token_secret, settings.token_ttl_seconds)
         audit_id = db.add_audit(
@@ -327,6 +339,7 @@ def create_app(settings=None, face_api_client=None):
             face_similarity=similarity,
             face_liveness_status="passed",
             face_liveness_reason="ok",
+            anti_spoof_risk=anti_spoof_risk,
             issued_token_id=uuid.uuid4().hex,
             state=req.state,
         )
@@ -407,6 +420,7 @@ def create_app(settings=None, face_api_client=None):
                 success=accepted,
                 failure_reason=failure_reason,
                 face_similarity=req.similarity,
+                anti_spoof_risk=_anti_spoof_risk(req.face_api_result) or None,
                 state=req.state,
             )
         except sqlite3.IntegrityError:

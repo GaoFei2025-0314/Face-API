@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from unittest import mock
 
 from storage import FaceDB
@@ -98,6 +99,127 @@ class FaceDBSchemaTests(unittest.TestCase):
                 removed = db.remove_by_user_id(1)
                 self.assertEqual(removed, 1)
                 self.assertEqual(db.count(), 0)
+            finally:
+                db.close()
+
+    def test_fresh_database_creates_anti_spoof_risk_columns(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            db = FaceDB(db_path=db_path)
+            try:
+                with closing(sqlite3.connect(db_path)) as conn:
+                    audit_columns = {row[1] for row in conn.execute("PRAGMA table_info(face_login_audit)")}
+                    challenge_columns = {row[1] for row in conn.execute("PRAGMA table_info(liveness_challenges)")}
+
+                self.assertIn("anti_spoof_risk", audit_columns)
+                self.assertIn("anti_spoof_risk", challenge_columns)
+            finally:
+                db.close()
+
+    def test_liveness_challenge_persists_anti_spoof_risk(self):
+        risk = {
+            "level": "high",
+            "reasons": ["repeated_frames", "static_face_box"],
+            "action": "block",
+            "message": "疑似翻拍或静态画面，请重新面对摄像头",
+            "metrics": {"frame_variation": 0.1},
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            db = FaceDB(db_path=db_path)
+            try:
+                challenge_id = db.add_liveness_challenge(
+                    purpose="login",
+                    terminal_id="door-1",
+                    action="blink",
+                    expires_at=9999999999,
+                    action_window_seconds=10,
+                )
+
+                db.mark_liveness_challenge_result(
+                    challenge_id,
+                    passed=False,
+                    result_reason="anti_spoof_high_risk",
+                    anti_spoof_risk=risk,
+                )
+
+                challenge = db.get_liveness_challenge(challenge_id)
+                self.assertEqual(challenge["anti_spoof_risk"]["level"], "high")
+                self.assertEqual(challenge["anti_spoof_risk"]["reasons"], ["repeated_frames", "static_face_box"])
+            finally:
+                db.close()
+
+    def test_login_audit_persists_anti_spoof_risk(self):
+        risk = {
+            "level": "medium",
+            "reasons": ["poor_capture_quality"],
+            "action": "review",
+            "message": "画面质量不足，请调整光线后重试",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            db = FaceDB(db_path=db_path)
+            try:
+                db.add_login_audit(
+                    success=False,
+                    failure_reason="ANTI_SPOOF_HIGH_RISK",
+                    terminal_id="door-1",
+                    anti_spoof_risk=risk,
+                )
+
+                audits = db.list_login_audits(limit=1, terminal_id="door-1")
+                self.assertEqual(audits[0]["anti_spoof_risk"]["level"], "medium")
+                self.assertEqual(audits[0]["anti_spoof_risk"]["action"], "review")
+            finally:
+                db.close()
+
+    def test_existing_database_migrates_anti_spoof_risk_columns(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("""
+                    CREATE TABLE face_login_audit (
+                        id TEXT PRIMARY KEY,
+                        success INTEGER NOT NULL DEFAULT 0,
+                        matched_user_id INTEGER,
+                        matched_username TEXT,
+                        similarity REAL,
+                        threshold REAL,
+                        failure_reason TEXT,
+                        terminal_id TEXT,
+                        state TEXT,
+                        elapsed_ms REAL,
+                        liveness_status TEXT,
+                        liveness_reason TEXT,
+                        quality_metrics TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE liveness_challenges (
+                        id TEXT PRIMARY KEY,
+                        purpose TEXT NOT NULL,
+                        terminal_id TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        result_reason TEXT,
+                        face_embedding BLOB,
+                        action_window_seconds INTEGER NOT NULL,
+                        created_at_epoch REAL,
+                        expires_at REAL NOT NULL,
+                        used_at REAL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+            db = FaceDB(db_path=db_path)
+            try:
+                with closing(sqlite3.connect(db_path)) as conn:
+                    audit_columns = {row[1] for row in conn.execute("PRAGMA table_info(face_login_audit)")}
+                    challenge_columns = {row[1] for row in conn.execute("PRAGMA table_info(liveness_challenges)")}
+
+                self.assertIn("anti_spoof_risk", audit_columns)
+                self.assertIn("anti_spoof_risk", challenge_columns)
             finally:
                 db.close()
 

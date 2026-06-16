@@ -68,8 +68,8 @@ rg -n "cdn|script src|link rel=.*stylesheet|import |require\(" -g "*.html" .
 
 ## 6. 交付检查
 
-- [ ] 低风险真人登录不增加复杂动作。
-- [ ] 高风险结果有中文原因。
-- [ ] audit 能看到 `anti_spoof_risk`。
-- [ ] `business-demo` 和终端 demo 主流程不被破坏。
-- [ ] 文档明确说明 V2.1 不是企业级强活体。
+- [x] 低风险真人登录不增加复杂动作。
+- [x] 高风险结果有中文原因。
+- [x] audit 能看到 `anti_spoof_risk`。
+- [x] `business-demo` 和终端 demo 主流程不被破坏。
+- [x] 文档明确说明 V2.1 不是企业级强活体。

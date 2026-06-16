@@ -91,6 +91,7 @@ class FaceDB:
                     liveness_status TEXT,
                     liveness_reason TEXT,
                     quality_metrics TEXT,
+                    anti_spoof_risk TEXT,
                     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -103,6 +104,7 @@ class FaceDB:
                     status                TEXT NOT NULL,
                     result_reason         TEXT,
                     face_embedding        BLOB,
+                    anti_spoof_risk       TEXT,
                     action_window_seconds INTEGER NOT NULL,
                     created_at_epoch      REAL,
                     expires_at            REAL NOT NULL,
@@ -133,15 +135,33 @@ class FaceDB:
                 c.execute("ALTER TABLE face_login_audit ADD COLUMN liveness_reason TEXT")
             if "quality_metrics" not in audit_columns:
                 c.execute("ALTER TABLE face_login_audit ADD COLUMN quality_metrics TEXT")
+            if "anti_spoof_risk" not in audit_columns:
+                c.execute("ALTER TABLE face_login_audit ADD COLUMN anti_spoof_risk TEXT")
             challenge_columns = {row[1] for row in c.execute("PRAGMA table_info(liveness_challenges)")}
             if "face_embedding" not in challenge_columns:
                 c.execute("ALTER TABLE liveness_challenges ADD COLUMN face_embedding BLOB")
             if "created_at_epoch" not in challenge_columns:
                 c.execute("ALTER TABLE liveness_challenges ADD COLUMN created_at_epoch REAL")
+            if "anti_spoof_risk" not in challenge_columns:
+                c.execute("ALTER TABLE liveness_challenges ADD COLUMN anti_spoof_risk TEXT")
             c.execute("DROP INDEX IF EXISTS idx_name")
             c.execute("CREATE INDEX IF NOT EXISTS idx_username ON faces(username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON faces(user_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON faces(created_at)")
+
+    @staticmethod
+    def _json_dumps(value: Optional[dict]) -> Optional[str]:
+        return json.dumps(value, ensure_ascii=False) if value is not None else None
+
+    @staticmethod
+    def _json_loads(value: Optional[str]) -> Optional[dict]:
+        if not value:
+            return None
+        try:
+            return json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            logger.error("SQLite JSON field decode failed", exc_info=True)
+            return None
 
     def _mark_search_cache_dirty(self):
         self._search_cache_dirty = True
@@ -442,7 +462,7 @@ class FaceDB:
         row = self._conn().execute(
             """
             SELECT id, purpose, terminal_id, action, status, result_reason,
-                   face_embedding, action_window_seconds, created_at_epoch, expires_at, used_at, created_at
+                   face_embedding, anti_spoof_risk, action_window_seconds, created_at_epoch, expires_at, used_at, created_at
             FROM liveness_challenges
             WHERE id = ?
             """,
@@ -462,6 +482,7 @@ class FaceDB:
                 if row["face_embedding"] is not None
                 else None
             ),
+            "anti_spoof_risk": self._json_loads(row["anti_spoof_risk"]),
             "action_window_seconds": row["action_window_seconds"],
             "created_at_epoch": row["created_at_epoch"],
             "expires_at": row["expires_at"],
@@ -476,19 +497,21 @@ class FaceDB:
         passed: bool,
         result_reason: str,
         face_embedding=None,
+        anti_spoof_risk: Optional[dict] = None,
     ) -> bool:
         status = "passed" if passed else "failed"
         embedding_blob = None
         if face_embedding is not None:
             embedding_blob = np.asarray(face_embedding, dtype=np.float32).tobytes()
+        anti_spoof_risk_text = self._json_dumps(anti_spoof_risk)
         with self._conn() as c:
             cur = c.execute(
                 """
                 UPDATE liveness_challenges
-                SET status = ?, result_reason = ?, face_embedding = ?
+                SET status = ?, result_reason = ?, face_embedding = ?, anti_spoof_risk = ?
                 WHERE id = ? AND status = 'pending'
                 """,
-                (status, result_reason, embedding_blob, challenge_id),
+                (status, result_reason, embedding_blob, anti_spoof_risk_text, challenge_id),
             )
             return cur.rowcount > 0
 
@@ -505,7 +528,7 @@ class FaceDB:
             row = c.execute(
                 """
                 SELECT id, purpose, terminal_id, action, status, result_reason,
-                       face_embedding, action_window_seconds, created_at_epoch, expires_at, used_at, created_at
+                       face_embedding, anti_spoof_risk, action_window_seconds, created_at_epoch, expires_at, used_at, created_at
                 FROM liveness_challenges
                 WHERE id = ?
                 """,
@@ -525,6 +548,7 @@ class FaceDB:
                     if row["face_embedding"] is not None
                     else None
                 ),
+                "anti_spoof_risk": self._json_loads(row["anti_spoof_risk"]),
                 "action_window_seconds": row["action_window_seconds"],
                 "created_at_epoch": row["created_at_epoch"],
                 "expires_at": row["expires_at"],
@@ -587,17 +611,19 @@ class FaceDB:
         liveness_status: Optional[str] = None,
         liveness_reason: Optional[str] = None,
         quality_metrics: Optional[dict] = None,
+        anti_spoof_risk: Optional[dict] = None,
     ) -> str:
         audit_id = str(uuid.uuid4())
-        quality_metrics_text = json.dumps(quality_metrics, ensure_ascii=False) if quality_metrics is not None else None
+        quality_metrics_text = self._json_dumps(quality_metrics)
+        anti_spoof_risk_text = self._json_dumps(anti_spoof_risk)
         with self._conn() as c:
             c.execute(
                 """
                 INSERT INTO face_login_audit (
                     id, success, matched_user_id, matched_username, similarity,
                     threshold, failure_reason, terminal_id, state, elapsed_ms,
-                    liveness_status, liveness_reason, quality_metrics
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    liveness_status, liveness_reason, quality_metrics, anti_spoof_risk
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     audit_id,
@@ -613,6 +639,7 @@ class FaceDB:
                     liveness_status,
                     liveness_reason,
                     quality_metrics_text,
+                    anti_spoof_risk_text,
                 ),
             )
         self._maybe_checkpoint()
@@ -628,12 +655,13 @@ class FaceDB:
         if terminal_id:
             where.append("terminal_id = ?")
             params.append(terminal_id)
+        # 安全约束：where 只能追加硬编码的 "column = ?" 片段；外部输入必须通过 params 参数化传入。
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
         rows = self._conn().execute(
             f"""
             SELECT id, success, matched_user_id, matched_username, similarity,
                    threshold, failure_reason, terminal_id, state, elapsed_ms,
-                   liveness_status, liveness_reason, quality_metrics, created_at
+                   liveness_status, liveness_reason, quality_metrics, anti_spoof_risk, created_at
             FROM face_login_audit
             {where_sql}
             ORDER BY created_at DESC
@@ -655,7 +683,8 @@ class FaceDB:
                 "elapsed_ms": r["elapsed_ms"],
                 "liveness_status": r["liveness_status"],
                 "liveness_reason": r["liveness_reason"],
-                "quality_metrics": json.loads(r["quality_metrics"]) if r["quality_metrics"] else None,
+                "quality_metrics": self._json_loads(r["quality_metrics"]),
+                "anti_spoof_risk": self._json_loads(r["anti_spoof_risk"]),
                 "created_at": r["created_at"],
             }
             for r in rows

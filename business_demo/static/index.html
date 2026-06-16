@@ -80,8 +80,28 @@
     let challengePurpose = "login";
     let stream = null;
 
+    function formatAntiSpoofRisk(risk) {
+      if (!risk || typeof risk !== "object") return "防翻拍风险：未返回";
+      const label = { low: "低", medium: "中", high: "高" }[risk.level] || risk.level || "未知";
+      const message = risk.message || "请按页面提示重新采集";
+      const reasons = Array.isArray(risk.reasons) && risk.reasons.length ? `（${risk.reasons.join(", ")}）` : "";
+      return `防翻拍风险：${label}，${message}${reasons}`;
+    }
+
+    function sanitizeResult(value) {
+      if (Array.isArray(value)) return value.map(sanitizeResult);
+      if (!value || typeof value !== "object") return value;
+      const clean = {};
+      for (const [key, item] of Object.entries(value)) {
+        if (key === "metrics") continue;
+        clean[key] = sanitizeResult(item);
+      }
+      if (clean.anti_spoof_risk) clean.anti_spoof_summary = formatAntiSpoofRisk(clean.anti_spoof_risk);
+      return clean;
+    }
+
     function show(target, data) {
-      document.getElementById(target).textContent = JSON.stringify(data, null, 2);
+      document.getElementById(target).textContent = JSON.stringify(sanitizeResult(data), null, 2);
     }
 
     async function api(path, options = {}) {
@@ -194,6 +214,9 @@
       const data = await api("/api/auth/liveness/submit", {method: "POST", body: JSON.stringify({
         challenge_id: challengeId.value, terminal_id: terminalId.value, frames, purpose: challengePurpose
       })});
+      if (data.anti_spoof_risk) {
+        cameraStatus.textContent = formatAntiSpoofRisk(data.anti_spoof_risk);
+      }
       show("result", data);
     }
 
@@ -203,6 +226,9 @@
         image: loginImage, terminal_id: terminalId.value, challenge_id: challengeId.value, state: `web-${Date.now()}`
       })});
       demoToken = data.token;
+      if (data.face && data.face.face_api && data.face.face_api.anti_spoof_risk) {
+        cameraStatus.textContent = formatAntiSpoofRisk(data.face.face_api.anti_spoof_risk);
+      }
       show("result", data);
       loadAudit();
     }

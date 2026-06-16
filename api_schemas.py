@@ -97,6 +97,14 @@ class FaceLoginMatch(BaseModel):
     username: str
 
 
+class AntiSpoofRisk(BaseModel):
+    level: str = Field(..., description="轻量防翻拍风险等级：low、medium、high")
+    reasons: list[str] = Field(..., description="稳定原因码，用于运维复核")
+    action: str = Field(..., description="建议处理动作：allow、review、retry、block")
+    message: str = Field(..., description="简短中文提示")
+    metrics: Optional[dict] = Field(None, description="诊断指标，不包含图片帧或 embedding")
+
+
 class FaceLoginResp(BaseModel):
     authenticated: bool
     message: str
@@ -105,6 +113,7 @@ class FaceLoginResp(BaseModel):
     threshold: float
     state: Optional[str] = None
     quality_metrics: dict
+    anti_spoof_risk: Optional[AntiSpoofRisk] = None
     elapsed_ms: float
 
 
@@ -134,6 +143,7 @@ class SystemStatusResp(BaseModel):
     duplicate_policy: str
     search_cache: dict
     liveness: dict
+    anti_spoof: dict
     recognition_policy: dict
     maintenance_mode: bool
     faces_count: int
@@ -156,6 +166,7 @@ class EffectiveConfigResp(BaseModel):
     max_image_bytes: int
     max_image_pixels: int
     liveness: dict
+    anti_spoof: dict
     recognition_policy: dict
     search_target: dict
 
@@ -180,6 +191,7 @@ class LoginAuditItem(BaseModel):
     liveness_status: Optional[str] = None
     liveness_reason: Optional[str] = None
     quality_metrics: Optional[dict] = None
+    anti_spoof_risk: Optional[AntiSpoofRisk] = None
     created_at: Optional[str] = None
 
 
@@ -225,6 +237,7 @@ class LivenessChallengeSubmitResp(BaseModel):
     elapsed_ms: float
     reason: Optional[str] = None
     result_reason: Optional[str] = None
+    anti_spoof_risk: Optional[AntiSpoofRisk] = None
 
 
 class MaintenanceModeReq(BaseModel):

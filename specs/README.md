@@ -94,7 +94,7 @@ Roadmap v2.1 建议执行顺序：
 
 1. `022-lightweight-anti-spoofing` - 轻量防翻拍活体增强
 
-Roadmap v2.1 已确认主定位为“轻量防翻拍活体增强”。关键决策包括：
+Roadmap v2.1 已完成，主定位为“轻量防翻拍活体增强”。关键决策包括：
 
 - 选择轻量风险评分路线，不做重交互活体。
 - 低风险用户不默认增加复杂动作。
@@ -102,6 +102,13 @@ Roadmap v2.1 已确认主定位为“轻量防翻拍活体增强”。关键决�
 - 高风险可拒绝本次 login 或注册。
 - 验收样例覆盖真人、打印照片、手机屏幕、电脑屏幕和播放视频。
 - 不新增硬件，不引入重型 anti-spoofing 模型，不承诺企业级强活体。
+
+Roadmap v2.1 当前执行入口：
+
+- `022-lightweight-anti-spoofing/spec.md`
+- `022-lightweight-anti-spoofing/plan.md`
+- `022-lightweight-anti-spoofing/tasks.md`
+- `docs/90_archive/04_acceptance/05_v2.1_acceptance_record.md`
 
 ## 推荐流程
 

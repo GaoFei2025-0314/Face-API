@@ -105,6 +105,10 @@ ERROR_DEFINITIONS = {
         "message": "活体动作超时",
         "reason": "活体动作需要在指定时间窗口内完成，请重新创建 challenge 后重试",
     },
+    "ANTI_SPOOF_HIGH_RISK": {
+        "message": "疑似翻拍风险",
+        "reason": "疑似照片、屏幕或静态画面，请面对摄像头重新完成活体检测",
+    },
     "UNSUPPORTED_LIVENESS_ACTION": {
         "message": "不支持的活体动作",
         "reason": "第一版活体挑战至少稳定支持眨眼，请检查 action 参数",

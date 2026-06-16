@@ -67,6 +67,7 @@ class BusinessDB:
                     face_similarity REAL,
                     face_liveness_status TEXT,
                     face_liveness_reason TEXT,
+                    anti_spoof_risk TEXT,
                     issued_token_id TEXT,
                     state TEXT,
                     created_at TEXT NOT NULL
@@ -79,6 +80,8 @@ class BusinessDB:
             }
             if "terminal_event_id" not in existing_columns:
                 conn.execute("ALTER TABLE business_login_audits ADD COLUMN terminal_event_id TEXT")
+            if "anti_spoof_risk" not in existing_columns:
+                conn.execute("ALTER TABLE business_login_audits ADD COLUMN anti_spoof_risk TEXT")
             self._dedupe_for_unique_indexes(conn)
             conn.executescript(
                 """
@@ -352,17 +355,19 @@ class BusinessDB:
         face_similarity=None,
         face_liveness_status=None,
         face_liveness_reason=None,
+        anti_spoof_risk=None,
         issued_token_id=None,
         state=None,
     ):
         audit_id = str(uuid.uuid4())
+        anti_spoof_risk_text = json.dumps(anti_spoof_risk, ensure_ascii=False) if anti_spoof_risk is not None else None
         with self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO business_login_audits
                 (id, terminal_event_id, user_id, terminal_id, source, success, failure_reason, face_similarity,
-                 face_liveness_status, face_liveness_reason, issued_token_id, state, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 face_liveness_status, face_liveness_reason, anti_spoof_risk, issued_token_id, state, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     audit_id,
@@ -375,6 +380,7 @@ class BusinessDB:
                     face_similarity,
                     face_liveness_status,
                     face_liveness_reason,
+                    anti_spoof_risk_text,
                     issued_token_id,
                     state,
                     utc_now(),
@@ -399,6 +405,7 @@ class BusinessDB:
             return None
         result = dict(row)
         result["success"] = bool(row["success"])
+        result["anti_spoof_risk"] = json.loads(row["anti_spoof_risk"]) if row["anti_spoof_risk"] else None
         return result
 
     def list_audits(self, limit=20, terminal_id=None, success=None):
@@ -419,6 +426,7 @@ class BusinessDB:
             {
                 **dict(row),
                 "success": bool(row["success"]),
+                "anti_spoof_risk": json.loads(row["anti_spoof_risk"]) if row["anti_spoof_risk"] else None,
             }
             for row in rows
         ]

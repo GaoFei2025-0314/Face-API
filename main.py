@@ -168,6 +168,12 @@ FACE_CHALLENGE_ACTION_SECONDS = settings.face_challenge_action_seconds
 FACE_CHALLENGE_MIN_FRAMES = settings.face_challenge_min_frames
 FACE_CHALLENGE_MAX_FRAMES = settings.face_challenge_max_frames
 FACE_CHALLENGE_ACTIONS = settings.face_challenge_actions
+FACE_ANTI_SPOOF_ENABLED = settings.face_anti_spoof_enabled
+FACE_ANTI_SPOOF_BLOCK_LEVEL = settings.face_anti_spoof_block_level
+FACE_ANTI_SPOOF_MEDIUM_ACTION = settings.face_anti_spoof_medium_action
+FACE_ANTI_SPOOF_MIN_FRAME_VARIATION = settings.face_anti_spoof_min_frame_variation
+FACE_ANTI_SPOOF_MIN_FACE_MOTION = settings.face_anti_spoof_min_face_motion
+FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION = settings.face_anti_spoof_min_sharpness_variation
 FACE_DEFAULT_POLICY_PROFILE = settings.face_default_policy_profile
 FACE_TERMINAL_POLICY_MAP = settings.face_terminal_policy_map
 MAINTENANCE_MODE_FILE = settings.maintenance_mode_file
@@ -427,7 +433,30 @@ def get_liveness_policy() -> dict:
     }
 
 
+def get_anti_spoof_policy() -> dict:
+    return {
+        "enabled": FACE_ANTI_SPOOF_ENABLED,
+        "mode": "lightweight-risk-score",
+        "default_block_level": FACE_ANTI_SPOOF_BLOCK_LEVEL,
+        "medium_action": FACE_ANTI_SPOOF_MEDIUM_ACTION,
+        "thresholds": {
+            "min_frame_variation": FACE_ANTI_SPOOF_MIN_FRAME_VARIATION,
+            "min_face_motion": FACE_ANTI_SPOOF_MIN_FACE_MOTION,
+            "min_sharpness_variation": FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION,
+        },
+        "sample_types": [
+            "real_person",
+            "printed_photo",
+            "phone_screen",
+            "desktop_screen",
+            "video_replay",
+        ],
+    }
+
+
 def liveness_failure_reason_text(reason: str) -> str:
+    if reason == "anti_spoof_high_risk":
+        return "疑似翻拍或静态画面，请重新面对摄像头"
     if reason == "no_frames":
         return "没有采集到可用于活体检测的连续帧，请重新打开摄像头后重试"
     if reason.startswith("brightness_variation="):
@@ -439,7 +468,127 @@ def liveness_failure_reason_text(reason: str) -> str:
     return "活体动作未通过，请看着预览画面重新完成动作"
 
 
-def evaluate_blink_frames(frames: list[str]) -> tuple[bool, str, Optional[list[float]]]:
+def _frame_sharpness(image: np.ndarray) -> Optional[float]:
+    if not isinstance(image, np.ndarray) or not image.size:
+        return None
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def _face_box_motion(sampled_faces: Optional[list[dict]], decoded_frames: list[np.ndarray]) -> Optional[float]:
+    if not sampled_faces or len(sampled_faces) < 2:
+        return None
+    boxes = [face.get("bbox") for face in sampled_faces if face.get("bbox") and len(face.get("bbox")) >= 4]
+    if len(boxes) < 2:
+        return None
+    centers = []
+    areas = []
+    for box in boxes:
+        x1, y1, x2, y2 = [float(value) for value in box[:4]]
+        width = max(x2 - x1, 0.0)
+        height = max(y2 - y1, 0.0)
+        centers.append(((x1 + x2) / 2.0, (y1 + y2) / 2.0))
+        areas.append(width * height)
+    if decoded_frames and isinstance(decoded_frames[0], np.ndarray) and decoded_frames[0].size:
+        image_height, image_width = decoded_frames[0].shape[:2]
+        image_diag = max((image_width ** 2 + image_height ** 2) ** 0.5, 1.0)
+    else:
+        image_diag = 1.0
+    center_motion = 0.0
+    base_x, base_y = centers[0]
+    for x, y in centers[1:]:
+        center_motion = max(center_motion, (((x - base_x) ** 2 + (y - base_y) ** 2) ** 0.5) / image_diag)
+    max_area = max(areas) if areas else 0.0
+    area_motion = ((max(areas) - min(areas)) / max_area) if max_area else 0.0
+    return round(max(center_motion, area_motion), 6)
+
+
+def evaluate_anti_spoof_risk(decoded_frames: list[np.ndarray], sampled_faces: Optional[list[dict]] = None) -> dict:
+    if not FACE_ANTI_SPOOF_ENABLED:
+        return {
+            "level": "low",
+            "reasons": ["anti_spoof_disabled"],
+            "action": "allow",
+            "message": "防翻拍检测未启用",
+        }
+    if not decoded_frames:
+        return {
+            "level": "medium",
+            "reasons": ["insufficient_signal"],
+            "action": FACE_ANTI_SPOOF_MEDIUM_ACTION,
+            "message": "画面信号不足，请重新面对摄像头",
+            "metrics": {},
+        }
+
+    brightness_values = [float(np.mean(image)) if isinstance(image, np.ndarray) and image.size else 0.0 for image in decoded_frames]
+    sharpness_values = [
+        value for value in (_frame_sharpness(image) for image in decoded_frames)
+        if value is not None
+    ]
+    frame_variation = max(brightness_values) - min(brightness_values) if brightness_values else 0.0
+    sharpness_variation = max(sharpness_values) - min(sharpness_values) if sharpness_values else 0.0
+    max_frame_delta = 0.0
+    for left, right in zip(decoded_frames, decoded_frames[1:]):
+        if isinstance(left, np.ndarray) and isinstance(right, np.ndarray) and left.shape == right.shape:
+            max_frame_delta = max(max_frame_delta, float(np.mean(np.abs(left.astype(np.float32) - right.astype(np.float32)))))
+    face_motion = _face_box_motion(sampled_faces, decoded_frames)
+
+    reasons = []
+    if max_frame_delta < 1.0:
+        reasons.append("repeated_frames")
+    if frame_variation < FACE_ANTI_SPOOF_MIN_FRAME_VARIATION:
+        reasons.append("low_frame_variation")
+    if face_motion is not None and face_motion < FACE_ANTI_SPOOF_MIN_FACE_MOTION:
+        reasons.append("static_face_box")
+    if sharpness_variation < FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION and frame_variation < FACE_ANTI_SPOOF_MIN_FRAME_VARIATION:
+        reasons.append("poor_capture_quality")
+
+    metrics = {
+        "frame_variation": round(frame_variation, 2),
+        "max_frame_delta": round(max_frame_delta, 2),
+        "face_box_motion": face_motion,
+        "sharpness_variation": round(sharpness_variation, 2),
+    }
+    critical_reasons = {"repeated_frames", "low_frame_variation", "static_face_box"}
+    critical_count = len(critical_reasons.intersection(reasons))
+    if "static_face_box" in reasons and critical_count >= 2:
+        return {
+            "level": "high",
+            "reasons": reasons,
+            "action": "block",
+            "message": "疑似翻拍或静态画面，请重新面对摄像头",
+            "metrics": metrics,
+        }
+    if reasons:
+        return {
+            "level": "medium",
+            "reasons": reasons,
+            "action": FACE_ANTI_SPOOF_MEDIUM_ACTION,
+            "message": "画面变化不足，请调整光线、脸部位置后重试",
+            "metrics": metrics,
+        }
+    return {
+        "level": "low",
+        "reasons": ["normal_motion"],
+        "action": "allow",
+        "message": "活体检测通过",
+        "metrics": metrics,
+    }
+
+
+def _sample_faces_for_anti_spoof(decoded_frames: list[np.ndarray]) -> list[dict]:
+    if not decoded_frames:
+        return []
+    sample_indexes = sorted({0, len(decoded_frames) // 2, len(decoded_frames) - 1})
+    sampled_faces = []
+    for index in sample_indexes:
+        faces = engine.analyze(decoded_frames[index])
+        if len(faces) == 1:
+            sampled_faces.append(faces[0])
+    return sampled_faces
+
+
+def evaluate_blink_frames(frames: list[str]) -> tuple[bool, str, Optional[list[float]], dict]:
     if not (FACE_CHALLENGE_MIN_FRAMES <= len(frames) <= FACE_CHALLENGE_MAX_FRAMES):
         raise_api_error(400, "LIVENESS_FRAME_COUNT_INVALID")
     brightness_values = []
@@ -449,24 +598,34 @@ def evaluate_blink_frames(frames: list[str]) -> tuple[bool, str, Optional[list[f
         decoded_frames.append(img)
         brightness_values.append(float(np.mean(img)) if img.size else 0)
     if not brightness_values:
-        return False, "no_frames", None
+        risk = evaluate_anti_spoof_risk(decoded_frames)
+        return False, "no_frames", None, risk
     variation = max(brightness_values) - min(brightness_values)
     if variation < 5.0:
-        return False, f"brightness_variation={round(variation, 2)}", None
+        sampled_faces = _sample_faces_for_anti_spoof(decoded_frames)
+        risk = evaluate_anti_spoof_risk(decoded_frames, sampled_faces)
+        if risk["level"] == "high":
+            return False, "anti_spoof_high_risk", None, risk
+        return False, f"brightness_variation={round(variation, 2)}", None, risk
 
     sample_indexes = sorted({0, len(decoded_frames) // 2, len(decoded_frames) - 1})
     sampled_faces = []
     for index in sample_indexes:
         faces = engine.analyze(decoded_frames[index])
         if len(faces) != 1:
-            return False, f"sample_{index}_face_count={len(faces)}", None
+            risk = evaluate_anti_spoof_risk(decoded_frames, sampled_faces)
+            return False, f"sample_{index}_face_count={len(faces)}", None, risk
         sampled_faces.append(faces[0])
 
     base_embedding = sampled_faces[0]["embedding"]
     for face in sampled_faces[1:]:
         if engine.cosine_similarity(base_embedding, face["embedding"]) < 0.5:
-            return False, "sample_face_mismatch", None
-    return True, f"brightness_variation={round(variation, 2)}", base_embedding
+            risk = evaluate_anti_spoof_risk(decoded_frames, sampled_faces)
+            return False, "sample_face_mismatch", None, risk
+    risk = evaluate_anti_spoof_risk(decoded_frames, sampled_faces)
+    if risk["level"] == "high":
+        return False, "anti_spoof_high_risk", None, risk
+    return True, f"brightness_variation={round(variation, 2)}", base_embedding, risk
 
 
 def validate_liveness_for_flow(
@@ -487,13 +646,21 @@ def validate_liveness_for_flow(
         now=time.time(),
     )
     if not ok:
+        risk = challenge.get("anti_spoof_risk") if challenge else None
+        if risk and risk.get("level") == "high":
+            raise_api_error(403, "ANTI_SPOOF_HIGH_RISK")
         raise_api_error(403, "LIVENESS_CHALLENGE_INVALID", reason="请面对摄像头并完成眨眼后重试")
     challenge_embedding = challenge.get("face_embedding") if challenge else None
     if challenge_embedding is None:
         raise_api_error(403, "LIVENESS_CHALLENGE_INVALID", reason="活体挑战缺少人脸绑定信息，请重新挑战")
     if engine.cosine_similarity(challenge_embedding, face_embedding) < 0.5:
         raise_api_error(403, "LIVENESS_CHALLENGE_INVALID", reason="活体挑战人脸与当前图片不一致，请重新挑战")
-    return {"status": "passed", "reason": reason, "challenge": challenge}
+    return {
+        "status": "passed",
+        "reason": reason,
+        "challenge": challenge,
+        "anti_spoof_risk": challenge.get("anti_spoof_risk") if challenge else None,
+    }
 
 
 def ensure_backup_subdir(backup_dir: Path) -> Path:
@@ -531,6 +698,7 @@ def write_login_audit(
     liveness_status: Optional[str] = None,
     liveness_reason: Optional[str] = None,
     quality_metrics: Optional[dict] = None,
+    anti_spoof_risk: Optional[dict] = None,
 ) -> str:
     return db.add_login_audit(
         success=success,
@@ -545,6 +713,7 @@ def write_login_audit(
         liveness_status=liveness_status,
         liveness_reason=liveness_reason,
         quality_metrics=quality_metrics,
+        anti_spoof_risk=anti_spoof_risk,
     )
 
 
@@ -562,6 +731,7 @@ def raise_with_audit(
     liveness_status: Optional[str] = None,
     liveness_reason: Optional[str] = None,
     quality_metrics: Optional[dict] = None,
+    anti_spoof_risk: Optional[dict] = None,
 ) -> None:
     write_login_audit(
         success=False,
@@ -574,6 +744,7 @@ def raise_with_audit(
         liveness_status=liveness_status,
         liveness_reason=liveness_reason,
         quality_metrics=quality_metrics,
+        anti_spoof_risk=anti_spoof_risk,
     )
     raise_api_error(status_code, code, message, reason)
 
@@ -599,6 +770,7 @@ def get_system_status() -> dict:
         "duplicate_policy": DUPLICATE_POLICY,
         "search_cache": db.get_search_cache_summary(),
         "liveness": get_liveness_policy(),
+        "anti_spoof": get_anti_spoof_policy(),
         "recognition_policy": get_policy_for_terminal(None),
         "maintenance_mode": is_maintenance_mode(),
         "faces_count": db.count(),
@@ -670,6 +842,7 @@ def effective_config():
         "max_image_bytes": MAX_IMAGE_BYTES,
         "max_image_pixels": MAX_IMAGE_PIXELS,
         "liveness": get_liveness_policy(),
+        "anti_spoof": get_anti_spoof_policy(),
         "recognition_policy": get_policy_for_terminal(None),
         "search_target": {
             "mode": "exact",
@@ -868,12 +1041,13 @@ def submit_liveness_challenge(req: LivenessChallengeSubmitReq):
             raise_api_error(403, "LIVENESS_ACTION_WINDOW_EXPIRED")
     if challenge["action"] != "blink":
         raise_api_error(400, "UNSUPPORTED_LIVENESS_ACTION")
-    passed, reason, face_embedding = evaluate_blink_frames(req.frames)
+    passed, reason, face_embedding, anti_spoof_risk = evaluate_blink_frames(req.frames)
     db.mark_liveness_challenge_result(
         req.challenge_id,
         passed=passed,
         result_reason=reason,
         face_embedding=face_embedding if passed else None,
+        anti_spoof_risk=anti_spoof_risk,
     )
     elapsed = round((time.perf_counter() - t0) * 1000, 2)
     if not passed:
@@ -886,6 +1060,7 @@ def submit_liveness_challenge(req: LivenessChallengeSubmitReq):
             "message": "请面对摄像头并完成眨眼后重试",
             "reason": user_reason,
             "result_reason": reason,
+            "anti_spoof_risk": anti_spoof_risk,
             "elapsed_ms": elapsed,
         }
     return {
@@ -893,6 +1068,7 @@ def submit_liveness_challenge(req: LivenessChallengeSubmitReq):
         "status": "passed",
         "passed": True,
         "message": "活体挑战通过",
+        "anti_spoof_risk": anti_spoof_risk,
         "elapsed_ms": elapsed,
     }
 
@@ -1283,6 +1459,10 @@ def face_login(req: FaceLoginReq):
         liveness_result = validate_liveness_for_flow("login", req.challenge_id, terminal_id, face["embedding"])
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
+        anti_spoof_risk = None
+        if req.challenge_id:
+            challenge = db.get_liveness_challenge(req.challenge_id)
+            anti_spoof_risk = challenge.get("anti_spoof_risk") if challenge else None
         raise_with_audit(
             status_code=exc.status_code,
             code=detail.get("code", "LIVENESS_CHALLENGE_INVALID"),
@@ -1295,8 +1475,10 @@ def face_login(req: FaceLoginReq):
             liveness_status="failed",
             liveness_reason=detail.get("code"),
             quality_metrics=quality_metrics,
+            anti_spoof_risk=anti_spoof_risk,
         )
 
+    anti_spoof_risk = liveness_result.get("anti_spoof_risk")
     policy = get_policy_for_terminal(terminal_id)
     threshold = max(normalize_auth_threshold(req.threshold), policy["threshold"])
     results = db.search(face["embedding"], top_k=1, threshold=-1.0)
@@ -1312,6 +1494,7 @@ def face_login(req: FaceLoginReq):
             liveness_status=liveness_result["status"],
             liveness_reason=liveness_result["reason"],
             quality_metrics=quality_metrics,
+            anti_spoof_risk=anti_spoof_risk,
         )
 
     best_match = results[0]
@@ -1329,6 +1512,7 @@ def face_login(req: FaceLoginReq):
             liveness_status=liveness_result["status"],
             liveness_reason=liveness_result["reason"],
             quality_metrics=quality_metrics,
+            anti_spoof_risk=anti_spoof_risk,
         )
     username = str(best_match.get("username") or "").strip()
     if not username:
@@ -1344,6 +1528,7 @@ def face_login(req: FaceLoginReq):
             liveness_status=liveness_result["status"],
             liveness_reason=liveness_result["reason"],
             quality_metrics=quality_metrics,
+            anti_spoof_risk=anti_spoof_risk,
         )
 
     elapsed = (time.perf_counter() - t0) * 1000
@@ -1359,6 +1544,7 @@ def face_login(req: FaceLoginReq):
         liveness_status=liveness_result["status"],
         liveness_reason=liveness_result["reason"],
         quality_metrics=quality_metrics,
+        anti_spoof_risk=anti_spoof_risk,
     )
     return {
         "authenticated": True,
@@ -1372,6 +1558,7 @@ def face_login(req: FaceLoginReq):
         "threshold": threshold,
         "state": req.state,
         "quality_metrics": quality_metrics,
+        "anti_spoof_risk": anti_spoof_risk,
         "elapsed_ms": round(elapsed, 2),
     }
 

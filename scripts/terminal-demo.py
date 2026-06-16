@@ -38,6 +38,31 @@ def format_error(exc):
     return str(exc)
 
 
+def format_anti_spoof_risk(risk):
+    if not isinstance(risk, dict):
+        return "防翻拍风险：未返回"
+    label = {"low": "低", "medium": "中", "high": "高"}.get(risk.get("level"), risk.get("level") or "未知")
+    message = risk.get("message") or "请按提示重新采集"
+    reasons = risk.get("reasons") if isinstance(risk.get("reasons"), list) else []
+    reason_text = f"（{', '.join(str(reason) for reason in reasons)}）" if reasons else ""
+    return f"防翻拍风险：{label}，{message}{reason_text}"
+
+
+def sanitize_result(value):
+    if isinstance(value, list):
+        return [sanitize_result(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    clean = {}
+    for key, item in value.items():
+        if key == "metrics":
+            continue
+        clean[key] = sanitize_result(item)
+    if isinstance(clean.get("anti_spoof_risk"), dict):
+        clean["anti_spoof_summary"] = format_anti_spoof_risk(clean["anti_spoof_risk"])
+    return clean
+
+
 def image_to_data_url(path):
     data = Path(path).read_bytes()
     return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
@@ -166,7 +191,7 @@ def main(argv=None):
                 frames,
             )
             if liveness.get("passed") is False:
-                print(json.dumps({"ok": False, "liveness": liveness}, ensure_ascii=False, indent=2))
+                print(json.dumps(sanitize_result({"ok": False, "liveness": liveness}), ensure_ascii=False, indent=2))
                 return 1
             challenge_id = liveness["challenge_id"]
 
@@ -198,7 +223,7 @@ def main(argv=None):
         return 1
     print(
         json.dumps(
-            {"ok": True, "liveness": liveness, "face": face, "business": report},
+            sanitize_result({"ok": True, "liveness": liveness, "face": face, "business": report}),
             ensure_ascii=False,
             indent=2,
         )

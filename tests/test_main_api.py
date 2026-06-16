@@ -133,6 +133,7 @@ class FakeFaceDB:
             "status": "pending",
             "result_reason": None,
             "face_embedding": None,
+            "anti_spoof_risk": None,
             "expires_at": expires_at,
             "used_at": None,
             "action_window_seconds": action_window_seconds,
@@ -143,13 +144,22 @@ class FakeFaceDB:
     def get_liveness_challenge(self, challenge_id):
         return self.challenges.get(challenge_id)
 
-    def mark_liveness_challenge_result(self, challenge_id, *, passed, result_reason, face_embedding=None):
+    def mark_liveness_challenge_result(
+        self,
+        challenge_id,
+        *,
+        passed,
+        result_reason,
+        face_embedding=None,
+        anti_spoof_risk=None,
+    ):
         challenge = self.challenges.get(challenge_id)
         if not challenge or challenge["status"] != "pending":
             return False
         challenge["status"] = "passed" if passed else "failed"
         challenge["result_reason"] = result_reason
         challenge["face_embedding"] = face_embedding
+        challenge["anti_spoof_risk"] = anti_spoof_risk
         return True
 
     def consume_liveness_challenge(self, *, challenge_id, purpose, terminal_id, now):
@@ -216,6 +226,12 @@ def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None, d
         "FACE_TERMINAL_POLICY_MAP",
         "FACE_MAINTENANCE_FILE",
         "FACE_ALLOW_ONLINE_RESTORE",
+        "FACE_ANTI_SPOOF_ENABLED",
+        "FACE_ANTI_SPOOF_BLOCK_LEVEL",
+        "FACE_ANTI_SPOOF_MEDIUM_ACTION",
+        "FACE_ANTI_SPOOF_MIN_FRAME_VARIATION",
+        "FACE_ANTI_SPOOF_MIN_FACE_MOTION",
+        "FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION",
     ]:
         os.environ.pop(key, None)
     if api_key:
@@ -887,6 +903,25 @@ class MainApiContractTests(unittest.TestCase):
         self.assertFalse(body["items"][0]["success"])
         self.assertEqual(body["items"][0]["terminal_id"], "door-1")
 
+    def test_list_login_audits_returns_anti_spoof_risk(self):
+        module = load_main_module(api_key="secret")
+        module.db.add_login_audit(
+            success=False,
+            failure_reason="ANTI_SPOOF_HIGH_RISK",
+            terminal_id="door-1",
+            anti_spoof_risk={
+                "level": "high",
+                "reasons": ["static_face_box"],
+                "action": "block",
+                "message": "疑似翻拍或静态画面，请重新面对摄像头",
+            },
+        )
+
+        body = module.list_login_audits(limit=10, terminal_id="door-1")
+
+        self.assertEqual(body["items"][0]["anti_spoof_risk"]["level"], "high")
+        self.assertEqual(body["items"][0]["anti_spoof_risk"]["action"], "block")
+
     def test_login_audit_summary_returns_counts(self):
         module = load_main_module(api_key="secret")
         module.db.add_login_audit(success=True)
@@ -919,6 +954,83 @@ class MainApiContractTests(unittest.TestCase):
 
         self.assertTrue(body["passed"])
         self.assertEqual(module.db.challenges[created["challenge_id"]]["status"], "passed")
+
+    def test_anti_spoof_risk_scoring_marks_static_frames_high(self):
+        module = load_main_module(api_key="secret")
+        frames = [module.np.ones((40, 40, 3), dtype=module.np.uint8) * 80 for _ in range(10)]
+        faces = [{"bbox": [10, 10, 30, 30]}, {"bbox": [10, 10, 30, 30]}, {"bbox": [10, 10, 30, 30]}]
+
+        risk = module.evaluate_anti_spoof_risk(frames, faces)
+
+        self.assertEqual(risk["level"], "high")
+        self.assertEqual(risk["action"], "block")
+        self.assertIn("repeated_frames", risk["reasons"])
+        self.assertIn("static_face_box", risk["reasons"])
+
+    def test_anti_spoof_risk_scoring_marks_normal_motion_low(self):
+        module = load_main_module(api_key="secret")
+        frames = [
+            module.np.ones((40, 40, 3), dtype=module.np.uint8) * value
+            for value in (40, 80, 120, 80, 40, 120)
+        ]
+        faces = [{"bbox": [10, 10, 30, 30]}, {"bbox": [12, 10, 32, 30]}, {"bbox": [13, 11, 33, 31]}]
+
+        risk = module.evaluate_anti_spoof_risk(frames, faces)
+
+        self.assertEqual(risk["level"], "low")
+        self.assertEqual(risk["action"], "allow")
+        self.assertEqual(risk["reasons"], ["normal_motion"])
+
+    def test_liveness_challenge_submit_returns_low_anti_spoof_risk(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda image: module.np.ones((20, 20, 3), dtype=module.np.uint8) * (
+            120 if image == "bright" else 20
+        )
+
+        def analyze(image):
+            mean = int(module.np.mean(image))
+            left = 2 if mean < 100 else 4
+            return [{"embedding": EMBEDDING, "det_score": 0.9, "bbox": [left, 2, left + 12, 14]}]
+
+        module.engine.analyze = analyze
+        created = module.create_liveness_challenge(
+            module.LivenessChallengeCreateReq(purpose="login", terminal_id="door-1")
+        )
+
+        body = module.submit_liveness_challenge(
+            module.LivenessChallengeSubmitReq(
+                challenge_id=created["challenge_id"],
+                purpose="login",
+                terminal_id="door-1",
+                frames=["dark"] * 10 + ["bright"] * 10,
+            )
+        )
+
+        self.assertTrue(body["passed"])
+        self.assertEqual(body["anti_spoof_risk"]["level"], "low")
+        self.assertEqual(module.db.challenges[created["challenge_id"]]["anti_spoof_risk"]["level"], "low")
+
+    def test_liveness_challenge_submit_marks_static_frames_high_risk(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda image: module.np.ones((20, 20, 3), dtype=module.np.uint8) * 80
+        module.engine.analyze = lambda _: [{"embedding": EMBEDDING, "det_score": 0.9, "bbox": [4, 4, 16, 16]}]
+        created = module.create_liveness_challenge(
+            module.LivenessChallengeCreateReq(purpose="login", terminal_id="door-1")
+        )
+
+        body = module.submit_liveness_challenge(
+            module.LivenessChallengeSubmitReq(
+                challenge_id=created["challenge_id"],
+                purpose="login",
+                terminal_id="door-1",
+                frames=["flat"] * 10,
+            )
+        )
+
+        self.assertFalse(body["passed"])
+        self.assertEqual(body["result_reason"], "anti_spoof_high_risk")
+        self.assertEqual(body["anti_spoof_risk"]["level"], "high")
+        self.assertIn("重新面对摄像头", body["anti_spoof_risk"]["message"])
 
     def test_liveness_challenge_submit_normalizes_purpose(self):
         module = load_main_module(api_key="secret")
@@ -1110,6 +1222,92 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(exc_info.exception.status_code, 403)
         self.assert_error_detail(exc_info.exception.detail, "LIVENESS_CHALLENGE_INVALID", "活体挑战无效")
 
+    def test_face_login_blocks_high_anti_spoof_liveness_result(self):
+        module = load_main_module(
+            api_key="secret",
+            disable_login_liveness=False,
+            extra_env={"FACE_MIN_FACE_SHARPNESS": "0"},
+        )
+        challenge_id = module.db.add_liveness_challenge(
+            purpose="login",
+            terminal_id="door-1",
+            action="blink",
+            expires_at=module.time.time() + 60,
+            action_window_seconds=10,
+        )
+        risk = {
+            "level": "high",
+            "reasons": ["repeated_frames", "static_face_box"],
+            "action": "block",
+            "message": "疑似翻拍或静态画面，请重新面对摄像头",
+        }
+        module.db.mark_liveness_challenge_result(
+            challenge_id,
+            passed=False,
+            result_reason="anti_spoof_high_risk",
+            anti_spoof_risk=risk,
+        )
+        module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
+        module.get_single_face_or_raise = lambda _: {
+            "bbox": [0, 0, 80, 80],
+            "det_score": 0.99,
+            "embedding": EMBEDDING,
+        }
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(
+                module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="door-1", challenge_id=challenge_id)
+            )
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assert_error_detail(exc_info.exception.detail, "ANTI_SPOOF_HIGH_RISK", "疑似翻拍风险")
+        self.assertEqual(module.db.audit_entries[0]["failure_reason"], "ANTI_SPOOF_HIGH_RISK")
+        self.assertEqual(module.db.audit_entries[0]["anti_spoof_risk"]["level"], "high")
+
+    def test_face_login_returns_low_anti_spoof_risk_without_breaking_success_response(self):
+        module = load_main_module(
+            api_key="secret",
+            disable_login_liveness=False,
+            extra_env={"FACE_MIN_FACE_SHARPNESS": "0"},
+        )
+        challenge_id = module.db.add_liveness_challenge(
+            purpose="login",
+            terminal_id="door-1",
+            action="blink",
+            expires_at=module.time.time() + 60,
+            action_window_seconds=10,
+        )
+        risk = {
+            "level": "low",
+            "reasons": ["normal_motion"],
+            "action": "allow",
+            "message": "活体检测通过",
+        }
+        module.db.mark_liveness_challenge_result(
+            challenge_id,
+            passed=True,
+            result_reason="ok",
+            face_embedding=EMBEDDING,
+            anti_spoof_risk=risk,
+        )
+        module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
+        module.get_single_face_or_raise = lambda _: {
+            "bbox": [0, 0, 80, 80],
+            "det_score": 0.99,
+            "embedding": EMBEDDING,
+        }
+        module.db.search = lambda *args, **kwargs: [
+            {"id": "face-7", "user_id": 7, "username": "alice", "similarity": 0.91, "metadata": {}}
+        ]
+
+        body = module.face_login(
+            module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="door-1", challenge_id=challenge_id)
+        )
+
+        self.assertTrue(body["authenticated"])
+        self.assertEqual(body["anti_spoof_risk"]["level"], "low")
+        self.assertEqual(module.db.audit_entries[0]["anti_spoof_risk"]["level"], "low")
+
     def test_admin_restore_requires_maintenance_and_confirmation(self):
         module = load_main_module(api_key="secret")
 
@@ -1224,8 +1422,12 @@ class MainApiContractTests(unittest.TestCase):
 
     def test_api_schema_models_are_importable(self):
         from api_schemas import (
+            AntiSpoofRisk,
             Base64ImageReq,
             FaceLoginReq,
+            FaceLoginResp,
+            LivenessChallengeSubmitResp,
+            LoginAuditItem,
             RegisterReq,
             SystemStatusResp,
         )
@@ -1234,6 +1436,10 @@ class MainApiContractTests(unittest.TestCase):
         self.assertIn("terminal_id", FaceLoginReq.model_fields)
         self.assertIn("username", RegisterReq.model_fields)
         self.assertIn("device", SystemStatusResp.model_fields)
+        self.assertEqual(AntiSpoofRisk.model_fields["level"].annotation, str)
+        self.assertIn("anti_spoof_risk", FaceLoginResp.model_fields)
+        self.assertIn("anti_spoof_risk", LivenessChallengeSubmitResp.model_fields)
+        self.assertIn("anti_spoof_risk", LoginAuditItem.model_fields)
 
     def test_policy_and_search_v11_summaries_are_read_only(self):
         module = load_main_module(api_key="secret")
@@ -1302,6 +1508,11 @@ class MainApiContractTests(unittest.TestCase):
         self.assertFalse(body["liveness"]["register_enabled"])
         self.assertEqual(body["liveness"]["challenge_ttl_seconds"], 60)
         self.assertEqual(body["liveness"]["action_window_seconds"], 10)
+        self.assertEqual(body["anti_spoof"]["mode"], "lightweight-risk-score")
+        self.assertTrue(body["anti_spoof"]["enabled"])
+        self.assertEqual(body["anti_spoof"]["default_block_level"], "high")
+        self.assertEqual(body["anti_spoof"]["medium_action"], "review")
+        self.assertIn("printed_photo", body["anti_spoof"]["sample_types"])
         self.assertEqual(body["search_target"]["target_record_count"], 50000)
         self.assertEqual(body["search_target"]["target_latency_ms"], 1000)
 
@@ -1328,6 +1539,8 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(body["search_cache"]["mode"], "exact")
         self.assertEqual(body["search_cache"]["target_record_count"], 50000)
         self.assertFalse(body["liveness"]["login_enabled"])
+        self.assertEqual(body["anti_spoof"]["default_block_level"], "high")
+        self.assertEqual(body["anti_spoof"]["medium_action"], "review")
         self.assertEqual(body["recognition_policy"]["profile"], "default")
         self.assertFalse(body["maintenance_mode"])
         self.assertEqual(body["faces_count"], 0)

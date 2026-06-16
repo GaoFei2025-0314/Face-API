@@ -24,6 +24,19 @@ def env_int(name: str, default: int, minimum: int = 1) -> int:
     return value
 
 
+def env_float(name: str, default: float, minimum: float = 0.0) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} 必须是数字，当前值为 {raw!r}") from exc
+    if value < minimum:
+        raise RuntimeError(f"{name} 必须大于等于 {minimum}，当前值为 {value}")
+    return value
+
+
 def env_list(name: str, default: list[str]) -> list[str]:
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
@@ -63,6 +76,12 @@ class RuntimeSettings:
     face_challenge_min_frames: int
     face_challenge_max_frames: int
     face_challenge_actions: list[str]
+    face_anti_spoof_enabled: bool
+    face_anti_spoof_block_level: str
+    face_anti_spoof_medium_action: str
+    face_anti_spoof_min_frame_variation: float
+    face_anti_spoof_min_face_motion: float
+    face_anti_spoof_min_sharpness_variation: float
     face_default_policy_profile: str
     face_terminal_policy_map: str
     maintenance_mode_file: Path
@@ -115,6 +134,12 @@ def load_settings() -> RuntimeSettings:
             challenge_min_frames,
         ),
         face_challenge_actions=env_list("FACE_CHALLENGE_ACTIONS", ["blink"]),
+        face_anti_spoof_enabled=env_bool("FACE_ANTI_SPOOF_ENABLED", True),
+        face_anti_spoof_block_level=os.getenv("FACE_ANTI_SPOOF_BLOCK_LEVEL", "high").strip().lower() or "high",
+        face_anti_spoof_medium_action=os.getenv("FACE_ANTI_SPOOF_MEDIUM_ACTION", "review").strip().lower() or "review",
+        face_anti_spoof_min_frame_variation=env_float("FACE_ANTI_SPOOF_MIN_FRAME_VARIATION", 5.0, 0.0),
+        face_anti_spoof_min_face_motion=env_float("FACE_ANTI_SPOOF_MIN_FACE_MOTION", 0.015, 0.0),
+        face_anti_spoof_min_sharpness_variation=env_float("FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION", 1.0, 0.0),
         face_default_policy_profile=os.getenv("FACE_DEFAULT_POLICY_PROFILE", "default").strip() or "default",
         face_terminal_policy_map=os.getenv("FACE_TERMINAL_POLICY_MAP", "").strip(),
         maintenance_mode_file=Path(os.getenv("FACE_MAINTENANCE_FILE", ".maintenance_mode")),
@@ -133,6 +158,10 @@ def validate_settings(settings: RuntimeSettings) -> None:
         raise RuntimeError("FACE_DUPLICATE_POLICY 必须是 allow、reject 或 replace")
     if "blink" not in settings.face_challenge_actions:
         raise RuntimeError("FACE_CHALLENGE_ACTIONS 第一版必须包含 blink")
+    if settings.face_anti_spoof_block_level != "high":
+        raise RuntimeError("FACE_ANTI_SPOOF_BLOCK_LEVEL V2.1 仅支持 high，避免轻量防翻拍过度打扰用户")
+    if settings.face_anti_spoof_medium_action not in {"review", "retry"}:
+        raise RuntimeError("FACE_ANTI_SPOOF_MEDIUM_ACTION 必须是 review 或 retry")
     db_dir = Path(settings.db_path).expanduser().resolve().parent
     if not db_dir.exists() or not os.access(db_dir, os.W_OK):
         raise RuntimeError(f"FACE_DB_PATH 目录不可写：{db_dir}")
