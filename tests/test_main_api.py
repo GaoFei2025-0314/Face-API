@@ -230,8 +230,10 @@ def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None, d
         "FACE_ANTI_SPOOF_BLOCK_LEVEL",
         "FACE_ANTI_SPOOF_MEDIUM_ACTION",
         "FACE_ANTI_SPOOF_MIN_FRAME_VARIATION",
+        "FACE_ANTI_SPOOF_MIN_FRAME_DELTA",
         "FACE_ANTI_SPOOF_MIN_FACE_MOTION",
         "FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION",
+        "FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION",
     ]:
         os.environ.pop(key, None)
     if api_key:
@@ -750,6 +752,21 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(exc_info.exception.status_code, 400)
         self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸", "custom reason")
 
+    def test_face_login_handles_plain_http_exception_detail_from_face_detection(self):
+        module = load_main_module(api_key="secret")
+        module.decode_base64 = lambda _: object()
+
+        def raise_plain_error(_image):
+            raise HTTPException(status_code=418, detail="plain failure")
+
+        module.get_single_face_or_raise = raise_plain_error
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="t-1"))
+
+        self.assertEqual(exc_info.exception.status_code, 418)
+        self.assert_error_detail(exc_info.exception.detail, "NO_FACE", "未检测到人脸")
+
     def test_face_login_returns_multiple_faces_failure_payload(self):
         module = load_main_module(api_key="secret")
         module.decode_base64 = lambda _: object()
@@ -981,6 +998,24 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(risk["action"], "allow")
         self.assertEqual(risk["reasons"], ["normal_motion"])
 
+    def test_anti_spoof_repeated_frame_delta_threshold_is_configurable(self):
+        module = load_main_module(
+            api_key="secret",
+            extra_env={
+                "FACE_ANTI_SPOOF_MIN_FRAME_DELTA": "2.0",
+                "FACE_ANTI_SPOOF_MIN_FRAME_VARIATION": "0",
+            },
+        )
+        frames = [
+            module.np.ones((20, 20, 3), dtype=module.np.uint8) * 10,
+            module.np.ones((20, 20, 3), dtype=module.np.uint8) * 11,
+        ]
+
+        risk = module.evaluate_anti_spoof_risk(frames)
+
+        self.assertIn("repeated_frames", risk["reasons"])
+        self.assertEqual(risk["metrics"]["max_frame_delta"], 1.0)
+
     def test_liveness_challenge_submit_returns_low_anti_spoof_risk(self):
         module = load_main_module(api_key="secret")
         module.decode_base64 = lambda image: module.np.ones((20, 20, 3), dtype=module.np.uint8) * (
@@ -1141,6 +1176,31 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(failed["result_reason"], "brightness_variation=0.0")
         self.assertIn("动作幅度", failed["reason"])
         self.assertNotEqual(failed["reason"], failed["message"])
+
+    def test_liveness_brightness_variation_threshold_is_configurable(self):
+        module = load_main_module(
+            api_key="secret",
+            extra_env={"FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION": "20"},
+        )
+        module.decode_base64 = lambda image: module.np.ones((20, 20, 3), dtype=module.np.uint8) * (
+            20 if image == "bright" else 10
+        )
+        module.engine.analyze = lambda _: [{"embedding": EMBEDDING, "det_score": 0.9}]
+
+        created = module.create_liveness_challenge(
+            module.LivenessChallengeCreateReq(purpose="login", terminal_id="door-1")
+        )
+        failed = module.submit_liveness_challenge(
+            module.LivenessChallengeSubmitReq(
+                challenge_id=created["challenge_id"],
+                purpose="login",
+                terminal_id="door-1",
+                frames=["dark"] * 10 + ["bright"] * 10,
+            )
+        )
+
+        self.assertFalse(failed["passed"])
+        self.assertEqual(failed["result_reason"], "brightness_variation=10.0")
 
     def test_face_login_requires_liveness_challenge_when_enabled(self):
         module = load_main_module(api_key="secret", disable_login_liveness=False)

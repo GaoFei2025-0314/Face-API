@@ -412,6 +412,7 @@ class BusinessDB:
         limit = max(1, min(int(limit or 20), 100))
         query = "SELECT * FROM business_login_audits WHERE 1=1"
         params = []
+        # 安全约束：audit 查询条件只能追加硬编码的 "column = ?" 片段；参数值必须通过 params 参数化传入。
         if terminal_id:
             query += " AND terminal_id = ?"
             params.append(terminal_id)

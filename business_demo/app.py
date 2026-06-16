@@ -1,4 +1,5 @@
 import base64
+import binascii
 import hmac
 import json
 import math
@@ -91,12 +92,17 @@ def issue_demo_token(user, secret, ttl_seconds=3600):
 def verify_demo_token(token, secret):
     try:
         body, signature = token.split(".", 1)
+        expected = _b64url(hmac.new(secret.encode("utf-8"), body.encode("ascii"), sha256).digest())
     except ValueError:
         raise_business_error("TOKEN_INVALID")
-    expected = _b64url(hmac.new(secret.encode("utf-8"), body.encode("ascii"), sha256).digest())
+    except UnicodeEncodeError:
+        raise_business_error("TOKEN_INVALID")
     if not hmac.compare_digest(signature, expected):
         raise_business_error("TOKEN_INVALID")
-    payload = json.loads(_b64url_decode(body).decode("utf-8"))
+    try:
+        payload = json.loads(_b64url_decode(body).decode("utf-8"))
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        raise_business_error("TOKEN_INVALID")
     if int(payload.get("exp", 0)) < int(time.time()):
         raise_business_error("TOKEN_INVALID")
     return payload

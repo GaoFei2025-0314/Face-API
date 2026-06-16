@@ -498,6 +498,14 @@ V2.1 起，活体提交和 face login 会返回可选 `anti_spoof_risk`：
 - `message`：简短中文提示，适合页面展示。
 - `metrics`：可选诊断指标，前端可以忽略，不要直接展示给普通用户。
 
+相关运维阈值：
+
+- `FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION`：眨眼活体连续帧最低亮度变化阈值，默认 `5.0`。
+- `FACE_ANTI_SPOOF_MIN_FRAME_DELTA`：连续帧重复判定的最低帧差阈值，默认 `1.0`。
+- `FACE_ANTI_SPOOF_MIN_FRAME_VARIATION`：防翻拍亮度变化阈值，默认 `5.0`。
+- `FACE_ANTI_SPOOF_MIN_FACE_MOTION`：抽样人脸框位置或面积变化阈值，默认 `0.015`。
+- `FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION`：清晰度变化阈值，默认 `1.0`。
+
 高风险 challenge 示例：
 
 ```json
@@ -642,7 +650,13 @@ X-API-Key: <你的密钥>
     "enabled": true,
     "mode": "lightweight-risk-score",
     "default_block_level": "high",
-    "medium_action": "review"
+    "medium_action": "review",
+    "thresholds": {
+      "min_frame_variation": 5.0,
+      "min_frame_delta": 1.0,
+      "min_face_motion": 0.015,
+      "min_sharpness_variation": 1.0
+    }
   },
   "search_cache": {
     "ready": true,
@@ -688,7 +702,13 @@ X-API-Key: <你的密钥>
     "enabled": true,
     "mode": "lightweight-risk-score",
     "default_block_level": "high",
-    "medium_action": "review"
+    "medium_action": "review",
+    "thresholds": {
+      "min_frame_variation": 5.0,
+      "min_frame_delta": 1.0,
+      "min_face_motion": 0.015,
+      "min_sharpness_variation": 1.0
+    }
   }
 }
 ```

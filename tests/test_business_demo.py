@@ -359,6 +359,20 @@ class BusinessDemoStorageTests(unittest.TestCase):
         with self.assertRaises(Exception):
             verify_demo_token(token + "tamper", "secret")
 
+    def test_demo_token_rejects_malformed_base64_payload_as_business_error(self):
+        from business_demo.app import _b64url, verify_demo_token
+        import hmac
+        from hashlib import sha256
+
+        body = "a"
+        signature = _b64url(hmac.new(b"secret", body.encode("ascii"), sha256).digest())
+        token = f"{body}.{signature}"
+
+        with self.assertRaises(Exception) as exc_info:
+            verify_demo_token(token, "secret")
+
+        self.assertEqual(getattr(exc_info.exception, "code", None), "TOKEN_INVALID")
+
 
 class BusinessDemoSettingsTests(unittest.TestCase):
     def test_load_settings_rejects_default_token_secret_in_production(self):

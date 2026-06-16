@@ -2,18 +2,46 @@
 # ============================================================================
 # Post-commit hook: Auto Code Review
 # Each local commit triggers a background code review.
-# Results saved to:  Coding Review/code-review-{version}-{date}.md
+# Results saved to:  Coding Review/code-review-{version}-{date}-{commit}.md
 # ============================================================================
 set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-VERSION="$(grep -oP 'V\d+\.\d+' "$REPO_ROOT/README.md" 2>/dev/null | head -1 || echo "unknown")"
+COMMIT_HASH="$(git log -1 --format='%h')"
+COMMIT_MSG_RAW="$(git log -1 --format='%s')"
+CHANGED_FILES_RAW="$(git diff --name-only HEAD~1..HEAD 2>/dev/null || true)"
+
+detect_review_version() {
+    {
+        printf '%s\n' "$COMMIT_MSG_RAW"
+        printf '%s\n' "$CHANGED_FILES_RAW"
+        while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            [ -f "$REPO_ROOT/$file" ] || continue
+            grep -EIoh '[Vv][0-9]+\.[0-9]+' "$REPO_ROOT/$file" 2>/dev/null || true
+        done <<FILES
+$CHANGED_FILES_RAW
+FILES
+    } | grep -Eoi 'v[0-9]+\.[0-9]+' | tr '[:lower:]' '[:upper:]' | sort -V | tail -1
+}
+
+VERSION="$(detect_review_version)"
+if [ -z "$VERSION" ]; then
+    # fallback to README.md when the commit does not mention a version.
+    VERSION="$(grep -Eoh 'V[0-9]+\.[0-9]+' "$REPO_ROOT/README.md" 2>/dev/null | head -1 || true)"
+fi
+if [ -z "$VERSION" ]; then
+    VERSION="unknown"
+fi
+
 DATE="$(date +%Y-%m-%d)"
 OUTPUT_DIR="$REPO_ROOT/Coding Review"
-OUTPUT_FILE="$OUTPUT_DIR/code-review-${VERSION}-${DATE}.md"
-COMMIT_HASH="$(git log -1 --format='%h')"
-COMMIT_MSG="$(git log -1 --format='%s')"
-CHANGED_FILES="$(git diff --name-only HEAD~1..HEAD 2>/dev/null | tr '\n' ' ' || echo "all")"
+OUTPUT_FILE="$OUTPUT_DIR/code-review-${VERSION}-${DATE}-${COMMIT_HASH}.md"
+COMMIT_MSG="$(printf '%s' "$COMMIT_MSG_RAW" | head -c 200)"
+CHANGED_FILES="$(printf '%s' "$CHANGED_FILES_RAW" | tr '\n' ' ' | head -c 500)"
+if [ -z "$CHANGED_FILES" ]; then
+    CHANGED_FILES="all"
+fi
 
 mkdir -p "$OUTPUT_DIR"
 

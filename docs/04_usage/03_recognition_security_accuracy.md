@@ -89,6 +89,16 @@ V2.1 在基础活体 challenge 上增加轻量防翻拍风险评分，返回可�
 
 这些信号会写入 audit 的 `anti_spoof_risk.reasons`，用于运维复核。普通用户页面只展示短中文提示，不展示 `metrics`。
 
+相关阈值可以通过环境变量微调：
+
+| 环境变量 | 默认值 | 作用 |
+|---|---:|---|
+| `FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION` | `5.0` | 眨眼活体连续帧最低亮度变化阈值 |
+| `FACE_ANTI_SPOOF_MIN_FRAME_VARIATION` | `5.0` | 防翻拍亮度变化阈值 |
+| `FACE_ANTI_SPOOF_MIN_FRAME_DELTA` | `1.0` | 连续帧重复判定的最低帧差阈值 |
+| `FACE_ANTI_SPOOF_MIN_FACE_MOTION` | `0.015` | 抽样人脸框位置或面积变化阈值 |
+| `FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION` | `1.0` | 清晰度变化阈值 |
+
 V2.1 不承诺覆盖：
 
 - 高清屏幕视频重放。

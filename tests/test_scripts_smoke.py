@@ -168,6 +168,27 @@ class ScriptSmokeTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
                 self.assertIn(param_name, result.stdout)
 
+    def test_post_commit_review_report_path_is_commit_scoped(self):
+        script = (ROOT / "scripts" / "post-commit").read_text(encoding="utf-8")
+
+        self.assertIn('COMMIT_HASH="$(git log -1 --format=\'%h\')"', script)
+        self.assertIn('OUTPUT_FILE="$OUTPUT_DIR/code-review-${VERSION}-${DATE}-${COMMIT_HASH}.md"', script)
+        self.assertNotIn('OUTPUT_FILE="$OUTPUT_DIR/code-review-${VERSION}-${DATE}.md"', script)
+
+    def test_post_commit_review_version_matches_commit_context_before_readme(self):
+        script = (ROOT / "scripts" / "post-commit").read_text(encoding="utf-8")
+
+        self.assertIn("detect_review_version", script)
+        self.assertIn("COMMIT_MSG_RAW", script)
+        self.assertIn("git diff --name-only HEAD~1..HEAD", script)
+        self.assertIn("fallback to README.md", script)
+
+    def test_business_demo_audit_query_documents_sql_filter_safety_boundary(self):
+        storage = (ROOT / "business_demo" / "storage.py").read_text(encoding="utf-8")
+
+        self.assertIn("安全约束：audit 查询条件只能追加硬编码的", storage)
+        self.assertIn("参数值必须通过 params 参数化传入", storage)
+
     def test_task_scheduler_install_rejects_missing_project_path(self):
         result = self.run_powershell(
             "-File",
@@ -261,8 +282,12 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn("手机播放眨眼视频", acceptance)
         self.assertIn("anti_spoof_risk", api_doc)
         self.assertIn("ANTI_SPOOF_HIGH_RISK", api_doc)
+        self.assertIn("FACE_ANTI_SPOOF_MIN_FRAME_DELTA", api_doc)
+        self.assertIn("FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION", api_doc)
         self.assertIn("轻量防翻拍", security_doc)
         self.assertIn("不承诺覆盖", security_doc)
+        self.assertIn("FACE_ANTI_SPOOF_MIN_FRAME_DELTA", security_doc)
+        self.assertIn("FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION", security_doc)
         self.assertIn("anti_spoof_risk", business_doc)
 
     def test_business_demo_web_page_does_not_expose_face_api_key(self):

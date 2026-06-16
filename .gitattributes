@@ -12,6 +12,7 @@
 *.txt text eol=lf
 .gitignore text eol=lf
 .gitattributes text eol=lf
+scripts/post-commit text eol=lf
 
 # Windows entry scripts should keep CRLF for double-click/cmd usage.
 *.bat text eol=crlf

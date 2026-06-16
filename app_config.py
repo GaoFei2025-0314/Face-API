@@ -73,6 +73,7 @@ class RuntimeSettings:
     face_register_liveness_enabled: bool
     face_challenge_ttl_seconds: int
     face_challenge_action_seconds: int
+    face_liveness_min_brightness_variation: float
     face_challenge_min_frames: int
     face_challenge_max_frames: int
     face_challenge_actions: list[str]
@@ -80,6 +81,7 @@ class RuntimeSettings:
     face_anti_spoof_block_level: str
     face_anti_spoof_medium_action: str
     face_anti_spoof_min_frame_variation: float
+    face_anti_spoof_min_frame_delta: float
     face_anti_spoof_min_face_motion: float
     face_anti_spoof_min_sharpness_variation: float
     face_default_policy_profile: str
@@ -116,17 +118,18 @@ def load_settings() -> RuntimeSettings:
         log_backup_count=env_int("FACE_LOG_BACKUP_COUNT", 5, 1),
         cors_origins=env_list("FACE_CORS_ORIGINS", ["*"]),
         duplicate_policy=os.getenv("FACE_DUPLICATE_POLICY", "allow").strip().lower() or "allow",
-        min_register_det_score=float(os.getenv("FACE_MIN_REGISTER_DET_SCORE", "0.5")),
+        min_register_det_score=env_float("FACE_MIN_REGISTER_DET_SCORE", 0.5, 0.0),
         min_register_face_pixels=env_int("FACE_MIN_REGISTER_FACE_PIXELS", 2500, 1),
-        min_register_brightness=float(os.getenv("FACE_MIN_REGISTER_BRIGHTNESS", "30")),
-        max_register_brightness=float(os.getenv("FACE_MAX_REGISTER_BRIGHTNESS", "225")),
-        min_login_det_score=float(os.getenv("FACE_MIN_LOGIN_DET_SCORE", "0.4")),
+        min_register_brightness=env_float("FACE_MIN_REGISTER_BRIGHTNESS", 30.0, 0.0),
+        max_register_brightness=env_float("FACE_MAX_REGISTER_BRIGHTNESS", 225.0, 0.0),
+        min_login_det_score=env_float("FACE_MIN_LOGIN_DET_SCORE", 0.4, 0.0),
         min_login_face_pixels=env_int("FACE_MIN_LOGIN_FACE_PIXELS", 1600, 1),
-        min_face_sharpness=float(os.getenv("FACE_MIN_FACE_SHARPNESS", "2")),
+        min_face_sharpness=env_float("FACE_MIN_FACE_SHARPNESS", 2.0, 0.0),
         face_login_liveness_enabled=env_bool("FACE_LOGIN_LIVENESS_ENABLED", True),
         face_register_liveness_enabled=env_bool("FACE_REGISTER_LIVENESS_ENABLED", False),
         face_challenge_ttl_seconds=env_int("FACE_CHALLENGE_TTL_SECONDS", 60, 1),
         face_challenge_action_seconds=env_int("FACE_CHALLENGE_ACTION_SECONDS", 10, 1),
+        face_liveness_min_brightness_variation=env_float("FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION", 5.0, 0.0),
         face_challenge_min_frames=challenge_min_frames,
         face_challenge_max_frames=env_int(
             "FACE_CHALLENGE_MAX_FRAMES",
@@ -138,6 +141,7 @@ def load_settings() -> RuntimeSettings:
         face_anti_spoof_block_level=os.getenv("FACE_ANTI_SPOOF_BLOCK_LEVEL", "high").strip().lower() or "high",
         face_anti_spoof_medium_action=os.getenv("FACE_ANTI_SPOOF_MEDIUM_ACTION", "review").strip().lower() or "review",
         face_anti_spoof_min_frame_variation=env_float("FACE_ANTI_SPOOF_MIN_FRAME_VARIATION", 5.0, 0.0),
+        face_anti_spoof_min_frame_delta=env_float("FACE_ANTI_SPOOF_MIN_FRAME_DELTA", 1.0, 0.0),
         face_anti_spoof_min_face_motion=env_float("FACE_ANTI_SPOOF_MIN_FACE_MOTION", 0.015, 0.0),
         face_anti_spoof_min_sharpness_variation=env_float("FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION", 1.0, 0.0),
         face_default_policy_profile=os.getenv("FACE_DEFAULT_POLICY_PROFILE", "default").strip() or "default",

@@ -375,9 +375,11 @@ set FACE_FORCE_CPU=1
 | `FACE_REGISTER_LIVENESS_ENABLED` | `0` | 注册是否启用活体检测 |
 | `FACE_CHALLENGE_TTL_SECONDS` | `60` | 活体 challenge 有效期 |
 | `FACE_CHALLENGE_ACTION_SECONDS` | `10` | 活体动作完成窗口 |
+| `FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION` | `5.0` | 眨眼活体连续帧最低亮度变化阈值 |
 | `FACE_CHALLENGE_MIN_FRAMES` | `10` | 眨眼 challenge 最少连续帧 |
 | `FACE_CHALLENGE_MAX_FRAMES` | `30` | 眨眼 challenge 最多连续帧；如果最小帧数配置超过 30 且未显式设置该值，默认会跟随最小帧数 |
 | `FACE_CHALLENGE_ACTIONS` | `blink` | 支持的活体动作，V1.1 稳定支持 `blink` |
+| `FACE_ANTI_SPOOF_MIN_FRAME_DELTA` | `1.0` | 轻量防翻拍连续帧重复判定的最低帧差阈值 |
 | `FACE_DEFAULT_POLICY_PROFILE` | `default` | 默认识别策略档案 |
 | `FACE_TERMINAL_POLICY_MAP` | 空 | terminal 到策略档案的绑定，如 `door-1:strict` |
 | `FACE_MAX_BASE64_CHARS` | `11185068` | Base64 图片字符串最大长度 |

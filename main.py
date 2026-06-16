@@ -165,6 +165,7 @@ FACE_LOGIN_LIVENESS_ENABLED = settings.face_login_liveness_enabled
 FACE_REGISTER_LIVENESS_ENABLED = settings.face_register_liveness_enabled
 FACE_CHALLENGE_TTL_SECONDS = settings.face_challenge_ttl_seconds
 FACE_CHALLENGE_ACTION_SECONDS = settings.face_challenge_action_seconds
+FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION = settings.face_liveness_min_brightness_variation
 FACE_CHALLENGE_MIN_FRAMES = settings.face_challenge_min_frames
 FACE_CHALLENGE_MAX_FRAMES = settings.face_challenge_max_frames
 FACE_CHALLENGE_ACTIONS = settings.face_challenge_actions
@@ -172,6 +173,7 @@ FACE_ANTI_SPOOF_ENABLED = settings.face_anti_spoof_enabled
 FACE_ANTI_SPOOF_BLOCK_LEVEL = settings.face_anti_spoof_block_level
 FACE_ANTI_SPOOF_MEDIUM_ACTION = settings.face_anti_spoof_medium_action
 FACE_ANTI_SPOOF_MIN_FRAME_VARIATION = settings.face_anti_spoof_min_frame_variation
+FACE_ANTI_SPOOF_MIN_FRAME_DELTA = settings.face_anti_spoof_min_frame_delta
 FACE_ANTI_SPOOF_MIN_FACE_MOTION = settings.face_anti_spoof_min_face_motion
 FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION = settings.face_anti_spoof_min_sharpness_variation
 FACE_DEFAULT_POLICY_PROFILE = settings.face_default_policy_profile
@@ -430,6 +432,7 @@ def get_liveness_policy() -> dict:
             "min": FACE_CHALLENGE_MIN_FRAMES,
             "max": FACE_CHALLENGE_MAX_FRAMES,
         },
+        "min_brightness_variation": FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION,
     }
 
 
@@ -441,6 +444,7 @@ def get_anti_spoof_policy() -> dict:
         "medium_action": FACE_ANTI_SPOOF_MEDIUM_ACTION,
         "thresholds": {
             "min_frame_variation": FACE_ANTI_SPOOF_MIN_FRAME_VARIATION,
+            "min_frame_delta": FACE_ANTI_SPOOF_MIN_FRAME_DELTA,
             "min_face_motion": FACE_ANTI_SPOOF_MIN_FACE_MOTION,
             "min_sharpness_variation": FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION,
         },
@@ -534,7 +538,7 @@ def evaluate_anti_spoof_risk(decoded_frames: list[np.ndarray], sampled_faces: Op
     face_motion = _face_box_motion(sampled_faces, decoded_frames)
 
     reasons = []
-    if max_frame_delta < 1.0:
+    if max_frame_delta < FACE_ANTI_SPOOF_MIN_FRAME_DELTA:
         reasons.append("repeated_frames")
     if frame_variation < FACE_ANTI_SPOOF_MIN_FRAME_VARIATION:
         reasons.append("low_frame_variation")
@@ -601,7 +605,7 @@ def evaluate_blink_frames(frames: list[str]) -> tuple[bool, str, Optional[list[f
         risk = evaluate_anti_spoof_risk(decoded_frames)
         return False, "no_frames", None, risk
     variation = max(brightness_values) - min(brightness_values)
-    if variation < 5.0:
+    if variation < FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION:
         sampled_faces = _sample_faces_for_anti_spoof(decoded_frames)
         risk = evaluate_anti_spoof_risk(decoded_frames, sampled_faces)
         if risk["level"] == "high":
@@ -1423,12 +1427,12 @@ def face_login(req: FaceLoginReq):
     try:
         face = get_single_face_or_raise(img)
     except HTTPException as exc:
-        reason = exc.detail.get("reason") if isinstance(exc.detail, dict) else None
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
         raise_with_audit(
             status_code=exc.status_code,
-            code=exc.detail["code"],
-            message=exc.detail["message"],
-            reason=reason,
+            code=detail.get("code", "NO_FACE"),
+            message=detail.get("message", "未检测到人脸"),
+            reason=detail.get("reason"),
             threshold=normalize_auth_threshold(req.threshold),
             terminal_id=terminal_id,
             state=req.state,

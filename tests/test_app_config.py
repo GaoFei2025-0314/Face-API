@@ -67,8 +67,34 @@ class AppConfigTest(unittest.TestCase):
         self.assertEqual(settings.face_anti_spoof_block_level, "high")
         self.assertEqual(settings.face_anti_spoof_medium_action, "review")
         self.assertEqual(settings.face_anti_spoof_min_frame_variation, 5.0)
+        self.assertEqual(settings.face_anti_spoof_min_frame_delta, 1.0)
         self.assertEqual(settings.face_anti_spoof_min_face_motion, 0.015)
         self.assertEqual(settings.face_anti_spoof_min_sharpness_variation, 1.0)
+        self.assertEqual(settings.face_liveness_min_brightness_variation, 5.0)
+
+    def test_float_settings_reject_invalid_values_with_context(self):
+        with patch.dict(
+            os.environ,
+            {"FACE_DB_PATH": "faces.db", "FACE_MIN_FACE_SHARPNESS": "abc"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "FACE_MIN_FACE_SHARPNESS 必须是数字"):
+                load_settings()
+
+    def test_liveness_and_anti_spoof_numeric_thresholds_are_configurable(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FACE_DB_PATH": "faces.db",
+                "FACE_ANTI_SPOOF_MIN_FRAME_DELTA": "2.5",
+                "FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION": "8.5",
+            },
+            clear=True,
+        ):
+            settings = load_settings()
+
+        self.assertEqual(settings.face_anti_spoof_min_frame_delta, 2.5)
+        self.assertEqual(settings.face_liveness_min_brightness_variation, 8.5)
 
     def test_anti_spoof_rejects_invalid_policy_values(self):
         with patch.dict(
