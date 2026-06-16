@@ -869,6 +869,25 @@ class BusinessDemoApiTests(unittest.TestCase):
             self.assertFalse(future.json()["accepted"])
             self.assertEqual(future.json()["failure_reason"], "TERMINAL_EVENT_TIME_INVALID")
 
+            invalid_result_with_future_time = request(
+                app,
+                "POST",
+                "/api/terminal/login-events",
+                {
+                    "event_id": "terminal-event-invalid-result-future",
+                    "terminal_id": "gate-1",
+                    "matched_user_id": "100001",
+                    "similarity": 0.91,
+                    "recognized_at_epoch": time.time() + 3600,
+                    "face_api_result": {},
+                },
+            )
+            self.assertFalse(invalid_result_with_future_time.json()["accepted"])
+            self.assertEqual(
+                invalid_result_with_future_time.json()["failure_reason"],
+                "FACE_API_LOGIN_REJECTED",
+            )
+
     def test_terminal_event_rejects_unbound_expired_and_duplicate_events(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "business.db"

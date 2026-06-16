@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# ============================================================================
+# Post-commit hook: Auto Code Review
+# Each local commit triggers a background code review.
+# Results saved to:  Coding Review/code-review-{version}-{date}.md
+# ============================================================================
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+VERSION="$(grep -oP 'V\d+\.\d+' "$REPO_ROOT/README.md" 2>/dev/null | head -1 || echo "unknown")"
+DATE="$(date +%Y-%m-%d)"
+OUTPUT_DIR="$REPO_ROOT/Coding Review"
+OUTPUT_FILE="$OUTPUT_DIR/code-review-${VERSION}-${DATE}.md"
+COMMIT_HASH="$(git log -1 --format='%h')"
+COMMIT_MSG="$(git log -1 --format='%s')"
+CHANGED_FILES="$(git diff --name-only HEAD~1..HEAD 2>/dev/null | tr '\n' ' ' || echo "all")"
+
+mkdir -p "$OUTPUT_DIR"
+
+cd "$REPO_ROOT"
+
+CLAUDE_PROMPT=$(cat <<PROMPT
+Project: face_api, version $VERSION, at $REPO_ROOT.
+Commit: $COMMIT_HASH - $COMMIT_MSG
+Changed files: $CHANGED_FILES
+
+Run a full code review (security + quality) on this commit. Read only the changed files listed above, not the entire codebase.
+
+Output requirements:
+- Save to: $OUTPUT_FILE
+- Markdown format
+- Header: "# Code Review Report — face_api $VERSION", Date, Commit hash, Changed files list
+- Sections: CRITICAL / HIGH / MEDIUM (skip LOW)
+- Each finding: file:line reference, problem description, fix suggestion
+- Security checklist table at the bottom
+- All text in Chinese except code identifiers
+
+Keep it focused. Only flag real issues, not style nitpicks.
+PROMPT
+)
+
+nohup claude -p "$CLAUDE_PROMPT" > /dev/null 2>&1 &
+
+echo "[post-commit] Review started in background → $OUTPUT_FILE"
+exit 0

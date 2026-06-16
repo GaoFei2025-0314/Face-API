@@ -18,7 +18,7 @@ from typing import Optional
 import numpy as np
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("face_api")
 
 
 class FaceDB:

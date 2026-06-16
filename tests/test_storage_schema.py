@@ -156,7 +156,7 @@ class FaceDBSchemaTests(unittest.TestCase):
                 failing_conn = mock.Mock()
                 failing_conn.execute.side_effect = RuntimeError("checkpoint failed")
                 with mock.patch.object(db, "_conn", return_value=failing_conn):
-                    with self.assertLogs("storage", level="ERROR") as logs:
+                    with self.assertLogs("face_api", level="ERROR") as logs:
                         db._maybe_checkpoint()
 
                 self.assertIn("WAL checkpoint failed", "\n".join(logs.output))
@@ -174,7 +174,7 @@ class FaceDBSchemaTests(unittest.TestCase):
                 with db._connections_lock:
                     db._connections.add(failing_conn)
 
-                with self.assertLogs("storage", level="ERROR") as logs:
+                with self.assertLogs("face_api", level="ERROR") as logs:
                     db.close_all_connections()
 
                 output = "\n".join(logs.output)

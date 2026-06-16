@@ -361,18 +361,22 @@ def create_app(settings=None, face_api_client=None):
         user = db.get_user(user_id)
         failure_reason = None
         accepted = True
-        recognized_delta = time.time() - float(req.recognized_at_epoch)
-        if not math.isfinite(float(req.recognized_at_epoch)) or recognized_delta < -5:
-            failure_reason = "TERMINAL_EVENT_TIME_INVALID"
-            accepted = False
-        elif recognized_delta > 120:
-            failure_reason = "TERMINAL_EVENT_EXPIRED"
+        if not isinstance(req.face_api_result, dict) or not req.face_api_result:
+            failure_reason = "FACE_API_LOGIN_REJECTED"
             accepted = False
         else:
-            result_failure = _validate_face_login_result(req.face_api_result, expected_user_id=user_id)
-            if result_failure:
-                failure_reason = result_failure
+            recognized_delta = time.time() - float(req.recognized_at_epoch)
+            if not math.isfinite(float(req.recognized_at_epoch)) or recognized_delta < -5:
+                failure_reason = "TERMINAL_EVENT_TIME_INVALID"
                 accepted = False
+            elif recognized_delta > 120:
+                failure_reason = "TERMINAL_EVENT_EXPIRED"
+                accepted = False
+            else:
+                result_failure = _validate_face_login_result(req.face_api_result, expected_user_id=user_id)
+                if result_failure:
+                    failure_reason = result_failure
+                    accepted = False
         if accepted:
             if not user:
                 failure_reason = "BUSINESS_USER_NOT_FOUND"
