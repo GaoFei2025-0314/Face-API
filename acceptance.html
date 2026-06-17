@@ -302,7 +302,7 @@
             <p class="muted">${escapeHtml(sample.expected)}</p>
             <div class="progress" aria-label="${escapeHtml(sample.label)} 进度"><span style="width:${pct}%"></span></div>
             <p class="muted">进度：${done}/${state.attemptTarget}</p>
-            <button type="button" onclick="runSampleAttempt('${sample.id}')" ${done >= state.attemptTarget ? "disabled" : ""}>采集 1 次</button>
+            <button type="button" data-sample-id="${escapeHtml(sample.id)}" ${done >= state.attemptTarget ? "disabled" : ""}>采集 1 次</button>
           </article>
         `;
       }).join("");
@@ -419,7 +419,11 @@
 
     function escapeCsv(value) {
       const text = String(value ?? "");
-      return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+      const safeText = /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+      if (/^[=+\-@]/.test(text)) {
+        return `'${safeText}`;
+      }
+      return safeText;
     }
 
     function downloadBlob(filename, text, type) {
@@ -641,7 +645,7 @@
         if (liveness.passed === false) {
           throw new Error(liveness.reason || liveness.result_reason || "注册活体未通过");
         }
-        challengeId = liveness.challenge_id;
+        challengeId = liveness.challenge_id ?? challenge.challenge_id ?? null;
       }
       const image = captureBase64();
       const result = await faceApi("/faces/register", {
@@ -713,9 +717,13 @@
     $("checkServiceBtn").addEventListener("click", async () => {
       try {
         await checkService();
-      } catch (_) {
-        return;
+      } catch (error) {
+        setText("serviceStatus", `服务检查失败：${error.message}`);
       }
+    });
+    $("sampleGrid").addEventListener("click", event => {
+      const btn = event.target.closest("[data-sample-id]");
+      if (btn) runSampleAttempt(btn.dataset.sampleId);
     });
     $("startCameraBtn").addEventListener("click", async () => {
       try {

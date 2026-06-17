@@ -409,6 +409,15 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(safe["nested"]["items"][0]["embedding"], "***")
         self.assertEqual(safe["nested"]["items"][1]["api_key"], "***")
 
+    def test_sanitize_log_payload_rejects_non_dict_payload(self):
+        module = load_main_module()
+
+        with self.assertRaises(TypeError) as exc_info:
+            module.sanitize_log_payload("api_key=secret")
+
+        self.assertIn("sanitize_log_payload", str(exc_info.exception))
+        self.assertIn("dict", str(exc_info.exception))
+
     def test_decode_base64_rejects_decoded_bytes_over_limit(self):
         module = load_main_module()
         module.MAX_IMAGE_BYTES = 3

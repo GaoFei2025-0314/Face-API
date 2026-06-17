@@ -119,6 +119,9 @@ def setup_app_logger(log_path: str, max_bytes: int, backup_count: int) -> loggin
 
 
 def sanitize_log_payload(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise TypeError(f"sanitize_log_payload only accepts dict payloads, got {type(payload).__name__}")
+
     def sanitize_value(value):
         if isinstance(value, dict):
             return {
