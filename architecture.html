@@ -653,14 +653,14 @@
         x: 220,
         y: 246,
         title: "HTML 页面入口",
-        subtitle: "test / camera / admin",
-        fileLabel: "test / camera / admin",
-        talkTrack: "讲这些页面是调试、现场验收和运维观察工具。",
-        summary: "项目保留多个静态 HTML 页面用于调试、摄像头验收和运维观察。",
+        subtitle: "test / camera / acceptance / admin",
+        fileLabel: "test / camera / acceptance / admin",
+        talkTrack: "讲这些页面是调试、现场验收、算法验收和运维观察工具。",
+        summary: "项目保留多个静态 HTML 页面用于调试、摄像头验收、V2.2 现场算法验收和运维观察。acceptance.html 用五类样例各 3 次完成完整 face login、JSON/CSV 报告和保守调参建议。",
         inputs: ["浏览器访问", "API 地址和 API Key"],
-        outputs: ["接口请求", "验收结果", "运维观察信息"],
-        links: ["test.html", "camera-integration.html", "admin.html"],
-        notes: ["这些页面是轻量工具，不改造成前端框架。"]
+        outputs: ["接口请求", "验收结果", "JSON/CSV 报告", "调参建议", "运维观察信息"],
+        links: ["test.html", "camera-integration.html", "acceptance.html", "admin.html"],
+        notes: ["这些页面是轻量工具，不改造成前端框架。", "acceptance.html 适合本地工作站或受控内网验收，普通互联网业务前端不应持有 X-API-Key。"]
       },
       {
         id: "business-demo",
@@ -835,7 +835,7 @@
     ];
 
     const edges = [
-      { id: "frontend-pages", from: "frontend", to: "pages", label: "打开页面", kind: "primary", flows: ["register", "login", "search"] },
+      { id: "frontend-pages", from: "frontend", to: "pages", label: "打开页面", kind: "primary", flows: ["register", "login", "search", "acceptance"] },
       { id: "frontend-backend", from: "frontend", to: "backend", label: "提交图片", kind: "primary", flows: ["register", "login"] },
       { id: "frontend-business-pages", from: "frontend", to: "business-pages", label: "打开业务页面", kind: "primary", flows: ["businessBind", "webBusinessLogin"] },
       { id: "business-pages-demo", from: "business-pages", to: "business-demo", label: "调用业务 API", kind: "primary", flows: ["businessBind", "webBusinessLogin"] },
@@ -845,11 +845,11 @@
       { id: "terminal-demo-faceapi", from: "terminal-demo", to: "fastapi", label: "直接识别", kind: "primary", flows: ["terminalFlow"] },
       { id: "terminal-demo-business-demo", from: "terminal-demo", to: "business-demo", label: "上报登录事件", kind: "primary", flows: ["terminalFlow"] },
       { id: "backend-fastapi", from: "backend", to: "fastapi", label: "代理调用 API", kind: "primary", flows: ["register", "login", "search"] },
-      { id: "pages-fastapi", from: "pages", to: "fastapi", label: "本机联调", kind: "primary", flows: ["register", "login", "search"] },
-      { id: "fastapi-auth", from: "fastapi", to: "auth", label: "鉴权 / CORS", kind: "secondary", flows: ["register", "login", "search"] },
-      { id: "fastapi-engine", from: "fastapi", to: "engine", label: "图片识别", kind: "primary", flows: ["register", "login", "search", "businessBind", "webBusinessLogin", "terminalFlow"] },
-      { id: "engine-models", from: "engine", to: "models", label: "模型推理", kind: "primary", flows: ["register", "login", "search", "businessBind", "webBusinessLogin", "terminalFlow"] },
-      { id: "fastapi-sqlite", from: "fastapi", to: "sqlite", label: "写入 / 搜索", kind: "primary", flows: ["register", "login", "search", "backup", "businessBind", "webBusinessLogin", "terminalFlow"] },
+      { id: "pages-fastapi", from: "pages", to: "fastapi", label: "本机联调", kind: "primary", flows: ["register", "login", "search", "acceptance"] },
+      { id: "fastapi-auth", from: "fastapi", to: "auth", label: "鉴权 / CORS", kind: "secondary", flows: ["register", "login", "search", "acceptance"] },
+      { id: "fastapi-engine", from: "fastapi", to: "engine", label: "图片识别", kind: "primary", flows: ["register", "login", "search", "businessBind", "webBusinessLogin", "terminalFlow", "acceptance"] },
+      { id: "engine-models", from: "engine", to: "models", label: "模型推理", kind: "primary", flows: ["register", "login", "search", "businessBind", "webBusinessLogin", "terminalFlow", "acceptance"] },
+      { id: "fastapi-sqlite", from: "fastapi", to: "sqlite", label: "写入 / 搜索", kind: "primary", flows: ["register", "login", "search", "backup", "businessBind", "webBusinessLogin", "terminalFlow", "acceptance"] },
       { id: "ops-fastapi", from: "ops", to: "fastapi", label: "启动服务", kind: "secondary", flows: ["startup"] },
       { id: "ops-health", from: "ops", to: "health", label: "检查状态", kind: "secondary", flows: ["startup"] },
       { id: "health-fastapi", from: "health", to: "fastapi", label: "GET /health", kind: "secondary", flows: ["startup"] },
@@ -924,6 +924,18 @@
           { nodeId: "terminal-demo", title: "终端把识别结果上报业务后端", edgeIds: ["terminal-demo-business-demo"] },
           { nodeId: "business-demo", title: "业务后端校验识别结果、用户、绑定和防翻拍风险", edgeIds: ["terminal-demo-business-demo", "business-demo-db"] },
           { nodeId: "business-db", title: "保存终端来源登录记录", edgeIds: ["business-demo-db"] }
+        ]
+      },
+      acceptance: {
+        label: "V2.2 现场验收",
+        focusNode: "pages",
+        steps: [
+          { nodeId: "frontend", title: "现场人员打开 acceptance.html 并确认摄像头预览", edgeIds: ["frontend-pages"] },
+          { nodeId: "pages", title: "配置 API 地址、X-API-Key 和数字 user_id", edgeIds: ["frontend-pages"] },
+          { nodeId: "fastapi", title: "读取 /system/status，判断注册活体和 CORS 边界", edgeIds: ["pages-fastapi", "fastapi-auth"] },
+          { nodeId: "pages", title: "注册/重绑测试用户，然后五类样例各采集 3 次", edgeIds: ["pages-fastapi"] },
+          { nodeId: "fastapi", title: "完整 face login：challenge、连续帧、登录、anti_spoof_risk", edgeIds: ["pages-fastapi", "fastapi-engine", "fastapi-sqlite"] },
+          { nodeId: "pages", title: "生成 JSON/CSV 报告和保守调参建议", edgeIds: ["pages-fastapi"] }
         ]
       },
       register: {

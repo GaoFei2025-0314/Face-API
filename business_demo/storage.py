@@ -13,11 +13,12 @@ def utc_now():
 
 
 class BusinessDB:
-    def __init__(self, db_path="business-demo.db"):
+    def __init__(self, db_path="business-demo.db", seed_users=True):
         self.db_path = str(db_path)
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
-        self._seed_users()
+        if seed_users:
+            self._seed_users()
 
     @contextmanager
     def _conn(self):

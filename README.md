@@ -1,7 +1,7 @@
 # 人脸识别 API 运行与使用说明
 
-> 最后同步：2026-06-15
-> 适用阶段：V2.0 业务系统正式接入示范版
+> 最后同步：2026-06-17
+> 适用阶段：V2.2 现场算法验收与阈值调优台
 
 这是 **首次接手时优先阅读** 的文档。
 
@@ -90,6 +90,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - OpenAPI：`http://localhost:8000/openapi.json`
 - 联调页：直接打开 `test.html`
 - 摄像头接入示例：直接打开 `camera-integration.html`，可做服务检查、注册、登录、活体和 audit 验收
+- V2.2 现场算法验收台：直接打开 `acceptance.html`，或用 `python -m http.server 8122` 后访问 `http://localhost:8122/acceptance.html`；可做真人、打印照片、手机屏幕、电脑屏幕和播放视频样例验收，支持 JSON/CSV 报告和保守调参建议
 - 业务接入 demo：启动 `scripts\run-business-demo.bat` 后打开 `http://localhost:8010`
 
 ---
@@ -386,12 +387,18 @@ set FACE_FORCE_CPU=1
 | `FACE_MAX_IMAGE_BYTES` | `8388608` | 解码后图片字节最大值 |
 | `FACE_MAX_IMAGE_PIXELS` | `4096000` | 解码后图片最大像素数 |
 | `FACE_API_BASE_URL` | `http://localhost:8000` | `business-demo` 调用 `face_api` 的地址 |
-| `BUSINESS_DEMO_ENV` | `development` | `business-demo` 运行环境；`production` 会拒绝默认 demo token 密钥 |
+| `BUSINESS_DEMO_ENV` | `development` | `business-demo` 运行环境；`production` 会拒绝默认 demo token 密钥，并跳过 demo 用户播种 |
 | `BUSINESS_DEMO_PORT` | `8010` | `business-demo` 监听端口 |
 | `BUSINESS_DEMO_DB_PATH` | `business-demo.db` | `business-demo` 自己的 SQLite 数据库路径 |
 | `BUSINESS_DEMO_BINDING_LIVENESS_REQUIRED` | `0` | 绑定人脸是否要求 register 活体 |
 | `BUSINESS_DEMO_TOKEN_SECRET` | `business-demo-dev-secret` | demo token 签名密钥；仅适合开发，`BUSINESS_DEMO_ENV=production` 时必须替换为随机长密钥 |
 | `BUSINESS_DEMO_TOKEN_TTL_SECONDS` | `3600` | demo token 有效期 |
+
+如果生产模式下通过 `http://localhost:8122/acceptance.html` 做 V2.2 现场验收，需要设置：
+
+```bat
+set FACE_CORS_ORIGINS=http://localhost:8122
+```
 
 ---
 

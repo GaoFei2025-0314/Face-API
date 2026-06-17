@@ -51,7 +51,7 @@ http://localhost:8010/terminal.html
 | `FACE_API_BASE_URL` | `http://localhost:8000` | `business-demo` 调用 `face_api` 的地址 |
 | `FACE_API_KEY` | 空 | `business-demo` 服务端调用 `face_api` 的密钥 |
 | `FACE_PYTHON` | `D:\anaconda3\envs\face_api\python.exe` | `run-business-demo.bat` 使用的 Python 解释器路径 |
-| `BUSINESS_DEMO_ENV` | `development` | `business-demo` 运行环境；`production` 会拒绝默认 demo token 密钥 |
+| `BUSINESS_DEMO_ENV` | `development` | `business-demo` 运行环境；`production` 会拒绝默认 demo token 密钥，并跳过 demo 用户播种 |
 | `BUSINESS_DEMO_PORT` | `8010` | `business-demo` 监听端口 |
 | `BUSINESS_DEMO_DB_PATH` | `business-demo.db` | 业务 demo SQLite 文件 |
 | `BUSINESS_DEMO_BINDING_LIVENESS_REQUIRED` | `0` | 绑定人脸是否要求 register 活体 |
@@ -64,6 +64,8 @@ http://localhost:8010/terminal.html
 set BUSINESS_DEMO_ENV=production
 set BUSINESS_DEMO_TOKEN_SECRET=your-random-long-secret
 ```
+
+`BUSINESS_DEMO_ENV=production` 不会自动创建 `GAOFEI`、`DEMO_ADMIN`、`VISITOR_01` 这些 demo 用户；生产类演示需要通过业务接口或真实业务系统创建用户。
 
 ## 终端 CLI
 

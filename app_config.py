@@ -40,7 +40,7 @@ def env_float(name: str, default: float, minimum: float = 0.0) -> float:
 def env_list(name: str, default: list[str]) -> list[str]:
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
-        return default
+        return list(default)
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 

@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>face_api V2.2 现场算法验收</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --ink: #182335;
+      --muted: #64748b;
+      --line: #d7dee9;
+      --primary: #2357a8;
+      --primary-dark: #173f7c;
+      --ok: #067647;
+      --warn: #b25e09;
+      --bad: #b42318;
+      --info: #2563eb;
+      --soft-blue: #e9f1ff;
+      --soft-green: #e7f8ef;
+      --soft-red: #fff0ef;
+      --radius: 8px;
+      --shadow: 0 16px 42px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      padding: 20px 24px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--line);
+    }
+    header h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: 0; }
+    header p { margin: 0; max-width: 780px; color: var(--muted); line-height: 1.55; }
+    main {
+      display: grid;
+      grid-template-columns: minmax(340px, 0.86fr) minmax(520px, 1.14fr);
+      gap: 16px;
+      max-width: 1420px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      min-width: 0;
+    }
+    h2 { margin: 0 0 12px; font-size: 17px; }
+    h3 { margin: 0 0 8px; font-size: 15px; }
+    label { display: block; margin: 10px 0 4px; color: #475569; font-size: 13px; }
+    input, button {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 14px;
+      background: #fff;
+    }
+    button {
+      cursor: pointer;
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      text-align: center;
+    }
+    button:hover { background: var(--primary-dark); }
+    button.secondary {
+      background: #fff;
+      color: var(--primary);
+    }
+    button.secondary:hover { background: var(--soft-blue); }
+    button:disabled {
+      opacity: 0.52;
+      cursor: not-allowed;
+    }
+    video {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      max-height: 430px;
+      border-radius: var(--radius);
+      background: #0f172a;
+      object-fit: cover;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }
+    th { color: #475569; background: #f8fafc; }
+    details { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: #fbfdff; }
+    summary { cursor: pointer; font-weight: 700; color: var(--primary); }
+    .stack { display: grid; gap: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .muted { color: var(--muted); line-height: 1.55; font-size: 13px; }
+    .status-line {
+      margin-top: 10px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+      color: #334155;
+      line-height: 1.5;
+      font-size: 13px;
+    }
+    .sample-grid { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 10px; }
+    .sample {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: #fbfdff;
+      min-width: 0;
+    }
+    .sample .progress {
+      height: 8px;
+      border-radius: 99px;
+      background: #e2e8f0;
+      overflow: hidden;
+    }
+    .sample .progress span {
+      display: block;
+      height: 100%;
+      background: var(--primary);
+      width: 0%;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #e2e8f0;
+      color: #334155;
+      white-space: nowrap;
+    }
+    .pill.low, .ok { background: var(--soft-green); color: var(--ok); }
+    .pill.medium, .warn { background: #fff6e7; color: var(--warn); }
+    .pill.high, .bad { background: var(--soft-red); color: var(--bad); }
+    .pill.unknown { background: #eef2f7; color: #475569; }
+    .report-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .recommendations { display: grid; gap: 10px; }
+    .recommendations p { margin: 0 0 8px; color: #334155; line-height: 1.55; }
+    .full { grid-column: 1 / -1; }
+    .result-table td:last-child { min-width: 220px; }
+    @media (max-width: 1120px) {
+      main { grid-template-columns: 1fr; }
+      .sample-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      header { display: block; }
+      main { padding: 10px; }
+      .grid, .grid.three, .report-actions, .sample-grid { grid-template-columns: 1fr; }
+      header h1 { font-size: 21px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>face_api V2.2 现场算法验收</h1>
+      <p>用于真人、照片、屏幕和视频翻拍样例的本地验收；只记录指标和接口结果，不保存原图、连续帧或 API Key。</p>
+    </div>
+    <span class="pill unknown">本地工作站 / 受控内网</span>
+  </header>
+
+  <main>
+    <div class="stack">
+      <section aria-label="运行配置">
+        <h2>运行配置</h2>
+        <label for="apiBaseUrl">API 地址</label>
+        <input id="apiBaseUrl" value="http://localhost:8000">
+        <label for="apiKey">X-API-Key</label>
+        <input id="apiKey" type="password" autocomplete="off" placeholder="只保存在本页面运行内存">
+        <div class="grid">
+          <div>
+            <label for="testUserId">测试 user_id</label>
+            <input id="testUserId" value="10001" inputmode="numeric">
+          </div>
+          <div>
+            <label for="testUsername">测试 username</label>
+            <input id="testUsername" value="Acceptance User">
+          </div>
+        </div>
+        <div class="grid">
+          <button id="checkServiceBtn" type="button">检查服务</button>
+          <button id="registerUserBtn" type="button" class="secondary">注册/重绑测试用户</button>
+        </div>
+        <p id="serviceStatus" class="status-line">尚未检查服务。</p>
+      </section>
+
+      <section aria-label="摄像头预览">
+        <h2>摄像头预览</h2>
+        <video id="preview" autoplay playsinline muted></video>
+        <div class="grid">
+          <button id="startCameraBtn" type="button">打开摄像头</button>
+          <button id="captureStillBtn" type="button" class="secondary">测试截图</button>
+        </div>
+        <p id="cameraStatus" class="status-line">请先打开摄像头并调整脸部位置。</p>
+      </section>
+    </div>
+
+    <div class="stack">
+      <section aria-label="样例验收">
+        <h2>样例验收</h2>
+        <div id="sampleGrid" class="sample-grid"></div>
+      </section>
+
+      <section aria-label="结果总览">
+        <h2>结果总览</h2>
+        <div id="summary"></div>
+      </section>
+
+      <section aria-label="报告和建议">
+        <h2>报告和建议</h2>
+        <div class="report-actions">
+          <button id="downloadJsonBtn" type="button">下载 JSON 报告</button>
+          <button id="downloadCsvBtn" type="button" class="secondary">下载 CSV 报告</button>
+        </div>
+        <div id="recommendations" class="recommendations"></div>
+      </section>
+    </div>
+  </main>
+
+  <canvas id="captureCanvas" hidden></canvas>
+
+  <script>
+    const state = {
+      stream: null,
+      apiBaseUrl: "",
+      apiKey: "",
+      testUser: { user_id: null, username: "" },
+      serviceStatus: null,
+      attemptTarget: 3,
+      samples: [
+        { id: "real_face", label: "真人正脸", expected: "应正常通过或低风险，3 次中至少 2 次成功", attempts: [] },
+        { id: "printed_photo", label: "打印照片", expected: "不应静默低风险成功", attempts: [] },
+        { id: "phone_screen_photo", label: "手机屏幕照片", expected: "不应静默低风险成功", attempts: [] },
+        { id: "desktop_screen_photo", label: "电脑屏幕照片", expected: "不应静默低风险成功", attempts: [] },
+        { id: "phone_replay_video", label: "手机播放眨眼视频", expected: "至少中风险、失败或残余风险说明", attempts: [] }
+      ]
+    };
+
+    function $(id) { return document.getElementById(id); }
+    function setText(id, text) { $(id).textContent = text; }
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    function parseTestUserId() {
+      const raw = $("testUserId").value.trim();
+      if (!raw) return null;
+      const value = Number.parseInt(raw, 10);
+      if (!Number.isInteger(value) || String(value) !== raw) {
+        throw new Error("测试 user_id 必须是整数，或留空");
+      }
+      return value;
+    }
+
+    function readConfig() {
+      state.apiBaseUrl = $("apiBaseUrl").value.replace(/\/+$/, "");
+      state.apiKey = $("apiKey").value;
+      state.testUser = {
+        user_id: parseTestUserId(),
+        username: $("testUsername").value.trim()
+      };
+    }
+
+    function riskPill(level) {
+      const text = { low: "低风险", medium: "中风险", high: "高风险", unknown: "未知" }[level] || level || "未知";
+      return `<span class="pill ${level || "unknown"}">${text}</span>`;
+    }
+
+    function renderSamples() {
+      $("sampleGrid").innerHTML = state.samples.map(sample => {
+        const done = sample.attempts.length;
+        const pct = Math.round((done / state.attemptTarget) * 100);
+        return `
+          <article class="sample">
+            <h3>${escapeHtml(sample.label)}</h3>
+            <p class="muted">${escapeHtml(sample.expected)}</p>
+            <div class="progress" aria-label="${escapeHtml(sample.label)} 进度"><span style="width:${pct}%"></span></div>
+            <p class="muted">进度：${done}/${state.attemptTarget}</p>
+            <button type="button" onclick="runSampleAttempt('${sample.id}')" ${done >= state.attemptTarget ? "disabled" : ""}>采集 1 次</button>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function normalizeQuality(result) {
+      const quality = result.quality_metrics || result.face?.quality_metrics || result.match?.quality_metrics || {};
+      return {
+        det_score: quality.det_score ?? "",
+        brightness: quality.brightness ?? "",
+        sharpness: quality.sharpness ?? "",
+        face_pixels: quality.face_pixels ?? ""
+      };
+    }
+
+    function normalizeAttempt(result) {
+      const risk = result.anti_spoof_risk || {};
+      return {
+        success: Boolean(result.authenticated || result.passed),
+        similarity: result.similarity ?? result.match?.similarity ?? "",
+        risk_level: risk.level || "unknown",
+        risk_reasons: risk.reasons || [],
+        quality: normalizeQuality(result),
+        message: result.message || result.reason || result.result_reason || result.detail?.reason || "无中文原因",
+        apiKey: undefined,
+        image: undefined,
+        frames: undefined
+      };
+    }
+
+    function evaluateSampleAcceptance(sample, counts) {
+      if (sample.attempts.length < state.attemptTarget) {
+        return false;
+      }
+      if (sample.id === "real_face") {
+        return counts.success >= 2 && counts.high === 0;
+      }
+      const lowRiskSuccess = sample.attempts.some(attempt => attempt.success && attempt.risk_level === "low");
+      return !lowRiskSuccess;
+    }
+
+    function summarizeSample(sample) {
+      const counts = { success: 0, failure: 0, low: 0, medium: 0, high: 0 };
+      sample.attempts.forEach(attempt => {
+        counts[attempt.success ? "success" : "failure"] += 1;
+        if (["low", "medium", "high"].includes(attempt.risk_level)) counts[attempt.risk_level] += 1;
+      });
+      return {
+        success_count: counts.success,
+        failure_count: counts.failure,
+        low_count: counts.low,
+        medium_count: counts.medium,
+        high_count: counts.high,
+        completed: sample.attempts.length >= state.attemptTarget,
+        accepted: evaluateSampleAcceptance(sample, counts)
+      };
+    }
+
+    function buildRecommendations() {
+      const summaries = state.samples.map(sample => ({ sample, summary: summarizeSample(sample) }));
+      const real = summaries.find(item => item.sample.id === "real_face");
+      const spoofLowSuccess = summaries
+        .filter(item => item.sample.id !== "real_face")
+        .some(item => item.sample.attempts.some(attempt => attempt.success && attempt.risk_level === "low"));
+      const totalAttempts = summaries.reduce((sum, item) => sum + item.sample.attempts.length, 0);
+      const totalFailures = summaries.reduce((sum, item) => sum + item.summary.failure_count, 0);
+      const items = [];
+
+      if (totalAttempts === 0) {
+        items.push({ audience: "小白建议", text: "先打开摄像头，注册或重绑同一个测试用户，再按五类样例逐项采集。" });
+      }
+      if (real && real.sample.attempts.length > 0 && real.summary.success_count === 0) {
+        items.push({ audience: "小白建议", text: "真人正脸失败时，先检查光线、摄像头角度、人脸距离和画面清晰度。" });
+      }
+      if (spoofLowSuccess) {
+        items.push({ audience: "小白建议", text: "翻拍样例出现低风险成功，说明当前轻量防翻拍偏宽松，需要开发或运维复核阈值。" });
+      }
+      if (totalAttempts > 0 && totalFailures === totalAttempts) {
+        items.push({ audience: "小白建议", text: "所有样例都失败时，优先检查 API Key、服务状态、测试用户是否注册成功。" });
+      }
+      if (!items.some(item => item.audience === "小白建议")) {
+        items.push({ audience: "小白建议", text: "继续完成五类样例各 3 次采集，再根据报告判断是否需要复核阈值。" });
+      }
+
+      items.push(
+        { audience: "开发/运维阈值方向", text: "亮度波动不足时关注 FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION。" },
+        { audience: "开发/运维阈值方向", text: "防翻拍亮度变化不足时关注 FACE_ANTI_SPOOF_MIN_FRAME_VARIATION。" },
+        { audience: "开发/运维阈值方向", text: "连续帧太像时关注 FACE_ANTI_SPOOF_MIN_FRAME_DELTA。" },
+        { audience: "开发/运维阈值方向", text: "人脸框几乎不动时关注 FACE_ANTI_SPOOF_MIN_FACE_MOTION。" },
+        { audience: "开发/运维阈值方向", text: "清晰度变化不足时关注 FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION。" }
+      );
+      return items;
+    }
+
+    function buildReport() {
+      readConfig();
+      return {
+        version: "V2.2",
+        generated_at: new Date().toISOString(),
+        api_base_url: state.apiBaseUrl,
+        test_user: state.testUser,
+        samples: state.samples.map(sample => ({
+          sample_type: sample.label,
+          expected: sample.expected,
+          attempts: sample.attempts,
+          summary: summarizeSample(sample)
+        })),
+        recommendations: buildRecommendations(),
+        apiKey: undefined,
+        image: undefined,
+        frames: undefined
+      };
+    }
+
+    function escapeCsv(value) {
+      const text = String(value ?? "");
+      return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    }
+
+    function downloadBlob(filename, text, type) {
+      const blob = new Blob([text], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadJsonReport() {
+      downloadBlob("face-api-v2.2-acceptance.json", JSON.stringify(buildReport(), null, 2), "application/json;charset=utf-8");
+    }
+
+    function downloadCsvReport() {
+      const report = buildReport();
+      const csvHeader = "样例类型,第几次,是否成功,风险等级,相似度,det_score,brightness,sharpness,face_pixels,中文原因,风险原因";
+      const rows = [csvHeader.split(",")];
+      report.samples.forEach(sample => sample.attempts.forEach((attempt, index) => {
+        rows.push([
+          sample.sample_type,
+          index + 1,
+          attempt.success ? "成功" : "失败",
+          attempt.risk_level,
+          attempt.similarity,
+          attempt.quality.det_score,
+          attempt.quality.brightness,
+          attempt.quality.sharpness,
+          attempt.quality.face_pixels,
+          attempt.message,
+          attempt.risk_reasons.join(";")
+        ]);
+      }));
+      downloadBlob("face-api-v2.2-acceptance.csv", rows.map(row => row.map(escapeCsv).join(",")).join("\r\n"), "text/csv;charset=utf-8");
+    }
+
+    function renderSummary() {
+      const rows = state.samples.map(sample => {
+        const summary = summarizeSample(sample);
+        const last = sample.attempts.at(-1);
+        const conclusion = !summary.completed
+          ? '<span class="pill unknown">待完成</span>'
+          : summary.accepted
+            ? '<span class="pill low">符合预期</span>'
+            : '<span class="pill medium">需复核</span>';
+        return `
+          <tr>
+            <td>${escapeHtml(sample.label)}</td>
+            <td>${summary.success_count}/${state.attemptTarget}</td>
+            <td>${riskPill("low")} ${summary.low_count} ${riskPill("medium")} ${summary.medium_count} ${riskPill("high")} ${summary.high_count}</td>
+            <td>${conclusion}</td>
+            <td>${last ? escapeHtml(last.message) : "未采集"}</td>
+          </tr>
+        `;
+      }).join("");
+      $("summary").innerHTML = `
+        <table class="result-table">
+          <thead><tr><th>样例</th><th>成功</th><th>低/中/高风险</th><th>验收结论</th><th>最近原因</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+      renderRecommendations();
+    }
+
+    function renderRecommendations() {
+      const recommendations = buildRecommendations();
+      const basic = recommendations.filter(item => item.audience === "小白建议");
+      const advanced = recommendations.filter(item => item.audience === "开发/运维阈值方向");
+      $("recommendations").innerHTML = `
+        <h3>小白建议</h3>
+        ${basic.map(item => `<p>${escapeHtml(item.text)}</p>`).join("")}
+        <details>
+          <summary>开发/运维阈值方向</summary>
+          ${advanced.map(item => `<p>${escapeHtml(item.text)}</p>`).join("")}
+        </details>
+      `;
+    }
+
+    async function faceApi(path, options = {}) {
+      readConfig();
+      const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
+      if (state.apiKey) {
+        headers["X-API-Key"] = state.apiKey;
+      }
+      const response = await fetch(`${state.apiBaseUrl}${path}`, Object.assign({}, options, { headers }));
+      const text = await response.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (_) {
+        data = { message: text };
+      }
+      if (!response.ok) {
+        const detail = data.detail || {};
+        const message = detail.reason || detail.message || data.message || response.statusText;
+        throw new Error(`${detail.code || response.status}: ${message}`);
+      }
+      return data;
+    }
+
+    async function checkService() {
+      try {
+        const health = await fetch(`${$("apiBaseUrl").value.replace(/\/+$/, "")}/health`);
+        if (!health.ok) throw new Error(`health ${health.status}`);
+        const status = await faceApi("/system/status", { method: "GET" });
+        state.serviceStatus = status;
+        const registerLiveness = status.liveness?.register_enabled ? "开启" : "关闭";
+        setText("serviceStatus", `服务正常；推理设备 ${status.device || "-"}；人脸数 ${status.faces_count ?? 0}；注册活体 ${registerLiveness}`);
+        return status;
+      } catch (error) {
+        setText("serviceStatus", `服务检查失败：${error.message}`);
+        throw error;
+      }
+    }
+
+    async function ensureServiceStatus() {
+      return state.serviceStatus || checkService();
+    }
+
+    function waitForVideoReady(video) {
+      if (video.readyState >= 2 && video.videoWidth > 0) {
+        return Promise.resolve();
+      }
+      return new Promise((resolve, reject) => {
+        const cleanup = () => {
+          clearTimeout(timer);
+          video.removeEventListener("loadedmetadata", onReady);
+          video.removeEventListener("canplay", onReady);
+        };
+        const onReady = () => {
+          if (video.videoWidth > 0) {
+            cleanup();
+            resolve();
+          }
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error("摄像头画面尚未准备好，请稍后重试"));
+        }, 5000);
+        video.addEventListener("loadedmetadata", onReady);
+        video.addEventListener("canplay", onReady);
+      });
+    }
+
+    async function startCamera() {
+      if (state.stream) {
+        state.stream.getTracks().forEach(track => track.stop());
+      }
+      state.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+      const video = $("preview");
+      video.srcObject = state.stream;
+      await waitForVideoReady(video);
+      setText("cameraStatus", "摄像头已打开，请保持脸部位于画面中央。");
+    }
+
+    async function ensureCamera() {
+      if (!state.stream) {
+        await startCamera();
+      }
+      await waitForVideoReady($("preview"));
+    }
+
+    function captureBase64() {
+      const video = $("preview");
+      const canvas = $("captureCanvas");
+      if (video.readyState < 2 || video.videoWidth <= 0) {
+        throw new Error("摄像头画面尚未准备好，请稍后重试");
+      }
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL("image/jpeg", 0.86);
+    }
+
+    async function captureFrames(count = 24, intervalMs = 180) {
+      await ensureCamera();
+      const frames = [];
+      for (let i = 0; i < count; i += 1) {
+        setText("cameraStatus", `请眨眼并轻微移动，正在采集 ${i + 1}/${count}`);
+        frames.push(captureBase64());
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+      return frames;
+    }
+
+    async function createChallenge(purpose = "login") {
+      return faceApi("/liveness/challenges", {
+        method: "POST",
+        body: JSON.stringify({ purpose, terminal_id: "acceptance-console", action: "blink" })
+      });
+    }
+
+    async function submitChallenge(challenge, frames) {
+      return faceApi("/liveness/challenges/submit", {
+        method: "POST",
+        body: JSON.stringify({
+          challenge_id: challenge.challenge_id,
+          purpose: challenge.purpose,
+          terminal_id: "acceptance-console",
+          frames
+        })
+      });
+    }
+
+    async function registerTestUser() {
+      readConfig();
+      if (!state.testUser.username) throw new Error("测试 username 不能为空");
+      await ensureCamera();
+      await ensureServiceStatus();
+      let challengeId = null;
+      if (state.serviceStatus?.liveness?.register_enabled) {
+        const challenge = await createChallenge("register");
+        const frames = await captureFrames(24, 180);
+        const liveness = await submitChallenge(challenge, frames);
+        if (liveness.passed === false) {
+          throw new Error(liveness.reason || liveness.result_reason || "注册活体未通过");
+        }
+        challengeId = liveness.challenge_id;
+      }
+      const image = captureBase64();
+      const result = await faceApi("/faces/register", {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: state.testUser.user_id,
+          username: state.testUser.username,
+          image,
+          terminal_id: "acceptance-console",
+          challenge_id: challengeId,
+          metadata: { source: "acceptance.html", version: "V2.2" }
+        })
+      });
+      setText("serviceStatus", `测试用户已注册/重绑：${result.user_id ?? state.testUser.user_id ?? "-"} / ${result.username || state.testUser.username}`);
+      return result;
+    }
+
+    async function faceLogin(challenge) {
+      return faceApi("/auth/face-login", {
+        method: "POST",
+        body: JSON.stringify({
+          image: captureBase64(),
+          terminal_id: "acceptance-console",
+          challenge_id: challenge.challenge_id,
+          state: "v2.2-acceptance"
+        })
+      });
+    }
+
+    async function runSampleAttempt(sampleId) {
+      const sample = state.samples.find(item => item.id === sampleId);
+      if (!sample || sample.attempts.length >= state.attemptTarget) return;
+      try {
+        await ensureCamera();
+        setText("cameraStatus", `正在采集：${sample.label}`);
+        const challenge = await createChallenge();
+        const frames = await captureFrames(24, 180);
+        const liveness = await submitChallenge(challenge, frames);
+        if (liveness.passed === false) {
+          sample.attempts.push(normalizeAttempt({
+            authenticated: false,
+            message: liveness.reason || liveness.result_reason || liveness.message || "活体挑战未通过",
+            anti_spoof_risk: liveness.anti_spoof_risk || { level: "unknown", reasons: ["liveness_failed"] },
+            quality_metrics: {}
+          }));
+          setText("cameraStatus", `${sample.label} 活体未通过，已记录结果。`);
+          renderSamples();
+          renderSummary();
+          return;
+        }
+        const login = await faceLogin(challenge);
+        sample.attempts.push(normalizeAttempt(Object.assign({}, login, {
+          anti_spoof_risk: login.anti_spoof_risk || liveness.anti_spoof_risk,
+          message: login.message || liveness.reason || "登录成功"
+        })));
+        setText("cameraStatus", `${sample.label} 采集完成。`);
+      } catch (error) {
+        sample.attempts.push(normalizeAttempt({
+          authenticated: false,
+          message: error.message,
+          anti_spoof_risk: { level: "unknown", reasons: ["request_failed"] }
+        }));
+        setText("cameraStatus", `${sample.label} 采集失败：${error.message}`);
+      }
+      renderSamples();
+      renderSummary();
+    }
+
+    $("checkServiceBtn").addEventListener("click", async () => {
+      try {
+        await checkService();
+      } catch (_) {
+        return;
+      }
+    });
+    $("startCameraBtn").addEventListener("click", async () => {
+      try {
+        await startCamera();
+      } catch (error) {
+        setText("cameraStatus", `摄像头打开失败：${error.message}`);
+      }
+    });
+    $("captureStillBtn").addEventListener("click", async () => {
+      try {
+        await ensureCamera();
+        captureBase64();
+        setText("cameraStatus", "截图测试完成，未保存图片。");
+      } catch (error) {
+        setText("cameraStatus", `截图测试失败：${error.message}`);
+      }
+    });
+    $("registerUserBtn").addEventListener("click", async () => {
+      try {
+        await registerTestUser();
+      } catch (error) {
+        setText("serviceStatus", `测试用户注册/重绑失败：${error.message}`);
+      }
+    });
+    $("downloadJsonBtn").addEventListener("click", downloadJsonReport);
+    $("downloadCsvBtn").addEventListener("click", downloadCsvReport);
+
+    renderSamples();
+    renderSummary();
+  </script>
+</body>
+</html>

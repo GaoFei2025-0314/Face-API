@@ -26,6 +26,16 @@ class AppConfigTest(unittest.TestCase):
                 ["http://a.local", "http://b.local"],
             )
 
+    def test_env_list_returns_copy_of_default(self):
+        default = ["*"]
+        with patch.dict(os.environ, {}, clear=True):
+            result = env_list("FACE_CORS_ORIGINS", default)
+
+        result.append("http://changed.local")
+
+        self.assertEqual(default, ["*"])
+        self.assertEqual(env_list("FACE_CORS_ORIGINS", default), ["*"])
+
     def test_load_settings_defaults_to_cpu(self):
         with patch.dict(os.environ, {"FACE_DB_PATH": "faces.db"}, clear=True):
             settings = load_settings()

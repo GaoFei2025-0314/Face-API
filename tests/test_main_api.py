@@ -391,6 +391,24 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(module.app_logger.handlers[0].maxBytes, 2048)
         self.assertEqual(module.app_logger.handlers[0].backupCount, 3)
 
+    def test_structured_log_event_masks_nested_sensitive_fields(self):
+        module = load_main_module()
+
+        safe = module.log_event(
+            "test_event",
+            nested={
+                "image": "raw-image",
+                "items": [
+                    {"embedding": [0.1, 0.2]},
+                    {"api_key": "secret"},
+                ],
+            },
+        )
+
+        self.assertEqual(safe["nested"]["image"], "***")
+        self.assertEqual(safe["nested"]["items"][0]["embedding"], "***")
+        self.assertEqual(safe["nested"]["items"][1]["api_key"], "***")
+
     def test_decode_base64_rejects_decoded_bytes_over_limit(self):
         module = load_main_module()
         module.MAX_IMAGE_BYTES = 3

@@ -31,6 +31,7 @@ from .storage import BusinessDB
 
 @dataclass
 class BusinessDemoSettings:
+    environment: str = "development"
     db_path: str = "business-demo.db"
     face_api_base_url: str = "http://localhost:8000"
     face_api_key: str = ""
@@ -38,6 +39,7 @@ class BusinessDemoSettings:
     token_secret: str = "business-demo-dev-secret"
     token_ttl_seconds: int = 3600
     port: int = 8010
+    seed_demo_users: bool = True
 
 
 BusinessDemoError = BusinessDemoError
@@ -50,6 +52,19 @@ def env_bool(name, default=False):
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def env_int(name, default, minimum=None, maximum=None):
+    raw = os.getenv(name, str(default))
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} 必须是整数，当前值为 {raw}") from exc
+    if minimum is not None and value < minimum:
+        raise RuntimeError(f"{name} 必须大于等于 {minimum}，当前值为 {raw}")
+    if maximum is not None and value > maximum:
+        raise RuntimeError(f"{name} 必须小于等于 {maximum}，当前值为 {raw}")
+    return value
+
+
 def load_settings():
     environment = os.getenv("BUSINESS_DEMO_ENV", "development").strip().lower()
     token_secret = os.getenv("BUSINESS_DEMO_TOKEN_SECRET", "business-demo-dev-secret").strip()
@@ -58,13 +73,15 @@ def load_settings():
     ):
         raise RuntimeError("BUSINESS_DEMO_TOKEN_SECRET 在 production 环境不能为空，且不能使用默认开发密钥")
     return BusinessDemoSettings(
+        environment=environment,
         db_path=os.getenv("BUSINESS_DEMO_DB_PATH", "business-demo.db"),
         face_api_base_url=os.getenv("FACE_API_BASE_URL", "http://localhost:8000"),
         face_api_key=os.getenv("FACE_API_KEY", ""),
         binding_liveness_required=env_bool("BUSINESS_DEMO_BINDING_LIVENESS_REQUIRED", False),
         token_secret=token_secret,
-        token_ttl_seconds=int(os.getenv("BUSINESS_DEMO_TOKEN_TTL_SECONDS", "3600")),
-        port=int(os.getenv("BUSINESS_DEMO_PORT", "8010")),
+        token_ttl_seconds=env_int("BUSINESS_DEMO_TOKEN_TTL_SECONDS", 3600, 1),
+        port=env_int("BUSINESS_DEMO_PORT", 8010, 1, 65535),
+        seed_demo_users=environment not in {"prod", "production"},
     )
 
 
@@ -163,7 +180,7 @@ def _validate_face_login_result(face_result, expected_user_id=None, active_bindi
 def create_app(settings=None, face_api_client=None):
     settings = settings or load_settings()
     app = FastAPI(title="face_api Business Demo", version="2.0")
-    db = BusinessDB(settings.db_path)
+    db = BusinessDB(settings.db_path, seed_users=settings.seed_demo_users)
     client = face_api_client or FaceApiClient(settings.face_api_base_url, settings.face_api_key)
     app.state.settings = settings
     app.state.db = db

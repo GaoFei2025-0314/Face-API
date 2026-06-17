@@ -12,6 +12,7 @@
 - `ROADMAP-v1.9.md` - 现场验收收口与 P1/P2 小修规划
 - `ROADMAP-v2.0.md` - 业务系统正式接入示范版规划
 - `ROADMAP-v2.1.md` - 轻量防翻拍活体增强规划
+- `ROADMAP-v2.2.md` - 现场算法验收与阈值调优台规划
 
 ## 已规划开发阶段
 
@@ -103,12 +104,37 @@ Roadmap v2.1 已完成，主定位为“轻量防翻拍活体增强”。关键�
 - 验收样例覆盖真人、打印照片、手机屏幕、电脑屏幕和播放视频。
 - 不新增硬件，不引入重型 anti-spoofing 模型，不承诺企业级强活体。
 
-Roadmap v2.1 当前执行入口：
+Roadmap v2.1 历史入口和验收入口：
 
 - `022-lightweight-anti-spoofing/spec.md`
 - `022-lightweight-anti-spoofing/plan.md`
 - `022-lightweight-anti-spoofing/tasks.md`
 - `docs/90_archive/04_acceptance/05_v2.1_acceptance_record.md`
+
+Roadmap v2.2 当前执行入口：
+
+- `023-field-algorithm-acceptance-console/spec.md`
+- `023-field-algorithm-acceptance-console/plan.md`
+- `023-field-algorithm-acceptance-console/tasks.md`
+- `docs/90_archive/04_acceptance/06_v2.2_acceptance_record.md`
+
+Roadmap v2.2 建议执行顺序：
+
+1. `023-field-algorithm-acceptance-console` - 现场算法验收与阈值调优台
+
+Roadmap v2.2 已确认主定位为“现场算法验收与阈值调优台”。关键决策包括：
+
+- 新建独立 `acceptance.html`。
+- 测试用户 `user_id` 使用数字或留空。
+- 固定五类样例，每类默认 3 次。
+- 走完整登录链路。
+- 活体失败时记录失败，不继续 face login。
+- 注册/重绑兼容注册活体开关。
+- 通过 `FACE_CORS_ORIGINS` 支持 `http://localhost:8122` 现场浏览器验收。
+- 不新增 `face_api` 后端 API，不新增数据库表。
+- 支持 JSON/CSV 报告下载。
+- 不保存原图、连续帧或 API Key。
+- 只提供保守调参方向。
 
 ## 推荐流程
 

@@ -147,6 +147,14 @@ class BusinessDemoStorageTests(unittest.TestCase):
             self.assertEqual(removed["face_id"], "face-a")
             self.assertIsNone(db.get_active_binding("200001"))
 
+    def test_storage_can_disable_demo_seed_users(self):
+        from business_demo.storage import BusinessDB
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db = BusinessDB(Path(tmp) / "business.db", seed_users=False)
+
+            self.assertEqual(db.list_users(), [])
+
     def test_storage_enforces_unique_active_binding_and_terminal_event_id(self):
         from business_demo.storage import BusinessDB, utc_now
 
@@ -392,6 +400,28 @@ class BusinessDemoSettingsTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(RuntimeError, "BUSINESS_DEMO_TOKEN_SECRET"):
                 load_settings()
+
+    def test_load_settings_rejects_invalid_integer_with_context(self):
+        from business_demo.app import load_settings
+
+        with mock.patch.dict(os.environ, {"BUSINESS_DEMO_PORT": "eight thousand"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "BUSINESS_DEMO_PORT 必须是整数"):
+                load_settings()
+
+    def test_load_settings_disables_demo_seed_users_in_production(self):
+        from business_demo.app import load_settings
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "BUSINESS_DEMO_ENV": "production",
+                "BUSINESS_DEMO_TOKEN_SECRET": "production-secret",
+            },
+            clear=True,
+        ):
+            settings = load_settings()
+
+        self.assertFalse(settings.seed_demo_users)
 
 
 class BusinessDemoFaceApiClientTests(unittest.TestCase):

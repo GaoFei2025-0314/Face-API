@@ -290,6 +290,132 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn("FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION", security_doc)
         self.assertIn("anti_spoof_risk", business_doc)
 
+    def test_acceptance_page_has_local_dependencies_only(self):
+        html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
+
+        self.assertIn("现场算法验收", html)
+        self.assertIn("navigator.mediaDevices.getUserMedia", html)
+        self.assertIn("/liveness/challenges", html)
+        self.assertIn("/liveness/challenges/submit", html)
+        self.assertIn("/auth/face-login", html)
+        self.assertIn("/faces/register", html)
+        self.assertNotIn("cdn", html.lower())
+        self.assertNotIn("script src", html.lower())
+        self.assertNotIn("link rel=\"stylesheet\"", html.lower())
+        self.assertNotIn("import ", html)
+        self.assertNotIn("require(", html)
+
+    def test_acceptance_page_declares_required_sample_matrix(self):
+        html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
+
+        for sample in ["真人正脸", "打印照片", "手机屏幕照片", "电脑屏幕照片", "手机播放眨眼视频"]:
+            self.assertIn(sample, html)
+        self.assertIn("attemptTarget: 3", html)
+        self.assertIn("evaluateSampleAcceptance", html)
+        self.assertIn("if (sample.attempts.length < state.attemptTarget)", html)
+        self.assertIn("completed: sample.attempts.length >= state.attemptTarget", html)
+        self.assertIn("summary.completed", html)
+        self.assertIn("counts.success >= 2", html)
+
+    def test_acceptance_page_report_excludes_sensitive_media(self):
+        html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
+
+        self.assertIn("downloadJsonReport", html)
+        self.assertIn("downloadCsvReport", html)
+        self.assertIn("buildReport", html)
+        self.assertIn("apiKey: undefined", html)
+        self.assertIn("image: undefined", html)
+        self.assertIn("frames: undefined", html)
+        self.assertNotIn("localStorage", html)
+        self.assertNotIn("sessionStorage", html)
+        self.assertNotIn("indexedDB", html)
+        self.assertNotIn("embedding", html.lower())
+
+    def test_acceptance_page_has_tuning_recommendation_rules(self):
+        html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
+
+        for env_name in [
+            "FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION",
+            "FACE_ANTI_SPOOF_MIN_FRAME_VARIATION",
+            "FACE_ANTI_SPOOF_MIN_FRAME_DELTA",
+            "FACE_ANTI_SPOOF_MIN_FACE_MOTION",
+            "FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION",
+        ]:
+            self.assertIn(env_name, html)
+        self.assertIn("小白建议", html)
+        self.assertIn("开发/运维阈值方向", html)
+
+    def test_acceptance_page_implements_complete_login_workflow(self):
+        html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
+
+        for symbol in [
+            "faceApi",
+            "checkService",
+            "ensureServiceStatus",
+            "startCamera",
+            "ensureCamera",
+            "captureBase64",
+            "captureFrames",
+            "createChallenge",
+            "submitChallenge",
+            "registerTestUser",
+            "faceLogin",
+            "runSampleAttempt",
+        ]:
+            self.assertIn(f"function {symbol}", html)
+        self.assertIn("X-API-Key", html)
+        self.assertIn('purpose = "login"', html)
+        self.assertIn('createChallenge("register")', html)
+        self.assertIn("state.serviceStatus?.liveness?.register_enabled", html)
+        self.assertIn("if (liveness.passed === false)", html)
+        self.assertIn("Number.parseInt", html)
+        self.assertIn("challenge_id: challenge.challenge_id", html)
+        self.assertIn("waitForVideoReady", html)
+        self.assertIn("video.readyState >= 2", html)
+
+    def test_acceptance_page_report_contains_required_fields(self):
+        html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
+
+        for field in [
+            "generated_at",
+            "api_base_url",
+            "test_user",
+            "sample_type",
+            "success_count",
+            "failure_count",
+            "low_count",
+            "medium_count",
+            "high_count",
+            "accepted",
+            "det_score",
+            "brightness",
+            "sharpness",
+            "face_pixels",
+        ]:
+            self.assertIn(field, html)
+        self.assertIn("样例类型,第几次,是否成功,风险等级,相似度,det_score,brightness,sharpness,face_pixels,中文原因,风险原因", html)
+        self.assertIn("escapeHtml", html)
+        self.assertIn("escapeHtml(last.message)", html)
+
+    def test_v22_docs_and_architecture_reference_acceptance_console(self):
+        architecture = (ROOT / "architecture.html").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        security_doc = (ROOT / "docs" / "04_usage" / "03_recognition_security_accuracy.md").read_text(
+            encoding="utf-8"
+        )
+        acceptance_record = (
+            ROOT / "docs" / "90_archive" / "04_acceptance" / "06_v2.2_acceptance_record.md"
+        ).read_text(encoding="utf-8")
+
+        for text in (architecture, readme, security_doc, acceptance_record):
+            self.assertIn("acceptance.html", text)
+        self.assertIn("现场算法验收", architecture)
+        self.assertIn("http://localhost:8122/acceptance.html", readme)
+        self.assertIn("FACE_CORS_ORIGINS=http://localhost:8122", readme)
+        self.assertIn("JSON/CSV", security_doc)
+        self.assertIn("真人正脸", acceptance_record)
+        self.assertIn("手机播放眨眼视频", acceptance_record)
+
     def test_business_demo_web_page_does_not_expose_face_api_key(self):
         html = (ROOT / "business_demo" / "static" / "index.html").read_text(encoding="utf-8")
 

@@ -1,8 +1,8 @@
 # face_api 2026 Q2 季度计划与进度看板
 
-> 当前日期：2026-06-15
+> 当前日期：2026-06-17
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：V2.0 业务系统正式接入示范版（已完成）
+> 当前版本基线：V2.1 轻量防翻拍活体增强（已完成），V2.2 现场算法验收与阈值调优台（自动验证已完成，待现场摄像头验收）
 
 ## 1. 本季度目标
 
@@ -28,6 +28,8 @@
 | V1.8.4 | 交互式架构图演示增强 | 已完成 | `fc40854 docs: enhance architecture demo mode` |
 | V1.9 | 现场验收收口与 P1/P2 小修 | 已完成 | `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`、`specs/020-field-acceptance-closure/tasks.md` |
 | V2.0 | 业务系统正式接入示范版 | 已完成 | `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`、`specs/021-business-integration-demo/tasks.md` |
+| V2.1 | 轻量防翻拍活体增强 | 已完成 | `docs/90_archive/04_acceptance/05_v2.1_acceptance_record.md`、`specs/022-lightweight-anti-spoofing/tasks.md` |
+| V2.2 | 现场算法验收与阈值调优台 | 自动验证已完成，待现场摄像头验收 | `docs/90_archive/04_acceptance/06_v2.2_acceptance_record.md`、`specs/023-field-algorithm-acceptance-console/tasks.md` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -141,7 +143,33 @@ V2.0 准入和边界：
 - 不新增 `face_api` 公开接口。
 - 不引入完整业务平台、SSO、复杂权限系统或前端框架。
 
-## 9. 每周检查节奏
+## 9. V2.1 与 V2.2 当前状态
+
+V2.1 已完成轻量防翻拍活体增强，核心结果是 `anti_spoof_risk`、中文失败原因、audit 记录和 business-demo 风险透传能力。
+
+## 10. V2.2 下一步计划
+
+V2.2 主题为“现场算法验收与阈值调优台”。目标是在不新增后端存储和公开接口的前提下，用 `acceptance.html` 完成五类样例现场验收、报告下载和保守调参建议。
+
+V2.2 基线入口：
+
+```text
+specs/ROADMAP-v2.2.md
+specs/023-field-algorithm-acceptance-console/spec.md
+specs/023-field-algorithm-acceptance-console/plan.md
+specs/023-field-algorithm-acceptance-console/tasks.md
+docs/90_archive/04_acceptance/06_v2.2_acceptance_record.md
+```
+
+V2.2 关键边界：
+
+- 测试用户 `user_id` 使用数字或留空。
+- 活体失败时记录失败，不继续 face login。
+- 注册/重绑兼容注册活体开关。
+- 通过 `FACE_CORS_ORIGINS` 支持 `http://localhost:8122` 现场浏览器验收。
+- 不保存原图、连续帧、embedding 或 API Key。
+
+## 11. 每周检查节奏
 
 每周只看 5 件事：
 

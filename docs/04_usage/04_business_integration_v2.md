@@ -82,6 +82,7 @@ BUSINESS_DEMO_TOKEN_SECRET=<随机长密钥>
 ```
 
 默认 `business-demo-dev-secret` 只用于本机开发。设置 `BUSINESS_DEMO_ENV=production` 后，如果仍使用默认密钥，服务会拒绝启动。
+同时，`BUSINESS_DEMO_ENV=production` 不会自动创建 `GAOFEI`、`DEMO_ADMIN`、`VISITOR_01` 这些 demo 用户；生产类演示需要通过业务接口或真实业务系统创建用户。
 
 ## 4. Web 人脸登录
 

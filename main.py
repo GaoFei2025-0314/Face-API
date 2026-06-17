@@ -119,13 +119,19 @@ def setup_app_logger(log_path: str, max_bytes: int, backup_count: int) -> loggin
 
 
 def sanitize_log_payload(payload: dict) -> dict:
-    safe = {}
-    for key, value in payload.items():
-        if key.lower() in SENSITIVE_LOG_FIELDS:
-            safe[key] = "***"
-        else:
-            safe[key] = value
-    return safe
+    def sanitize_value(value):
+        if isinstance(value, dict):
+            return {
+                key: "***" if str(key).lower() in SENSITIVE_LOG_FIELDS else sanitize_value(nested_value)
+                for key, nested_value in value.items()
+            }
+        if isinstance(value, list):
+            return [sanitize_value(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(sanitize_value(item) for item in value)
+        return value
+
+    return sanitize_value(payload)
 
 
 def log_event(event: str, **payload) -> dict:

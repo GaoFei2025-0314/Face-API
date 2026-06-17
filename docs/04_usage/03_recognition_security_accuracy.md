@@ -108,3 +108,15 @@ V2.1 不承诺覆盖：
 - 针对规则阈值反复调试后的攻击样例。
 
 现场验收应至少覆盖真人正脸、打印照片、手机屏幕照片、电脑屏幕照片和手机播放眨眼视频。若业务安全级别更高，应评估专用 anti-spoofing 模型、红外/深度摄像头或人工复核流程。
+
+## 7. V2.2 现场算法验收
+
+V2.2 新增 `acceptance.html` 作为现场算法验收台。它使用同一个已注册测试用户，固定验证真人正脸、打印照片、手机屏幕照片、电脑屏幕照片和手机播放眨眼视频五类样例，每类默认采集 3 次。
+
+页面会走完整登录链路，并在本地生成 JSON/CSV 报告。报告只包含结果、相似度、风险等级、中文原因和关键质量指标，不包含 API Key、原图、连续帧或 embedding。
+
+注册或重绑测试用户时，`user_id` 使用数字或留空。如果后端开启注册活体，页面会先完成 `register` challenge；如果登录活体 challenge 返回失败，页面只记录该次失败和防翻拍风险，不继续调用 face login。
+
+调参建议分两层：默认给现场人员检查光线、距离、摄像头角度和样例一致性；展开后给开发/运维关注 `FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION`、`FACE_ANTI_SPOOF_MIN_FRAME_VARIATION`、`FACE_ANTI_SPOOF_MIN_FRAME_DELTA`、`FACE_ANTI_SPOOF_MIN_FACE_MOTION`、`FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION` 等阈值方向。
+
+页面建议只用于本地工作站或受控内网验收。若通过 `http://localhost:8122/acceptance.html` 打开，并且服务以生产模式运行，需要把 `http://localhost:8122` 加入 `FACE_CORS_ORIGINS`。普通互联网业务前端仍不应直接持有 `X-API-Key`。
