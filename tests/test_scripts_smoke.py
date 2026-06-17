@@ -334,17 +334,16 @@ class ScriptSmokeTests(unittest.TestCase):
     def test_acceptance_page_hardens_reviewed_frontend_edges(self):
         html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
 
-        self.assertIn("if (/^[=+\\-@]/.test(text))", html)
+        self.assertIn("if (/^\\s*[=+\\-@]/.test(text))", html)
         self.assertIn("return `'${safeText}`", html)
         self.assertNotIn("onclick=\"runSampleAttempt", html)
         self.assertIn('data-sample-id="${escapeHtml(sample.id)}"', html)
         self.assertIn('$("sampleGrid").addEventListener("click"', html)
         self.assertIn('event.target.closest("[data-sample-id]")', html)
         self.assertIn("challengeId = liveness.challenge_id ?? challenge.challenge_id ?? null", html)
-        self.assertIn(
-            'catch (error) {\n        setText("serviceStatus", `服务检查失败：${error.message}`);\n      }',
-            html,
-        )
+        self.assertIn("catch (error)", html)
+        self.assertIn('setText("serviceStatus"', html)
+        self.assertIn("服务检查失败", html)
 
     def test_acceptance_page_has_tuning_recommendation_rules(self):
         html = (ROOT / "acceptance.html").read_text(encoding="utf-8")

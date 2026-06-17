@@ -420,7 +420,7 @@
     function escapeCsv(value) {
       const text = String(value ?? "");
       const safeText = /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-      if (/^[=+\-@]/.test(text)) {
+      if (/^\s*[=+\-@]/.test(text)) {
         return `'${safeText}`;
       }
       return safeText;
