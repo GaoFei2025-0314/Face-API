@@ -14,6 +14,7 @@
 - `ROADMAP-v2.1.md` - 轻量防翻拍活体增强规划
 - `ROADMAP-v2.2.md` - 现场算法验收与阈值调优台规划
 - `ROADMAP-v2.3.md` - 轻量防翻拍阈值治理与中风险重试机制规划
+- `ROADMAP-v2.4.md` - Face API 与 WMS 现场联动验收基线规划
 
 ## 已规划开发阶段
 
@@ -160,6 +161,26 @@ Roadmap v2.3 已完成，主定位为“轻量防翻拍阈值治理与中风险�
 - 第一次中风险错误响应固定包含 `detail.retry.risk_retry_token`、`detail.retry.expires_at`、`detail.retry.remaining_attempts`。
 - V2.3 最大重试次数固定为 1，不新增最大重试次数环境变量；只配置中风险策略和 retry token TTL。
 - 固定摄像头现场五类样例验收通过；手持或移动摄像头制造运动视差记录为残余风险。
+
+Roadmap v2.4 当前执行入口：
+
+- `025-wms-capture-loop-baseline/spec.md`
+- `025-wms-capture-loop-baseline/plan.md`
+- `025-wms-capture-loop-baseline/tasks.md`
+- `docs/superpowers/specs/2026-06-17-face-api-wms-capture-loop-design.md`
+
+Roadmap v2.4 建议执行顺序：
+
+1. `025-wms-capture-loop-baseline` - Face API 与 WMS 现场联动验收基线
+
+Roadmap v2.4 已确认主定位为“Face API + WMS 现场联动验收基线”。关键决策包括：
+
+- 先建立联动验收基线，不默认修改 `face_api` 后端接口。
+- 先新增 Face API 侧验收模板和 WMS 侧 runbook，不默认改 WMS 登录业务逻辑。
+- WMS 仓库路径按 `H:\AI_test\electron-wms\electron-wms` 检查；路径不存在时停止并记录阻塞。
+- 问题必须归到算法底座、终端采集或业务流程三类之一。
+- 验收记录不得保存原图、视频帧、连续帧、embedding、API Key 或真实用户敏感信息。
+- V2.4 的产出用于决定 V2.5 优先改算法、WMS 采集还是业务提示。
 
 ## 推荐流程
 

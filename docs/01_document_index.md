@@ -7,6 +7,7 @@
 - 新同事：先看 `README.md`、`docs/02_product/01_prd.md`、`architecture.html`。
 - 前端接入：先看 `docs/04_usage/01_api_integration.md`、`docs/04_usage/02_frontend_business_integration.md`、`camera-integration.html`。
 - 业务系统接入：先看 `docs/04_usage/04_business_integration_v2.md`、`docs/04_usage/05_spring_boot_integration_notes.md`、`specs/ROADMAP-v2.0.md`。
+- WMS 联动验收：先看 `specs/ROADMAP-v2.4.md`、`specs/025-wms-capture-loop-baseline/plan.md`、后续生成的 `docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md`。
 - 运维交付：先看 `docs/03_deployment/01_runbook.md`、`admin.html`、`architecture.html` 的演示模式、流程播放和运维流程。
 - 项目负责人：先看 `docs/02_product/02_quarterly_plan.md`、`docs/05_architecture/01_architecture.md`、`docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
 - V2.0 验收复盘：看 `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`。
@@ -123,6 +124,7 @@
 - `specs/ROADMAP-v1.7.md`
 - `specs/ROADMAP-v1.9.md`
 - `specs/ROADMAP-v2.0.md`
+- `specs/ROADMAP-v2.4.md`
 - `specs/014-production-runtime-monitoring/`
 - `specs/015-recognition-security-accuracy/`
 - `specs/016-frontend-business-integration/`
@@ -131,6 +133,7 @@
 - `specs/019-windows-long-running/`
 - `specs/020-field-acceptance-closure/`
 - `specs/021-business-integration-demo/`
+- `specs/025-wms-capture-loop-baseline/`
 - `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`
 - `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`
 

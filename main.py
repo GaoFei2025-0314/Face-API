@@ -801,7 +801,7 @@ def raise_with_audit(
     *,
     status_code: int,
     code: str,
-    message: str,
+    message: Optional[str] = None,
     reason: Optional[str] = None,
     threshold: Optional[float] = None,
     terminal_id: Optional[str] = None,
@@ -1640,8 +1640,7 @@ def face_login(req: FaceLoginReq):
         elif FACE_ANTI_SPOOF_MEDIUM_ACTION == "block":
             raise_with_audit(
                 status_code=403,
-                code="ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED",
-                message="中风险重试未通过",
+                code="ANTI_SPOOF_MEDIUM_BLOCKED",
                 threshold=threshold,
                 terminal_id=terminal_id,
                 state=req.state,
@@ -1670,7 +1669,6 @@ def face_login(req: FaceLoginReq):
             raise_with_audit(
                 status_code=403,
                 code="ANTI_SPOOF_CONFIG_INVALID",
-                message="中风险未通过（配置异常，已降级处理）",
                 threshold=threshold,
                 terminal_id=terminal_id,
                 state=req.state,

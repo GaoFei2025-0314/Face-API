@@ -1769,6 +1769,60 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(module.db.audit_entries[0]["anti_spoof_risk"]["action"], "review")
         self.assertEqual(module.db.risk_retry_tokens, [])
 
+    def test_face_login_medium_anti_spoof_block_uses_distinct_error_code(self):
+        module = load_main_module(
+            api_key="secret",
+            disable_login_liveness=False,
+            extra_env={
+                "FACE_MIN_FACE_SHARPNESS": "0",
+                "FACE_ANTI_SPOOF_MEDIUM_ACTION": "block",
+            },
+        )
+        challenge_id = module.db.add_liveness_challenge(
+            purpose="login",
+            terminal_id="door-1",
+            action="blink",
+            expires_at=module.time.time() + 60,
+            action_window_seconds=10,
+        )
+        risk = {
+            "level": "medium",
+            "reasons": ["low_frame_variation"],
+            "action": "block",
+            "message": "画面变化不足，请调整光线、脸部位置后重试",
+        }
+        module.db.mark_liveness_challenge_result(
+            challenge_id,
+            passed=True,
+            result_reason="ok",
+            face_embedding=EMBEDDING,
+            anti_spoof_risk=risk,
+        )
+        module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
+        module.get_single_face_or_raise = lambda _: {
+            "bbox": [0, 0, 80, 80],
+            "det_score": 0.99,
+            "embedding": EMBEDDING,
+        }
+        module.db.search = lambda *args, **kwargs: [
+            {"id": "face-7", "user_id": 7, "username": "alice", "similarity": 0.91, "metadata": {}}
+        ]
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(
+                module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="door-1", challenge_id=challenge_id)
+            )
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assert_error_detail(
+            exc_info.exception.detail,
+            "ANTI_SPOOF_MEDIUM_BLOCKED",
+            "中风险未通过",
+        )
+        self.assertEqual(module.db.audit_entries[0]["failure_reason"], "ANTI_SPOOF_MEDIUM_BLOCKED")
+        self.assertEqual(module.db.audit_entries[0]["anti_spoof_risk"]["action"], "block")
+        self.assertEqual(module.db.risk_retry_tokens, [])
+
     def test_face_login_medium_anti_spoof_unknown_action_fails_closed(self):
         module = load_main_module(
             api_key="secret",
@@ -1815,8 +1869,10 @@ class MainApiContractTests(unittest.TestCase):
         self.assert_error_detail(
             exc_info.exception.detail,
             "ANTI_SPOOF_CONFIG_INVALID",
-            "中风险未通过（配置异常，已降级处理）",
+            "防翻拍配置异常",
+            "服务端中风险处理策略配置无效，已按失败处理，请联系管理员检查防翻拍策略配置",
         )
+        self.assertNotIn("FACE_ANTI_SPOOF_MEDIUM_ACTION", exc_info.exception.detail["reason"])
         self.assertEqual(module.db.audit_entries[0]["failure_reason"], "ANTI_SPOOF_CONFIG_INVALID")
         self.assertEqual(module.db.audit_entries[0]["anti_spoof_risk"]["action"], "warn")
 

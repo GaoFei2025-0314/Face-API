@@ -175,5 +175,5 @@ If an endpoint accepts images, preserve both upload and Base64 support when it i
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/024-lightweight-anti-spoof-governance/plan.md`
+`specs/025-wms-capture-loop-baseline/plan.md`
 <!-- SPECKIT END -->

@@ -1,8 +1,8 @@
 # face_api 2026 Q2 季度计划与进度看板
 
-> 当前日期：2026-06-17
+> 当前日期：2026-06-18
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：V2.3 轻量防翻拍阈值治理与中风险重试机制已完成，固定摄像头现场五类样例验收通过。
+> 当前版本基线：V2.3 轻量防翻拍阈值治理与中风险重试机制已完成；V2.4 Face API 与 WMS 现场联动验收基线已规划，待实施。
 
 ## 1. 本季度目标
 
@@ -31,6 +31,7 @@
 | V2.1 | 轻量防翻拍活体增强 | 已完成 | `docs/90_archive/04_acceptance/05_v2.1_acceptance_record.md`、`specs/022-lightweight-anti-spoofing/tasks.md` |
 | V2.2 | 现场算法验收与阈值调优台 | 现场验收完成，主链路通过，防翻拍未达上线标准 | `docs/90_archive/04_acceptance/06_v2.2_acceptance_record.md`、`specs/023-field-algorithm-acceptance-console/tasks.md` |
 | V2.3 | 轻量防翻拍阈值治理与中风险重试机制 | 已完成 | `docs/90_archive/04_acceptance/07_v2.3_acceptance_record.md`、`specs/024-lightweight-anti-spoof-governance/tasks.md` |
+| V2.4 | Face API 与 WMS 现场联动验收基线 | 已规划，待实施 | `specs/ROADMAP-v2.4.md`、`specs/025-wms-capture-loop-baseline/tasks.md` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -197,7 +198,36 @@ V2.3 关键边界：
 - 第一次中风险错误响应固定包含 `detail.retry.risk_retry_token`、`detail.retry.expires_at`、`detail.retry.remaining_attempts`；audit 和报告不得导出原始 token。
 - 固定摄像头现场验收已通过；手持或移动摄像头制造运动视差属于残余风险，需要后续更强活体能力或设备固定约束。
 
-## 11. 每周检查节奏
+## 11. V2.4 下一步计划
+
+V2.4 主题为“Face API 与 WMS 现场联动验收基线”。目标是在不默认修改 `face_api` 后端接口、不默认修改 WMS 业务逻辑的前提下，建立可复用的真实终端联动验收模板和 runbook。
+
+V2.4 基线入口：
+
+```text
+specs/ROADMAP-v2.4.md
+specs/025-wms-capture-loop-baseline/spec.md
+specs/025-wms-capture-loop-baseline/plan.md
+specs/025-wms-capture-loop-baseline/tasks.md
+docs/superpowers/specs/2026-06-17-face-api-wms-capture-loop-design.md
+```
+
+V2.4 关键边界：
+
+- 先建立联动验收基线，不默认修改 `face_api` API、环境变量或数据库表。
+- 先新增 Face API 侧验收模板和 WMS 侧 runbook，不默认改 WMS 登录业务逻辑。
+- WMS 仓库路径按 `H:\AI_test\electron-wms\electron-wms` 检查；路径不存在或工作区不干净时先记录阻塞。
+- 验收记录只保存结果、配置、错误码、风险等级、相似度、耗时、audit 和日志证据。
+- 不保存原图、视频帧、连续帧、embedding、API Key 或真实用户敏感信息。
+- 问题必须归到算法底座、终端采集或业务流程三类之一。
+
+V2.4 推荐 `/goal`：
+
+```text
+/goal Implement face_api Roadmap V2.4 - WMS Capture Loop Baseline
+```
+
+## 12. 每周检查节奏
 
 每周只看 5 件事：
 

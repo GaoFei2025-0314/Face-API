@@ -107,7 +107,8 @@ Java 后端处理规则：
 - 浏览器或终端第二次必须重新完成 login challenge，并把新的 `challenge_id` 和原始 `risk_retry_token` 一起提交给业务后端。
 - Java 后端第二次代理 `/auth/face-login` 时原样回传 `risk_retry_token`；不要解析 token 内容，不要写入业务 audit 明文。
 - `ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED` 和 `ANTI_SPOOF_RETRY_TOKEN_INVALID` 都应按登录失败处理，可提示重新开始或转人工。
-- `ANTI_SPOOF_CONFIG_INVALID` 表示服务端防翻拍策略配置异常，Java 后端应按失败处理并提示运维检查 `FACE_ANTI_SPOOF_MEDIUM_ACTION`。
+- `ANTI_SPOOF_MEDIUM_BLOCKED` 表示当前策略直接拦截中风险，Java 后端应按登录失败处理，不要继续自动重试。
+- `ANTI_SPOOF_CONFIG_INVALID` 表示服务端防翻拍策略配置异常，Java 后端应按失败处理并提示运维检查防翻拍策略配置。
 
 ## 4. 绑定 Service 伪代码
 
@@ -312,7 +313,7 @@ class TerminalLoginController {
 | 层级 | 示例 code | 处理方式 |
 |---|---|---|
 | `face_api` 识别层 | `NO_FACE`、`NO_MATCH`、`LIVENESS_CHALLENGE_INVALID` | Java 后端解析 `detail.code/message/reason`，原样转成业务可展示原因 |
-| `face_api` 中风险重试 | `ANTI_SPOOF_MEDIUM_RETRY_REQUIRED`、`ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED`、`ANTI_SPOOF_RETRY_TOKEN_INVALID` | 第一次返回重试指令和 `detail.retry`；耗尽或无效时按失败处理 |
+| `face_api` 中风险策略 | `ANTI_SPOOF_MEDIUM_RETRY_REQUIRED`、`ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED`、`ANTI_SPOOF_MEDIUM_BLOCKED`、`ANTI_SPOOF_RETRY_TOKEN_INVALID` | 第一次重试策略返回 `detail.retry`；耗尽、直接拦截或无效时按失败处理 |
 | 业务规则层 | `BUSINESS_USER_NOT_FOUND`、`USER_DISABLED`、`FACE_NOT_BOUND` | Java Service 根据用户表、绑定表和状态自行判断 |
 | 接入配置层 | `FACE_API_AUTH_FAILED`、`FACE_API_UNAVAILABLE`、`VALIDATION_ERROR`、`ANTI_SPOOF_CONFIG_INVALID` | 运维或后端配置问题，写 audit 并提示检查服务地址、API Key、请求字段或防翻拍策略配置 |
 | 登录态层 | `TOKEN_INVALID` | 替换成生产系统自己的 session、JWT 或 SSO 过期处理 |

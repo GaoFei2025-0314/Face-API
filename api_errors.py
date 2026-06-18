@@ -117,6 +117,10 @@ ERROR_DEFINITIONS = {
         "message": "中风险重试未通过",
         "reason": "本次中风险重试机会已使用，请重新发起登录或转人工复核",
     },
+    "ANTI_SPOOF_MEDIUM_BLOCKED": {
+        "message": "中风险未通过",
+        "reason": "当前画面存在轻量防翻拍中风险，当前策略不允许重试，请重新发起登录或转人工复核",
+    },
     "ANTI_SPOOF_MEDIUM_REVIEW_REQUIRED": {
         "message": "中风险需要人工复核",
         "reason": "当前画面存在轻量防翻拍中风险，请转人工复核或重新发起登录",
@@ -127,7 +131,7 @@ ERROR_DEFINITIONS = {
     },
     "ANTI_SPOOF_CONFIG_INVALID": {
         "message": "防翻拍配置异常",
-        "reason": "服务端中风险处理策略配置无效，已按失败处理，请联系管理员检查 FACE_ANTI_SPOOF_MEDIUM_ACTION",
+        "reason": "服务端中风险处理策略配置无效，已按失败处理，请联系管理员检查防翻拍策略配置",
     },
     "UNSUPPORTED_LIVENESS_ACTION": {
         "message": "不支持的活体动作",
