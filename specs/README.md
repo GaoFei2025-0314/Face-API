@@ -168,6 +168,8 @@ Roadmap v2.4 当前执行入口：
 - `025-wms-capture-loop-baseline/plan.md`
 - `025-wms-capture-loop-baseline/tasks.md`
 - `docs/superpowers/specs/2026-06-17-face-api-wms-capture-loop-design.md`
+- `docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md`
+- `H:\AI_test\electron-wms\electron-wms\doc\13-Face-API-WMS智能抓拍联动验收基线.md`
 
 Roadmap v2.4 建议执行顺序：
 

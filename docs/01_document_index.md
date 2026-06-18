@@ -7,7 +7,7 @@
 - 新同事：先看 `README.md`、`docs/02_product/01_prd.md`、`architecture.html`。
 - 前端接入：先看 `docs/04_usage/01_api_integration.md`、`docs/04_usage/02_frontend_business_integration.md`、`camera-integration.html`。
 - 业务系统接入：先看 `docs/04_usage/04_business_integration_v2.md`、`docs/04_usage/05_spring_boot_integration_notes.md`、`specs/ROADMAP-v2.0.md`。
-- WMS 联动验收：先看 `specs/ROADMAP-v2.4.md`、`specs/025-wms-capture-loop-baseline/plan.md`、后续生成的 `docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md`。
+- WMS 联动验收：先看 `specs/ROADMAP-v2.4.md`、`specs/025-wms-capture-loop-baseline/plan.md`、`docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md`，WMS 侧看 `H:\AI_test\electron-wms\electron-wms\doc\13-Face-API-WMS智能抓拍联动验收基线.md`。
 - 运维交付：先看 `docs/03_deployment/01_runbook.md`、`admin.html`、`architecture.html` 的演示模式、流程播放和运维流程。
 - 项目负责人：先看 `docs/02_product/02_quarterly_plan.md`、`docs/05_architecture/01_architecture.md`、`docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`。
 - V2.0 验收复盘：看 `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`。
@@ -136,12 +136,14 @@
 - `specs/025-wms-capture-loop-baseline/`
 - `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`
 - `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`
+- `docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md`
 
 作用：
 
 - `specs/` 是开发过程和验收依据。
 - 日常使用不需要每次看 `specs/`。
 - 新版本开发前，再看对应 spec。
+- `08_face_api_wms_capture_loop_baseline.md` 是 Face API 与 Electron WMS 智能抓拍联动验收基线，用来记录环境快照、现场样例、审计回收、问题分类和下一轮改进项。
 
 ## 9. 文档分层规则
 

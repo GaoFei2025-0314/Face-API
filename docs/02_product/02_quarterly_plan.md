@@ -2,7 +2,7 @@
 
 > 当前日期：2026-06-18
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：V2.3 轻量防翻拍阈值治理与中风险重试机制已完成；V2.4 Face API 与 WMS 现场联动验收基线已规划，待实施。
+> 当前版本基线：V2.3 轻量防翻拍阈值治理与中风险重试机制已完成；V2.4 Face API 与 WMS 现场联动验收基线已建立，待现场执行样例。
 
 ## 1. 本季度目标
 
@@ -31,7 +31,7 @@
 | V2.1 | 轻量防翻拍活体增强 | 已完成 | `docs/90_archive/04_acceptance/05_v2.1_acceptance_record.md`、`specs/022-lightweight-anti-spoofing/tasks.md` |
 | V2.2 | 现场算法验收与阈值调优台 | 现场验收完成，主链路通过，防翻拍未达上线标准 | `docs/90_archive/04_acceptance/06_v2.2_acceptance_record.md`、`specs/023-field-algorithm-acceptance-console/tasks.md` |
 | V2.3 | 轻量防翻拍阈值治理与中风险重试机制 | 已完成 | `docs/90_archive/04_acceptance/07_v2.3_acceptance_record.md`、`specs/024-lightweight-anti-spoof-governance/tasks.md` |
-| V2.4 | Face API 与 WMS 现场联动验收基线 | 已规划，待实施 | `specs/ROADMAP-v2.4.md`、`specs/025-wms-capture-loop-baseline/tasks.md` |
+| V2.4 | Face API 与 WMS 现场联动验收基线 | 基线已建立，待现场执行样例 | `specs/ROADMAP-v2.4.md`、`specs/025-wms-capture-loop-baseline/tasks.md`、`docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -210,6 +210,8 @@ specs/025-wms-capture-loop-baseline/spec.md
 specs/025-wms-capture-loop-baseline/plan.md
 specs/025-wms-capture-loop-baseline/tasks.md
 docs/superpowers/specs/2026-06-17-face-api-wms-capture-loop-design.md
+docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md
+H:\AI_test\electron-wms\electron-wms\doc\13-Face-API-WMS智能抓拍联动验收基线.md
 ```
 
 V2.4 关键边界：

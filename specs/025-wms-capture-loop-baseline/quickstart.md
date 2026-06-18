@@ -97,7 +97,12 @@ H:\AI_test\face_api\docs\90_archive\04_acceptance\08_face_api_wms_capture_loop_b
 ## 5. 静态验证
 
 ```powershell
-$scanTerms = @('TB' + 'D', 'TO' + 'DO', '待' + '定', '占' + '位')
+$scanTerms = @(
+  ('TB' + 'D')
+  ('TO' + 'DO')
+  ('待' + '定')
+  ('占' + '位')
+)
 $scanPaths = @(
   'H:\AI_test\face_api\specs\ROADMAP-v2.4.md',
   'H:\AI_test\face_api\specs\025-wms-capture-loop-baseline\spec.md',
@@ -115,5 +120,5 @@ git -C 'H:\AI_test\face_api' diff --check
 
 期望：
 
-- 占位词扫描无输出。
+- 未完成标记扫描无输出。
 - `git diff --check` 无输出。

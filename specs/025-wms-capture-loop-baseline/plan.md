@@ -48,7 +48,7 @@ V2.4 建立 Face API 与 Electron WMS 的现场联动验收基线。实施重点
 
 ## Constitution Check
 
-当前 `.specify/memory/constitution.md` 仍是模板占位，没有可执行 MUST 条款。按项目实际约束执行：
+当前 `.specify/memory/constitution.md` 仍是模板示例内容，没有可执行 MUST 条款。按项目实际约束执行：
 
 - 保持 MVP 小范围。
 - 文档变更必须同步索引和季度计划。
@@ -126,7 +126,12 @@ Test-Path 'H:\AI_test\face_api\specs\025-wms-capture-loop-baseline\tasks.md'
 Test-Path 'H:\AI_test\face_api\docs\90_archive\04_acceptance\08_face_api_wms_capture_loop_baseline.md'
 Test-Path 'H:\AI_test\electron-wms\electron-wms\doc\13-Face-API-WMS智能抓拍联动验收基线.md'
 
-$scanTerms = @('TB' + 'D', 'TO' + 'DO', '待' + '定', '占' + '位')
+$scanTerms = @(
+  ('TB' + 'D')
+  ('TO' + 'DO')
+  ('待' + '定')
+  ('占' + '位')
+)
 $scanPaths = @(
   'H:\AI_test\face_api\specs\ROADMAP-v2.4.md',
   'H:\AI_test\face_api\specs\025-wms-capture-loop-baseline\spec.md',
