@@ -1,6 +1,6 @@
-# V1.4 识别安全与准确率说明
+# 识别安全与准确率说明
 
-本文说明 V1.4 对质量评分、失败原因、terminal 策略、调参摘要和活体边界的约定。
+本文说明质量评分、失败原因、terminal 策略、调参摘要、活体边界，以及 V2.3 轻量防翻拍治理的约定。
 
 ## 1. 质量指标
 
@@ -83,6 +83,7 @@ V2.1 在基础活体 challenge 上增加轻量防翻拍风险评分，返回可�
 
 - 连续帧亮度变化。
 - 连续帧重复程度。
+- 连续帧整体亮度均匀变化，作为疑似屏幕或照片平移的 `uniform_frame_delta` 信号。
 - 抽样人脸框位置和面积变化。
 - 清晰度变化。
 - 采集信号不足或画面质量不足。
@@ -120,3 +121,41 @@ V2.2 新增 `acceptance.html` 作为现场算法验收台。它使用同一个�
 调参建议分两层：默认给现场人员检查光线、距离、摄像头角度和样例一致性；展开后给开发/运维关注 `FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION`、`FACE_ANTI_SPOOF_MIN_FRAME_VARIATION`、`FACE_ANTI_SPOOF_MIN_FRAME_DELTA`、`FACE_ANTI_SPOOF_MIN_FACE_MOTION`、`FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION` 等阈值方向。
 
 页面建议只用于本地工作站或受控内网验收。若通过 `http://localhost:8122/acceptance.html` 打开，并且服务以生产模式运行，需要把 `http://localhost:8122` 加入 `FACE_CORS_ORIGINS`。普通互联网业务前端仍不应直接持有 `X-API-Key`。
+
+## 8. V2.3 轻量防翻拍治理
+
+V2.3 基于 V2.2 的现场验收结果收紧轻量评分和中风险处理。目标是减少打印照片、手机屏幕、电脑屏幕和播放视频在低风险下静默登录成功，同时避免把真实用户体验做得过重。
+
+默认策略：
+
+- `level=low`：允许继续登录匹配。
+- `level=medium`：默认返回 `ANTI_SPOOF_MEDIUM_RETRY_REQUIRED`，提示重新面对摄像头采集一次，不返回登录成功。
+- `level=high`：返回 `ANTI_SPOOF_HIGH_RISK`，拒绝本次登录。
+
+中风险重试由后端强制：
+
+- 第一次中风险由后端签发一次性 `risk_retry_token`。
+- 第二次 `/auth/face-login` 必须使用新的 `challenge_id`，并回传该 token。
+- token 只保存 hash 或不可逆摘要，绑定 `terminal_id` 和有效期，不能靠前端 `state` 或业务端自报次数绕过。
+- V2.3 最大重试次数固定为 1，不提供 `FACE_ANTI_SPOOF_MEDIUM_MAX_RETRIES`。
+
+相关配置：
+
+| 环境变量 | 默认值 | 作用 |
+|---|---:|---|
+| `FACE_ANTI_SPOOF_MEDIUM_ACTION` | `retry` | 中风险处理策略，可选 `retry`、`review`、`block` |
+| `FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS` | `300` | 中风险重试 token 有效期 |
+
+验收判断：
+
+- 真人正脸至少 2/3 成功。
+- 翻拍样例不得低风险静默成功。
+- 中风险必须能在 audit 和验收报告中看出原因、动作和 retry 状态。
+- `acceptance.html` 导出的 JSON/CSV 不包含 API Key、原图、连续帧、embedding 或原始 `risk_retry_token`。
+
+部署前提：
+
+- V2.3 默认按固定摄像头验收。摄像头应固定在 Windows 工作站、闸机或一体机上，不应让用户拿起摄像头制造前后运动。
+- 如果摄像头是手持或可移动设备，移动摄像头本身可能制造 `normal_motion` 信号，让照片或屏幕翻拍更容易通过轻量评分。这种场景需要后续版本引入更强 anti-spoofing 模型、设备固定检测或人工复核。
+
+能力边界不变：V2.3 仍是轻量治理，不承诺覆盖虚拟摄像头、深度伪造、专业重放攻击或高质量攻击设备。更高安全场景应评估专用 anti-spoofing 模型、红外/深度摄像头或人工复核。

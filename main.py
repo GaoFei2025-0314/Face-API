@@ -12,10 +12,13 @@
 - FACE_API_KEY: API 鉴权密钥（不设则不鉴权）
 """
 import base64
+from datetime import datetime, timezone
+import hashlib
 import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import secrets
 import uuid
 from pathlib import Path
 import time
@@ -181,6 +184,7 @@ FACE_CHALLENGE_ACTIONS = settings.face_challenge_actions
 FACE_ANTI_SPOOF_ENABLED = settings.face_anti_spoof_enabled
 FACE_ANTI_SPOOF_BLOCK_LEVEL = settings.face_anti_spoof_block_level
 FACE_ANTI_SPOOF_MEDIUM_ACTION = settings.face_anti_spoof_medium_action
+FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS = settings.face_anti_spoof_retry_token_ttl_seconds
 FACE_ANTI_SPOOF_MIN_FRAME_VARIATION = settings.face_anti_spoof_min_frame_variation
 FACE_ANTI_SPOOF_MIN_FRAME_DELTA = settings.face_anti_spoof_min_frame_delta
 FACE_ANTI_SPOOF_MIN_FACE_MOTION = settings.face_anti_spoof_min_face_motion
@@ -457,6 +461,10 @@ def get_anti_spoof_policy() -> dict:
             "min_face_motion": FACE_ANTI_SPOOF_MIN_FACE_MOTION,
             "min_sharpness_variation": FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION,
         },
+        "retry": {
+            "medium_max_retries": 1,
+            "token_ttl_seconds": FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS,
+        },
         "sample_types": [
             "real_person",
             "printed_photo",
@@ -479,6 +487,12 @@ def liveness_failure_reason_text(reason: str) -> str:
     if reason == "sample_face_mismatch":
         return "连续帧中的人脸不一致，请保持同一个人完成活体动作"
     return "活体动作未通过，请看着预览画面重新完成动作"
+
+
+def liveness_failure_audit_code(reason: str) -> str:
+    if reason == "anti_spoof_high_risk":
+        return "ANTI_SPOOF_HIGH_RISK"
+    return "LIVENESS_CHALLENGE_FAILED"
 
 
 def _frame_sharpness(image: np.ndarray) -> Optional[float]:
@@ -541,9 +555,12 @@ def evaluate_anti_spoof_risk(decoded_frames: list[np.ndarray], sampled_faces: Op
     frame_variation = max(brightness_values) - min(brightness_values) if brightness_values else 0.0
     sharpness_variation = max(sharpness_values) - min(sharpness_values) if sharpness_values else 0.0
     max_frame_delta = 0.0
+    max_frame_delta_texture = 0.0
     for left, right in zip(decoded_frames, decoded_frames[1:]):
         if isinstance(left, np.ndarray) and isinstance(right, np.ndarray) and left.shape == right.shape:
-            max_frame_delta = max(max_frame_delta, float(np.mean(np.abs(left.astype(np.float32) - right.astype(np.float32)))))
+            delta = np.abs(left.astype(np.float32) - right.astype(np.float32))
+            max_frame_delta = max(max_frame_delta, float(np.mean(delta)))
+            max_frame_delta_texture = max(max_frame_delta_texture, float(np.std(delta)))
     face_motion = _face_box_motion(sampled_faces, decoded_frames)
 
     reasons = []
@@ -553,12 +570,19 @@ def evaluate_anti_spoof_risk(decoded_frames: list[np.ndarray], sampled_faces: Op
         reasons.append("low_frame_variation")
     if face_motion is not None and face_motion < FACE_ANTI_SPOOF_MIN_FACE_MOTION:
         reasons.append("static_face_box")
+    if (
+        max_frame_delta >= FACE_ANTI_SPOOF_MIN_FRAME_DELTA
+        and frame_variation >= FACE_ANTI_SPOOF_MIN_FRAME_VARIATION
+        and max_frame_delta_texture < max(1.0, FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION)
+    ):
+        reasons.append("uniform_frame_delta")
     if sharpness_variation < FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION and frame_variation < FACE_ANTI_SPOOF_MIN_FRAME_VARIATION:
         reasons.append("poor_capture_quality")
 
     metrics = {
         "frame_variation": round(frame_variation, 2),
         "max_frame_delta": round(max_frame_delta, 2),
+        "max_frame_delta_texture": round(max_frame_delta_texture, 2),
         "face_box_motion": face_motion,
         "sharpness_variation": round(sharpness_variation, 2),
     }
@@ -730,6 +754,44 @@ def write_login_audit(
     )
 
 
+def _risk_retry_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _utc_iso_from_epoch(epoch_seconds: float) -> str:
+    return datetime.fromtimestamp(epoch_seconds, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def issue_risk_retry_token(*, terminal_id: str, retry_group_id: str, now: Optional[float] = None) -> dict:
+    issued_at = time.time() if now is None else now
+    expires_at = issued_at + FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS
+    raw_token = secrets.token_urlsafe(32)
+    stored = db.add_risk_retry_token(
+        token_hash=_risk_retry_token_hash(raw_token),
+        terminal_id=terminal_id,
+        retry_group_id=retry_group_id,
+        expires_at=expires_at,
+        now=issued_at,
+    )
+    if not stored:
+        raise RuntimeError("risk retry token could not be stored")
+    return {
+        "risk_retry_token": raw_token,
+        "expires_at": _utc_iso_from_epoch(expires_at),
+        "remaining_attempts": 1,
+    }
+
+
+def consume_risk_retry_token_for_login(*, token: str, terminal_id: str, now: Optional[float] = None) -> tuple[bool, str]:
+    checked_at = time.time() if now is None else now
+    ok, reason, _record = db.consume_risk_retry_token(
+        token_hash=_risk_retry_token_hash(token),
+        terminal_id=terminal_id,
+        now=checked_at,
+    )
+    return ok, reason
+
+
 def raise_with_audit(
     *,
     status_code: int,
@@ -745,6 +807,7 @@ def raise_with_audit(
     liveness_reason: Optional[str] = None,
     quality_metrics: Optional[dict] = None,
     anti_spoof_risk: Optional[dict] = None,
+    detail_extra: Optional[dict] = None,
 ) -> None:
     write_login_audit(
         success=False,
@@ -759,7 +822,7 @@ def raise_with_audit(
         quality_metrics=quality_metrics,
         anti_spoof_risk=anti_spoof_risk,
     )
-    raise_api_error(status_code, code, message, reason)
+    raise_api_error(status_code, code, message, reason, extra=detail_extra)
 
 
 def get_system_status() -> dict:
@@ -1066,6 +1129,16 @@ def submit_liveness_challenge(req: LivenessChallengeSubmitReq):
     if not passed:
         user_reason = liveness_failure_reason_text(reason)
         log_event("liveness_failed", challenge_id=req.challenge_id, terminal_id=terminal_id, reason=reason)
+        if purpose == "login":
+            write_login_audit(
+                success=False,
+                failure_reason=liveness_failure_audit_code(reason),
+                terminal_id=terminal_id,
+                elapsed_ms=elapsed,
+                liveness_status="failed",
+                liveness_reason=reason,
+                anti_spoof_risk=anti_spoof_risk,
+            )
         return {
             "challenge_id": req.challenge_id,
             "status": "failed",
@@ -1420,12 +1493,31 @@ def face_login(req: FaceLoginReq):
     ensure_not_maintenance()
     t0 = time.perf_counter()
     terminal_id = require_terminal_id_value(req.terminal_id)
+    requested_threshold = normalize_auth_threshold(req.threshold)
+    retry_token_consumed = False
+    if req.risk_retry_token:
+        retry_token_consumed, retry_reason = consume_risk_retry_token_for_login(
+            token=req.risk_retry_token,
+            terminal_id=terminal_id,
+        )
+        if not retry_token_consumed:
+            raise_with_audit(
+                status_code=403,
+                code="ANTI_SPOOF_RETRY_TOKEN_INVALID",
+                message="中风险重试令牌无效",
+                threshold=requested_threshold,
+                terminal_id=terminal_id,
+                state=req.state,
+                elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+                liveness_status="not_checked",
+                liveness_reason=retry_reason,
+            )
     if FACE_LOGIN_LIVENESS_ENABLED and not req.challenge_id:
         raise_with_audit(
             status_code=403,
             code="LIVENESS_CHALLENGE_REQUIRED",
             message="需要先完成活体挑战",
-            threshold=normalize_auth_threshold(req.threshold),
+            threshold=requested_threshold,
             terminal_id=terminal_id,
             state=req.state,
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
@@ -1442,7 +1534,7 @@ def face_login(req: FaceLoginReq):
             code=detail.get("code", "NO_FACE"),
             message=detail.get("message", "未检测到人脸"),
             reason=detail.get("reason"),
-            threshold=normalize_auth_threshold(req.threshold),
+            threshold=requested_threshold,
             terminal_id=terminal_id,
             state=req.state,
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
@@ -1459,7 +1551,7 @@ def face_login(req: FaceLoginReq):
             code=detail.get("code", "FACE_QUALITY_LOW"),
             message=detail.get("message", "人脸质量不符合登录要求"),
             reason=detail.get("reason"),
-            threshold=normalize_auth_threshold(req.threshold),
+            threshold=requested_threshold,
             terminal_id=terminal_id,
             state=req.state,
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
@@ -1481,7 +1573,7 @@ def face_login(req: FaceLoginReq):
             code=detail.get("code", "LIVENESS_CHALLENGE_INVALID"),
             message=detail.get("message", "活体挑战无效"),
             reason=detail.get("reason"),
-            threshold=normalize_auth_threshold(req.threshold),
+            threshold=requested_threshold,
             terminal_id=terminal_id,
             state=req.state,
             elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
@@ -1493,7 +1585,55 @@ def face_login(req: FaceLoginReq):
 
     anti_spoof_risk = liveness_result.get("anti_spoof_risk")
     policy = get_policy_for_terminal(terminal_id)
-    threshold = max(normalize_auth_threshold(req.threshold), policy["threshold"])
+    threshold = max(requested_threshold, policy["threshold"])
+    if anti_spoof_risk and anti_spoof_risk.get("level") == "medium":
+        if FACE_ANTI_SPOOF_MEDIUM_ACTION == "retry":
+            if retry_token_consumed:
+                raise_with_audit(
+                    status_code=403,
+                    code="ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED",
+                    message="中风险重试未通过",
+                    threshold=threshold,
+                    terminal_id=terminal_id,
+                    state=req.state,
+                    elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+                    liveness_status=liveness_result["status"],
+                    liveness_reason=liveness_result["reason"],
+                    quality_metrics=quality_metrics,
+                    anti_spoof_risk=anti_spoof_risk,
+                )
+            retry = issue_risk_retry_token(
+                terminal_id=terminal_id,
+                retry_group_id=liveness_result["challenge"]["id"],
+            )
+            raise_with_audit(
+                status_code=403,
+                code="ANTI_SPOOF_MEDIUM_RETRY_REQUIRED",
+                message="检测到中风险，请重试一次",
+                threshold=threshold,
+                terminal_id=terminal_id,
+                state=req.state,
+                elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+                liveness_status=liveness_result["status"],
+                liveness_reason=liveness_result["reason"],
+                quality_metrics=quality_metrics,
+                anti_spoof_risk=anti_spoof_risk,
+                detail_extra={"retry": retry},
+            )
+        if FACE_ANTI_SPOOF_MEDIUM_ACTION == "block":
+            raise_with_audit(
+                status_code=403,
+                code="ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED",
+                message="中风险重试未通过",
+                threshold=threshold,
+                terminal_id=terminal_id,
+                state=req.state,
+                elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+                liveness_status=liveness_result["status"],
+                liveness_reason=liveness_result["reason"],
+                quality_metrics=quality_metrics,
+                anti_spoof_risk=anti_spoof_risk,
+            )
     results = db.search(face["embedding"], top_k=1, threshold=-1.0)
     if not results:
         raise_with_audit(

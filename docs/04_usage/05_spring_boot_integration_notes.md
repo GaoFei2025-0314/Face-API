@@ -1,6 +1,6 @@
 # Java / Spring Boot 接入说明
 
-> 适用范围：真实 Java 业务后端替换 V2.0 `business-demo`。
+> 适用范围：真实 Java 业务后端替换 V2.0 `business-demo`，并处理 V2.3 中风险一次重试。
 
 ## 1. 职责边界
 
@@ -61,8 +61,9 @@ class FaceApiClient {
     FaceLoginResponse faceLogin(FaceLoginRequest request) {
         // POST {baseUrl}/auth/face-login
         // Header: X-API-Key: apiKey
-        // Body: image, terminal_id, challenge_id, threshold, state
+        // Body: image, terminal_id, challenge_id, threshold, state, risk_retry_token
         // Response: authenticated, match.face_id, match.user_id, match.username, similarity, threshold
+        // On ANTI_SPOOF_MEDIUM_RETRY_REQUIRED: parse detail.retry and return retry instruction to browser/terminal
     }
 
     LivenessChallengeResponse createChallenge(String purpose, String terminalId) {
@@ -81,6 +82,31 @@ class FaceApiClient {
     }
 }
 ```
+
+V2.3 中风险错误必须按结构化对象解析，不要只取字符串 `message`：
+
+```json
+{
+  "detail": {
+    "code": "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED",
+    "message": "检测到中风险，请重试一次",
+    "reason": "当前画面存在轻量防翻拍中风险，请重新面对摄像头完成一次采集",
+    "retry": {
+      "risk_retry_token": "<opaque-token>",
+      "expires_at": "2026-06-17T12:00:00Z",
+      "remaining_attempts": 1
+    }
+  }
+}
+```
+
+Java 后端处理规则：
+
+- `ANTI_SPOOF_MEDIUM_RETRY_REQUIRED` 不是登录成功，不签发 session/JWT/SSO。
+- 业务后端应把 `detail.retry.risk_retry_token`、`expires_at` 和 `remaining_attempts` 作为一次性重试指令返回给浏览器或受控终端。
+- 浏览器或终端第二次必须重新完成 login challenge，并把新的 `challenge_id` 和原始 `risk_retry_token` 一起提交给业务后端。
+- Java 后端第二次代理 `/auth/face-login` 时原样回传 `risk_retry_token`；不要解析 token 内容，不要写入业务 audit 明文。
+- `ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED` 和 `ANTI_SPOOF_RETRY_TOKEN_INVALID` 都应按登录失败处理，可提示重新开始或转人工。
 
 ## 4. 绑定 Service 伪代码
 
@@ -147,13 +173,14 @@ class FaceLoginService {
     FaceApiClient faceApi;
     TokenService tokenService;
 
-    LoginResult loginByFace(String imageBase64, String challengeId, String terminalId, String state) {
+    LoginResult loginByFace(String imageBase64, String challengeId, String terminalId, String state, String riskRetryToken) {
         try {
             FaceLoginResponse faceResult = faceApi.faceLogin(new FaceLoginRequest(
                 imageBase64,
                 challengeId,
                 terminalId,
-                state
+                state,
+                riskRetryToken
             ));
 
             if (!faceResult.isAuthenticated()) {
@@ -180,6 +207,15 @@ class FaceLoginService {
             throw ex;
         } catch (FaceApiException ex) {
             audit.recordFailure(null, terminalId, ex.getCode());
+            if ("ANTI_SPOOF_MEDIUM_RETRY_REQUIRED".equals(ex.getCode())) {
+                return LoginResult.retry(
+                    ex.getMessage(),
+                    ex.getReason(),
+                    ex.getRetry().getRiskRetryToken(),
+                    ex.getRetry().getExpiresAt(),
+                    ex.getRetry().getRemainingAttempts()
+                );
+            }
             throw new BusinessException(ex.getCode(), ex.getReason());
         }
     }
@@ -251,7 +287,8 @@ class FaceAuthController {
             request.getImage(),
             request.getChallengeId(),
             request.getTerminalId(),
-            request.getState()
+            request.getState(),
+            request.getRiskRetryToken()
         );
     }
 }
@@ -274,6 +311,7 @@ class TerminalLoginController {
 | 层级 | 示例 code | 处理方式 |
 |---|---|---|
 | `face_api` 识别层 | `NO_FACE`、`NO_MATCH`、`LIVENESS_CHALLENGE_INVALID` | Java 后端解析 `detail.code/message/reason`，原样转成业务可展示原因 |
+| `face_api` 中风险重试 | `ANTI_SPOOF_MEDIUM_RETRY_REQUIRED`、`ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED`、`ANTI_SPOOF_RETRY_TOKEN_INVALID` | 第一次返回重试指令和 `detail.retry`；耗尽或无效时按失败处理 |
 | 业务规则层 | `BUSINESS_USER_NOT_FOUND`、`USER_DISABLED`、`FACE_NOT_BOUND` | Java Service 根据用户表、绑定表和状态自行判断 |
 | 接入配置层 | `FACE_API_AUTH_FAILED`、`FACE_API_UNAVAILABLE`、`VALIDATION_ERROR` | 运维或后端配置问题，写 audit 并提示检查服务地址、API Key 和请求字段 |
 | 登录态层 | `TOKEN_INVALID` | 替换成生产系统自己的 session、JWT 或 SSO 过期处理 |
@@ -284,6 +322,7 @@ class TerminalLoginController {
 - Web 浏览器不要直接调用 `face_api` 受保护接口。
 - Java 后端应设置调用超时，避免摄像头页面长时间等待。
 - Java 后端必须解析 `detail.code`、`detail.message`、`detail.reason`。
+- Java 后端必须解析 V2.3 的 `detail.retry`，但不要把原始 `risk_retry_token` 明文写入业务 audit 或日志。
 - 登录成功后由 Java 后端签发自己的 session、JWT 或 SSO token。
 - 业务 audit 和 `face_api` audit 是两层记录，不要混为一张表。
 - 换脸流程要考虑删除旧 `face_id` 成功但注册新脸失败的补偿策略。

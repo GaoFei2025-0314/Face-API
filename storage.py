@@ -105,6 +105,11 @@ class FaceDB:
                     result_reason         TEXT,
                     face_embedding        BLOB,
                     anti_spoof_risk       TEXT,
+                    risk_retry_token_hash TEXT,
+                    risk_retry_group_id   TEXT,
+                    risk_retry_expires_at REAL,
+                    risk_retry_used_at    REAL,
+                    risk_retry_count      INTEGER NOT NULL DEFAULT 0,
                     action_window_seconds INTEGER NOT NULL,
                     created_at_epoch      REAL,
                     expires_at            REAL NOT NULL,
@@ -144,6 +149,24 @@ class FaceDB:
                 c.execute("ALTER TABLE liveness_challenges ADD COLUMN created_at_epoch REAL")
             if "anti_spoof_risk" not in challenge_columns:
                 c.execute("ALTER TABLE liveness_challenges ADD COLUMN anti_spoof_risk TEXT")
+            if "risk_retry_token_hash" not in challenge_columns:
+                c.execute("ALTER TABLE liveness_challenges ADD COLUMN risk_retry_token_hash TEXT")
+            if "risk_retry_group_id" not in challenge_columns:
+                c.execute("ALTER TABLE liveness_challenges ADD COLUMN risk_retry_group_id TEXT")
+            if "risk_retry_expires_at" not in challenge_columns:
+                c.execute("ALTER TABLE liveness_challenges ADD COLUMN risk_retry_expires_at REAL")
+            if "risk_retry_used_at" not in challenge_columns:
+                c.execute("ALTER TABLE liveness_challenges ADD COLUMN risk_retry_used_at REAL")
+            if "risk_retry_count" not in challenge_columns:
+                c.execute("ALTER TABLE liveness_challenges ADD COLUMN risk_retry_count INTEGER NOT NULL DEFAULT 0")
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_liveness_challenges_retry_token_hash "
+                "ON liveness_challenges(risk_retry_token_hash)"
+            )
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_liveness_challenges_retry_expires "
+                "ON liveness_challenges(risk_retry_expires_at, risk_retry_used_at)"
+            )
             c.execute("DROP INDEX IF EXISTS idx_name")
             c.execute("CREATE INDEX IF NOT EXISTS idx_username ON faces(username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON faces(user_id)")
@@ -587,6 +610,84 @@ class FaceDB:
             challenge["status"] = "used"
             challenge["used_at"] = now
             return True, "ok", challenge
+
+    def add_risk_retry_token(
+        self,
+        *,
+        token_hash: str,
+        terminal_id: str,
+        retry_group_id: str,
+        expires_at: float,
+        now: Optional[float] = None,
+    ) -> bool:
+        with self._conn() as c:
+            cur = c.execute(
+                """
+                UPDATE liveness_challenges
+                SET risk_retry_token_hash = ?,
+                    risk_retry_group_id = ?,
+                    risk_retry_expires_at = ?,
+                    risk_retry_used_at = NULL,
+                    risk_retry_count = 1
+                WHERE id = ?
+                  AND terminal_id = ?
+                """,
+                (token_hash, retry_group_id, expires_at, retry_group_id, terminal_id),
+            )
+            stored = cur.rowcount == 1
+        if stored:
+            self._maybe_checkpoint()
+        return stored
+
+    def consume_risk_retry_token(
+        self,
+        *,
+        token_hash: str,
+        terminal_id: str,
+        now: float,
+    ) -> tuple[bool, str, Optional[dict]]:
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                """
+                SELECT id, terminal_id, risk_retry_group_id, risk_retry_expires_at,
+                       risk_retry_used_at, risk_retry_count
+                FROM liveness_challenges
+                WHERE risk_retry_token_hash = ?
+                """,
+                (token_hash,),
+            ).fetchone()
+            if not row:
+                return False, "not_found", None
+            token = {
+                "challenge_id": row["id"],
+                "terminal_id": row["terminal_id"],
+                "retry_group_id": row["risk_retry_group_id"],
+                "expires_at": row["risk_retry_expires_at"],
+                "used_at": row["risk_retry_used_at"],
+                "retry_count": row["risk_retry_count"],
+            }
+            if row["terminal_id"] != terminal_id:
+                return False, "terminal_mismatch", token
+            if row["risk_retry_used_at"] is not None:
+                return False, "already_used", token
+            if row["risk_retry_expires_at"] is None or now > float(row["risk_retry_expires_at"]):
+                return False, "expired", token
+            cur = c.execute(
+                """
+                UPDATE liveness_challenges
+                SET risk_retry_used_at = ?
+                WHERE risk_retry_token_hash = ?
+                  AND terminal_id = ?
+                  AND risk_retry_used_at IS NULL
+                  AND risk_retry_expires_at >= ?
+                """,
+                (now, token_hash, terminal_id, now),
+            )
+            if cur.rowcount != 1:
+                return False, "already_used", token
+            token["used_at"] = now
+            return True, "ok", token
 
     def backup_to(self, target_path: str | Path) -> str:
         target = Path(target_path)

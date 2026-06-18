@@ -18,6 +18,13 @@ This plan implements the first "联动验收基线" from the approved design:
 - Face API repo: `H:\AI_test\face_api`
 - WMS repo: `H:\AI_test\electron-wms\electron-wms`
 
+Path convention for commands:
+
+```powershell
+$FACE_API = 'H:\AI_test\face_api'
+$WMS = 'H:\AI_test\electron-wms\electron-wms'
+```
+
 Current repo condition at plan creation:
 
 - `face_api` has many unrelated modified and untracked files.
@@ -151,15 +158,19 @@ WMS 摄像头采集
 
 ## 5. 单次样例记录表
 
+`event_id` 取自 Face API 审计记录或 WMS 终端日志中的事件标识，用于关联单次抓拍、识别、登录或提交。如当前版本尚无 event_id，可暂填终端编号加序号。每类样例默认 3 次，下面先预置 9 类样例首行，实际执行时按次数追加对应行。
+
 | 编号 | 样例类型 | 终端编号 | event_id | WMS 操作 | WMS 结果 | Face API 风险等级 | 相似度 | 错误码 / 原因 | 耗时 ms | 审计是否可查 | 结论 |
 |---|---|---|---|---|---|---|---:|---|---:|---|---|
 | 1 | 真人正脸 |  |  |  |  |  |  |  |  |  |  |
-| 2 | 真人正脸 |  |  |  |  |  |  |  |  |  |  |
-| 3 | 真人正脸 |  |  |  |  |  |  |  |  |  |  |
+| 2 | 真人弱光 |  |  |  |  |  |  |  |  |  |  |
+| 3 | 真人侧脸或轻微遮挡 |  |  |  |  |  |  |  |  |  |  |
 | 4 | 打印照片 |  |  |  |  |  |  |  |  |  |  |
 | 5 | 手机屏幕照片 |  |  |  |  |  |  |  |  |  |  |
 | 6 | 电脑屏幕照片 |  |  |  |  |  |  |  |  |  |  |
 | 7 | 手机播放眨眼视频 |  |  |  |  |  |  |  |  |  |  |
+| 8 | 多人入镜 |  |  |  |  |  |  |  |  |  |  |
+| 9 | 模糊抓拍 |  |  |  |  |  |  |  |  |  |  |
 
 ## 6. 问题分类表
 
@@ -238,6 +249,7 @@ Expected:
 Run:
 
 ```powershell
+Test-Path 'H:\AI_test\electron-wms\electron-wms'
 Get-ChildItem 'H:\AI_test\electron-wms\electron-wms\doc'
 Get-Content -LiteralPath 'H:\AI_test\electron-wms\electron-wms\doc\12-人脸算法功能介绍与后续迭代规划.md' -TotalCount 160
 Get-Content -LiteralPath 'H:\AI_test\electron-wms\electron-wms\doc\09-终端人脸识别登录方案设计.md' -TotalCount 120
@@ -245,6 +257,7 @@ Get-Content -LiteralPath 'H:\AI_test\electron-wms\electron-wms\doc\09-终端人�
 
 Expected:
 
+- WMS 仓库路径存在；如果 `Test-Path` 返回 `False`，先确认仓库位置再继续。
 - Existing WMS docs are numbered Chinese Markdown files.
 - `13-Face-API-WMS智能抓拍联动验收基线.md` is not already present.
 
@@ -488,12 +501,12 @@ Expected:
 Use this command checklist when the user is ready to run the actual linked acceptance:
 
 ```powershell
-cd /d H:\AI_test\face_api
+Set-Location H:\AI_test\face_api
 run.bat
 
 curl http://localhost:8000/health
 
-cd /d H:\AI_test\electron-wms\electron-wms
+Set-Location H:\AI_test\electron-wms\electron-wms
 npm run dev
 ```
 

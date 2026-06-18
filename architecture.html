@@ -554,7 +554,7 @@
         subtitle: "本地人脸识别 REST API",
         fileLabel: "README / PRD",
         talkTrack: "先用它说明 face_api 是本地人脸识别模块底座，不是完整登录平台。",
-        summary: "face_api 是运行在 Windows 工作站上的人脸识别模块底座，负责检测、比对、搜索、人脸库、轻量认证辅助和 V2.1 轻量防翻拍风险评分。",
+        summary: "face_api 是运行在 Windows 工作站上的人脸识别模块底座，负责检测、比对、搜索、人脸库、轻量认证辅助、V2.3 轻量防翻拍风险评分和中风险一次重试治理。",
         inputs: ["图片上传或 Base64 图片", "配置项和启动环境变量"],
         outputs: ["识别结果", "匹配用户信息", "anti_spoof_risk", "运行状态", "审计记录"],
         links: ["README.md", "docs/01_document_index.md", "docs/02_product/01_prd.md"],
@@ -622,9 +622,9 @@
         subtitle: "统一业务页面",
         fileLabel: "business_demo/static/index.html",
         talkTrack: "讲浏览器只访问 business-demo，由后端代理调用 face_api。",
-        summary: "V2.0/V2.1 的统一业务页面覆盖业务用户、新增用户、人脸绑定、解绑、换脸、Web 活体登录、防翻拍风险提示和业务 audit。",
+        summary: "V2.0/V2.3 的统一业务页面覆盖业务用户、新增用户、人脸绑定、解绑、换脸、Web 活体登录、防翻拍风险提示、中风险重试和业务 audit。",
         inputs: ["摄像头图片", "业务操作", "demo token"],
-        outputs: ["业务 API 请求", "登录状态", "anti_spoof_risk 摘要", "中文错误原因"],
+        outputs: ["业务 API 请求", "登录状态", "anti_spoof_risk 摘要", "中风险重试提示", "中文错误原因"],
         links: ["business_demo/static/index.html", "business_demo/README.md", "docs/04_usage/04_business_integration_v2.md"],
         notes: ["该页面不得包含 X-API-Key、FACE_API_KEY 或 faceApiKey。"]
       },
@@ -639,7 +639,7 @@
         subtitle: "terminal.html / CLI",
         fileLabel: "terminal.html / terminal-demo.py",
         talkTrack: "讲页面和命令行脚本演示同一条受控终端链路。",
-        summary: "终端页面和 terminal-demo.py 用于受控设备演示：直接调用 face_api，拿到识别结果和 anti_spoof_risk 后上报 business-demo。",
+        summary: "终端页面和 terminal-demo.py 用于受控设备演示：直接调用 face_api，拿到识别结果、anti_spoof_risk 和中风险重试状态后上报 business-demo。",
         inputs: ["API Key", "terminal_id", "图片或摄像头"],
         outputs: ["face_api 登录结果", "防翻拍风险摘要", "业务登录事件"],
         links: ["business_demo/static/terminal.html", "scripts/terminal-demo.py", "docs/04_usage/04_business_integration_v2.md"],
@@ -656,7 +656,7 @@
         subtitle: "test / camera / acceptance / admin",
         fileLabel: "test / camera / acceptance / admin",
         talkTrack: "讲这些页面是调试、现场验收、算法验收和运维观察工具。",
-        summary: "项目保留多个静态 HTML 页面用于调试、摄像头验收、V2.2 现场算法验收和运维观察。acceptance.html 用五类样例各 3 次完成完整 face login、JSON/CSV 报告和保守调参建议。",
+        summary: "项目保留多个静态 HTML 页面用于调试、摄像头验收、V2.3 现场算法验收和运维观察。acceptance.html 用五类样例各 3 次完成完整 face login、区分中风险重试的 JSON/CSV 报告和保守调参建议。",
         inputs: ["浏览器访问", "API 地址和 API Key"],
         outputs: ["接口请求", "验收结果", "JSON/CSV 报告", "调参建议", "运维观察信息"],
         links: ["test.html", "camera-integration.html", "acceptance.html", "admin.html"],
@@ -673,7 +673,7 @@
         subtitle: "业务接入示范后端",
         fileLabel: "business_demo/app.py",
         talkTrack: "讲 V2.0 用它模拟真实 Java 业务后端，验证正式接入边界。",
-        summary: "business-demo 是独立 FastAPI 服务，运行在 8010 端口，负责业务用户、人脸绑定、Web 登录代理、anti_spoof_risk 校验、demo token 和业务 audit。",
+        summary: "business-demo 是独立 FastAPI 服务，运行在 8010 端口，负责业务用户、人脸绑定、Web 登录代理、anti_spoof_risk 校验、中风险 retry 透传、demo token 和业务 audit。",
         inputs: ["业务页面请求", "FACE_API_BASE_URL", "FACE_API_KEY", "业务 SQLite"],
         outputs: ["业务用户列表", "绑定结果", "demo token", "业务 audit", "防翻拍风险复核记录"],
         links: ["business_demo/app.py", "business_demo/README.md", "scripts/run-business-demo.bat"],
@@ -690,9 +690,9 @@
         subtitle: "REST API 入口",
         fileLabel: "main.py",
         talkTrack: "这是请求入口和编排中心，所有识别能力都从这里进入。",
-        summary: "main.py 定义路由、请求模型、鉴权、CORS、图片解析、错误响应、活体 challenge 和轻量防翻拍风险评分，并调用 FaceEngine 和 FaceDB。",
+        summary: "main.py 定义路由、请求模型、鉴权、CORS、图片解析、错误响应、活体 challenge、轻量防翻拍风险评分和 risk_retry_token 编排，并调用 FaceEngine 和 FaceDB。",
         inputs: ["HTTP 请求", "上传文件", "Base64 JSON", "连续活体帧"],
-        outputs: ["JSON 响应", "HTTPException detail", "anti_spoof_risk"],
+        outputs: ["JSON 响应", "HTTPException detail", "anti_spoof_risk", "detail.retry"],
         links: ["main.py", "docs/04_usage/01_api_integration.md", "http://localhost:8000/docs"],
         notes: ["不要在请求处理函数里新建 FaceEngine。"]
       },
@@ -758,9 +758,9 @@
         subtitle: "faces.db",
         fileLabel: "storage.py / faces.db",
         talkTrack: "这是本地人脸库和审计数据的持久化位置。",
-        summary: "storage.py 管理人脸底库、embedding、metadata、活体 challenge 风险结果和登录审计记录。",
-        inputs: ["人脸 embedding", "username", "user_id", "metadata", "audit 事件", "anti_spoof_risk"],
-        outputs: ["人脸列表", "搜索结果", "审计汇总", "防翻拍风险记录"],
+        summary: "storage.py 管理人脸底库、embedding、metadata、活体 challenge 风险结果、中风险 retry token hash 和登录审计记录。",
+        inputs: ["人脸 embedding", "username", "user_id", "metadata", "audit 事件", "anti_spoof_risk", "retry token hash"],
+        outputs: ["人脸列表", "搜索结果", "审计汇总", "防翻拍风险记录", "一次性 retry 状态"],
         links: ["storage.py", "docs/06_performance/01_performance_scale.md"],
         notes: ["embedding 以 float32 BLOB 存储，不返回给前端。"]
       },
@@ -909,8 +909,8 @@
           { nodeId: "frontend", title: "浏览器只访问业务页面", edgeIds: ["frontend-business-pages"] },
           { nodeId: "business-pages", title: "业务页面发起活体和登录", edgeIds: ["business-pages-demo"] },
           { nodeId: "business-demo", title: "服务端持有 X-API-Key 代理调用", edgeIds: ["business-pages-demo", "business-demo-faceapi"] },
-          { nodeId: "fastapi", title: "face_api 完成活体、face login 和 anti_spoof_risk 评分", edgeIds: ["business-demo-faceapi", "fastapi-engine", "fastapi-sqlite"] },
-          { nodeId: "business-db", title: "校验业务用户、绑定、防翻拍风险和状态并写 audit", edgeIds: ["business-demo-db"] },
+          { nodeId: "fastapi", title: "face_api 完成活体、face login、anti_spoof_risk 评分和中风险 retry 判定", edgeIds: ["business-demo-faceapi", "fastapi-engine", "fastapi-sqlite"] },
+          { nodeId: "business-db", title: "校验业务用户、绑定、防翻拍风险、retry 状态和用户状态并写 audit", edgeIds: ["business-demo-db"] },
           { nodeId: "business-demo", title: "签发 demo token 返回浏览器", edgeIds: ["business-pages-demo"] }
         ]
       },
@@ -920,22 +920,22 @@
         steps: [
           { nodeId: "terminal", title: "受控设备配置 terminal_id 和 API Key", edgeIds: ["terminal-terminal-demo"] },
           { nodeId: "terminal-demo", title: "终端页面或脚本直接调用 face_api", edgeIds: ["terminal-demo-faceapi"] },
-          { nodeId: "fastapi", title: "face_api 返回 user_id、face_id、similarity 和 anti_spoof_risk", edgeIds: ["terminal-demo-faceapi", "fastapi-engine", "fastapi-sqlite"] },
+          { nodeId: "fastapi", title: "face_api 返回 user_id、face_id、similarity、anti_spoof_risk 或中风险 retry 指令", edgeIds: ["terminal-demo-faceapi", "fastapi-engine", "fastapi-sqlite"] },
           { nodeId: "terminal-demo", title: "终端把识别结果上报业务后端", edgeIds: ["terminal-demo-business-demo"] },
           { nodeId: "business-demo", title: "业务后端校验识别结果、用户、绑定和防翻拍风险", edgeIds: ["terminal-demo-business-demo", "business-demo-db"] },
           { nodeId: "business-db", title: "保存终端来源登录记录", edgeIds: ["business-demo-db"] }
         ]
       },
       acceptance: {
-        label: "V2.2 现场验收",
+        label: "V2.3 现场验收",
         focusNode: "pages",
         steps: [
           { nodeId: "frontend", title: "现场人员打开 acceptance.html 并确认摄像头预览", edgeIds: ["frontend-pages"] },
           { nodeId: "pages", title: "配置 API 地址、X-API-Key 和数字 user_id", edgeIds: ["frontend-pages"] },
           { nodeId: "fastapi", title: "读取 /system/status，判断注册活体和 CORS 边界", edgeIds: ["pages-fastapi", "fastapi-auth"] },
           { nodeId: "pages", title: "注册/重绑测试用户，然后五类样例各采集 3 次", edgeIds: ["pages-fastapi"] },
-          { nodeId: "fastapi", title: "完整 face login：challenge、连续帧、登录、anti_spoof_risk", edgeIds: ["pages-fastapi", "fastapi-engine", "fastapi-sqlite"] },
-          { nodeId: "pages", title: "生成 JSON/CSV 报告和保守调参建议", edgeIds: ["pages-fastapi"] }
+          { nodeId: "fastapi", title: "完整 face login：challenge、连续帧、登录、anti_spoof_risk 和中风险 retry", edgeIds: ["pages-fastapi", "fastapi-engine", "fastapi-sqlite"] },
+          { nodeId: "pages", title: "生成区分中风险重试的 JSON/CSV 报告和保守调参建议", edgeIds: ["pages-fastapi"] }
         ]
       },
       register: {

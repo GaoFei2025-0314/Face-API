@@ -15,6 +15,7 @@ class FakeFaceApiClient:
     def __init__(self, delete_error=None):
         self.registered = []
         self.deleted = []
+        self.login_payloads = []
         self.delete_error = delete_error
         self.login_response = {
             "authenticated": True,
@@ -46,6 +47,7 @@ class FakeFaceApiClient:
         return {"passed": True, "reason": "活体通过", "result_reason": "ok"}
 
     def face_login(self, payload):
+        self.login_payloads.append(payload)
         return self.login_response
 
 
@@ -479,6 +481,35 @@ class BusinessDemoFaceApiClientTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("图片中没有检测到人脸", ctx.exception.reason)
 
+    def test_face_api_client_preserves_medium_retry_metadata(self):
+        from business_demo.app import BusinessDemoError
+        from business_demo.face_api_client import FaceApiClient, request as urllib_request
+
+        body = json.dumps(
+            {
+                "detail": {
+                    "code": "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED",
+                    "message": "检测到中风险，请重试一次",
+                    "reason": "当前画面存在轻量防翻拍中风险，请重新面对摄像头完成一次采集",
+                    "retry": {
+                        "risk_retry_token": "retry-abc",
+                        "expires_at": "2026-06-17T12:00:00Z",
+                        "remaining_attempts": 1,
+                    },
+                }
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        http_error = HTTPError("http://face-api.test/auth/face-login", 403, "Forbidden", {}, io.BytesIO(body))
+
+        with mock.patch.object(urllib_request, "urlopen", side_effect=http_error):
+            with self.assertRaises(BusinessDemoError) as ctx:
+                FaceApiClient("http://face-api.test", "secret").face_login({"image": "x"})
+
+        self.assertEqual(ctx.exception.code, "FACE_API_ANTI_SPOOF_MEDIUM_RETRY_REQUIRED")
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(ctx.exception.detail()["retry"]["risk_retry_token"], "retry-abc")
+
 
 class BusinessDemoApiTests(unittest.TestCase):
     def test_user_binding_unbinding_and_replace_flow(self):
@@ -702,6 +733,33 @@ class BusinessDemoApiTests(unittest.TestCase):
             issued_token_id = audit.json()["items"][0]["issued_token_id"]
             self.assertNotEqual(issued_token_id, token_signature_prefix)
             self.assertEqual(len(issued_token_id), 32)
+
+    def test_web_login_forwards_medium_retry_token_to_face_api(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = FakeFaceApiClient()
+            app = make_test_app(Path(tmp) / "business.db", fake)
+            request(
+                app,
+                "POST",
+                "/api/users/100001/face-binding",
+                {"image": "data:image/jpeg;base64,aaa", "terminal_id": "web-1"},
+            )
+
+            login = request(
+                app,
+                "POST",
+                "/api/auth/face-login",
+                {
+                    "image": "data:image/jpeg;base64,login",
+                    "terminal_id": "web-1",
+                    "challenge_id": "challenge-2",
+                    "state": "trace-2",
+                    "risk_retry_token": "retry-abc",
+                },
+            )
+
+            self.assertEqual(login.status_code, 200, login.text)
+            self.assertEqual(fake.login_payloads[-1]["risk_retry_token"], "retry-abc")
 
     def test_web_login_records_anti_spoof_risk_in_business_audit(self):
         with tempfile.TemporaryDirectory() as tmp:

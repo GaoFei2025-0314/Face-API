@@ -110,9 +110,100 @@ class FaceDBSchemaTests(unittest.TestCase):
                 with closing(sqlite3.connect(db_path)) as conn:
                     audit_columns = {row[1] for row in conn.execute("PRAGMA table_info(face_login_audit)")}
                     challenge_columns = {row[1] for row in conn.execute("PRAGMA table_info(liveness_challenges)")}
+                    indexes = {row[1] for row in conn.execute("PRAGMA index_list(liveness_challenges)")}
 
                 self.assertIn("anti_spoof_risk", audit_columns)
                 self.assertIn("anti_spoof_risk", challenge_columns)
+                self.assertIn("risk_retry_token_hash", challenge_columns)
+                self.assertIn("risk_retry_expires_at", challenge_columns)
+                self.assertIn("risk_retry_used_at", challenge_columns)
+                self.assertIn("idx_liveness_challenges_retry_token_hash", indexes)
+                self.assertIn("idx_liveness_challenges_retry_expires", indexes)
+            finally:
+                db.close()
+
+    def test_risk_retry_token_is_hash_only_and_one_time(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            db = FaceDB(db_path=db_path)
+            try:
+                challenge_id = db.add_liveness_challenge(
+                    purpose="login",
+                    terminal_id="door-1",
+                    action="blink",
+                    expires_at=9999999999,
+                    action_window_seconds=10,
+                )
+                self.assertTrue(
+                    db.add_risk_retry_token(
+                        token_hash="hash-1",
+                        terminal_id="door-1",
+                        retry_group_id=challenge_id,
+                        expires_at=200.0,
+                        now=100.0,
+                    )
+                )
+                with closing(sqlite3.connect(db_path)) as conn:
+                    row = conn.execute(
+                        """
+                        SELECT risk_retry_token_hash, risk_retry_group_id, risk_retry_expires_at, risk_retry_used_at
+                        FROM liveness_challenges
+                        WHERE id = ?
+                        """,
+                        (challenge_id,),
+                    ).fetchone()
+                self.assertEqual(row[0], "hash-1")
+                self.assertEqual(row[1], challenge_id)
+                self.assertEqual(row[2], 200.0)
+                self.assertIsNone(row[3])
+
+                ok, reason, token = db.consume_risk_retry_token(
+                    token_hash="hash-1",
+                    terminal_id="door-1",
+                    now=120.0,
+                )
+                self.assertTrue(ok)
+                self.assertEqual(reason, "ok")
+                self.assertEqual(token["retry_group_id"], challenge_id)
+
+                ok, reason, _token = db.consume_risk_retry_token(
+                    token_hash="hash-1",
+                    terminal_id="door-1",
+                    now=121.0,
+                )
+                self.assertFalse(ok)
+                self.assertEqual(reason, "already_used")
+            finally:
+                db.close()
+
+    def test_expired_risk_retry_tokens_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "faces.db")
+            db = FaceDB(db_path=db_path)
+            try:
+                challenge_id = db.add_liveness_challenge(
+                    purpose="login",
+                    terminal_id="door-1",
+                    action="blink",
+                    expires_at=9999999999,
+                    action_window_seconds=10,
+                )
+                db.add_risk_retry_token(
+                    token_hash="hash-expired",
+                    terminal_id="door-1",
+                    retry_group_id=challenge_id,
+                    expires_at=100.0,
+                    now=10.0,
+                )
+
+                ok, reason, _token = db.consume_risk_retry_token(
+                    token_hash="hash-expired",
+                    terminal_id="door-1",
+                    now=101.0,
+                )
+
+                self.assertFalse(ok)
+                self.assertEqual(reason, "expired")
             finally:
                 db.close()
 
@@ -217,9 +308,15 @@ class FaceDBSchemaTests(unittest.TestCase):
                 with closing(sqlite3.connect(db_path)) as conn:
                     audit_columns = {row[1] for row in conn.execute("PRAGMA table_info(face_login_audit)")}
                     challenge_columns = {row[1] for row in conn.execute("PRAGMA table_info(liveness_challenges)")}
+                    indexes = {row[1] for row in conn.execute("PRAGMA index_list(liveness_challenges)")}
 
                 self.assertIn("anti_spoof_risk", audit_columns)
                 self.assertIn("anti_spoof_risk", challenge_columns)
+                self.assertIn("risk_retry_token_hash", challenge_columns)
+                self.assertIn("risk_retry_expires_at", challenge_columns)
+                self.assertIn("risk_retry_used_at", challenge_columns)
+                self.assertIn("idx_liveness_challenges_retry_token_hash", indexes)
+                self.assertIn("idx_liveness_challenges_retry_expires", indexes)
             finally:
                 db.close()
 

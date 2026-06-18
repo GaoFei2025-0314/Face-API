@@ -12,6 +12,17 @@ Keep the MVP shape small: the business code currently lives in `main.py`, `face_
 
 `api_errors.py` owns structured error definitions and Chinese reason text. Route handlers should call `raise_api_error(...)` instead of constructing ad hoc `HTTPException` payloads.
 
+## Karpathy-style coding guidelines
+
+Use these rules when writing, reviewing, or refactoring code in this repository:
+
+- Think before coding. State assumptions, surface uncertainty, and ask when requirements have multiple reasonable interpretations.
+- Keep changes simple. Implement the minimum code that solves the requested problem; avoid speculative features, single-use abstractions, and unnecessary configurability.
+- Make surgical edits. Touch only the files and lines required by the task, match existing style, and do not refactor unrelated code.
+- Clean up only what your change creates. Remove imports, variables, functions, or docs made obsolete by your own edits, but do not delete pre-existing dead code unless asked.
+- Work from verifiable goals. For bugs, write or identify a failing test/reproduction first; for features, define the expected behavior and verification command before implementation.
+- Report tradeoffs clearly. If a faster approach is less robust, or a robust approach adds complexity, say so before choosing.
+
 ## Common commands
 
 Use Windows commands unless the user explicitly asks for another shell.
@@ -164,5 +175,5 @@ If an endpoint accepts images, preserve both upload and Base64 support when it i
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/023-field-algorithm-acceptance-console/plan.md`
+`specs/024-lightweight-anti-spoof-governance/plan.md`
 <!-- SPECKIT END -->

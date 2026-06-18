@@ -1,7 +1,7 @@
 # 人脸识别 API 运行与使用说明
 
 > 最后同步：2026-06-17
-> 适用阶段：V2.2 现场算法验收与阈值调优台
+> 适用阶段：V2.3 轻量防翻拍阈值治理与中风险重试机制
 
 这是 **首次接手时优先阅读** 的文档。
 
@@ -90,7 +90,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - OpenAPI：`http://localhost:8000/openapi.json`
 - 联调页：直接打开 `test.html`
 - 摄像头接入示例：直接打开 `camera-integration.html`，可做服务检查、注册、登录、活体和 audit 验收
-- V2.2 现场算法验收台：直接打开 `acceptance.html`，或用 `python -m http.server 8122` 后访问 `http://localhost:8122/acceptance.html`；可做真人、打印照片、手机屏幕、电脑屏幕和播放视频样例验收，支持 JSON/CSV 报告和保守调参建议
+- V2.3 现场算法验收台：直接打开 `acceptance.html`，或用 `python -m http.server 8122` 后访问 `http://localhost:8122/acceptance.html`；可做真人、打印照片、手机屏幕、电脑屏幕和播放视频样例验收，支持 JSON/CSV 报告、中风险重试记录和保守调参建议；验收默认摄像头固定安装，不用手持摄像头制造前后运动
 - 业务接入 demo：启动 `scripts\run-business-demo.bat` 后打开 `http://localhost:8010`
 
 ---
@@ -380,7 +380,12 @@ set FACE_FORCE_CPU=1
 | `FACE_CHALLENGE_MIN_FRAMES` | `10` | 眨眼 challenge 最少连续帧 |
 | `FACE_CHALLENGE_MAX_FRAMES` | `30` | 眨眼 challenge 最多连续帧；如果最小帧数配置超过 30 且未显式设置该值，默认会跟随最小帧数 |
 | `FACE_CHALLENGE_ACTIONS` | `blink` | 支持的活体动作，V1.1 稳定支持 `blink` |
+| `FACE_ANTI_SPOOF_MEDIUM_ACTION` | `retry` | 中风险防翻拍处理策略：默认要求重试一次；可选 `retry` / `review` / `block` |
+| `FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS` | `300` | 中风险重试 token 有效期；最大重试次数在 V2.3 固定为 1 |
+| `FACE_ANTI_SPOOF_MIN_FRAME_VARIATION` | `5.0` | 轻量防翻拍亮度变化阈值 |
 | `FACE_ANTI_SPOOF_MIN_FRAME_DELTA` | `1.0` | 轻量防翻拍连续帧重复判定的最低帧差阈值 |
+| `FACE_ANTI_SPOOF_MIN_FACE_MOTION` | `0.015` | 抽样人脸框位置或面积变化阈值 |
+| `FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION` | `1.0` | 清晰度变化阈值 |
 | `FACE_DEFAULT_POLICY_PROFILE` | `default` | 默认识别策略档案 |
 | `FACE_TERMINAL_POLICY_MAP` | 空 | terminal 到策略档案的绑定，如 `door-1:strict` |
 | `FACE_MAX_BASE64_CHARS` | `11185068` | Base64 图片字符串最大长度 |
@@ -394,7 +399,7 @@ set FACE_FORCE_CPU=1
 | `BUSINESS_DEMO_TOKEN_SECRET` | `business-demo-dev-secret` | demo token 签名密钥；仅适合开发，`BUSINESS_DEMO_ENV=production` 时必须替换为随机长密钥 |
 | `BUSINESS_DEMO_TOKEN_TTL_SECONDS` | `3600` | demo token 有效期 |
 
-如果生产模式下通过 `http://localhost:8122/acceptance.html` 做 V2.2 现场验收，需要设置：
+如果生产模式下通过 `http://localhost:8122/acceptance.html` 做 V2.3 现场验收，需要设置：
 
 ```bat
 set FACE_CORS_ORIGINS=http://localhost:8122

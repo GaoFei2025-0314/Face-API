@@ -36,6 +36,21 @@ class FaceApiClient:
             if exc.code == 401:
                 raise_business_error("FACE_API_AUTH_FAILED")
             if isinstance(detail, dict) and detail.get("code"):
+                if detail["code"] == "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED":
+                    raise_business_error(
+                        "FACE_API_ANTI_SPOOF_MEDIUM_RETRY_REQUIRED",
+                        message=detail.get("message"),
+                        reason=detail.get("reason"),
+                        status_code=exc.code,
+                        extra={"retry": detail.get("retry") or {}},
+                    )
+                if detail["code"] == "ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED":
+                    raise_business_error(
+                        "FACE_API_ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED",
+                        message=detail.get("message"),
+                        reason=detail.get("reason"),
+                        status_code=exc.code,
+                    )
                 raise_business_error(
                     detail["code"],
                     message=detail.get("message"),

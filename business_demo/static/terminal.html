@@ -78,6 +78,7 @@
 
   <script>
     let stream = null;
+    let riskRetryToken = "";
 
     function formatAntiSpoofRisk(risk) {
       if (!risk || typeof risk !== "object") return "防翻拍风险：未返回";
@@ -93,6 +94,7 @@
       const clean = {};
       for (const [key, item] of Object.entries(value)) {
         if (key === "metrics") continue;
+        if (key === "risk_retry_token") continue;
         clean[key] = sanitizeResult(item);
       }
       if (clean.anti_spoof_risk) clean.anti_spoof_summary = formatAntiSpoofRisk(clean.anti_spoof_risk);
@@ -206,9 +208,11 @@
           image: loginImage,
           terminal_id: terminal_id.value,
           challenge_id: liveness.challenge_id,
+          risk_retry_token: riskRetryToken || null,
           state: eventId
         }, headers);
 
+        riskRetryToken = "";
         setStatus(faceData.anti_spoof_risk ? `识别成功，${formatAntiSpoofRisk(faceData.anti_spoof_risk)}` : "识别成功，上报 business-demo。");
         const report = await requestJson(`${businessUrl.value}/api/terminal/login-events`, {
           event_id: eventId,
@@ -222,7 +226,13 @@
         setStatus("终端链路完成。", "ok");
         show({ok: true, liveness, face: faceData, business: report});
       } catch (err) {
-        setStatus("终端链路失败，请查看结果中的中文原因。", "fail");
+        const detail = err.detail || {};
+        if (detail.code === "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED") {
+          riskRetryToken = detail.retry && detail.retry.risk_retry_token ? detail.retry.risk_retry_token : "";
+          setStatus("检测到中风险，请重试一次。", "fail");
+        } else {
+          setStatus("终端链路失败，请查看结果中的中文原因。", "fail");
+        }
         show(err);
       }
     }

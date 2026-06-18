@@ -78,6 +78,7 @@
     let selectedUserId = "100001";
     let demoToken = "";
     let challengePurpose = "login";
+    let riskRetryToken = "";
     let stream = null;
 
     function formatAntiSpoofRisk(risk) {
@@ -94,6 +95,7 @@
       const clean = {};
       for (const [key, item] of Object.entries(value)) {
         if (key === "metrics") continue;
+        if (key === "risk_retry_token") continue;
         clean[key] = sanitizeResult(item);
       }
       if (clean.anti_spoof_risk) clean.anti_spoof_summary = formatAntiSpoofRisk(clean.anti_spoof_risk);
@@ -221,16 +223,31 @@
     }
 
     async function faceLogin() {
-      const loginImage = image.value.trim() || captureBase64();
-      const data = await api("/api/auth/face-login", {method: "POST", body: JSON.stringify({
-        image: loginImage, terminal_id: terminalId.value, challenge_id: challengeId.value, state: `web-${Date.now()}`
-      })});
-      demoToken = data.token;
-      if (data.face && data.face.face_api && data.face.face_api.anti_spoof_risk) {
-        cameraStatus.textContent = formatAntiSpoofRisk(data.face.face_api.anti_spoof_risk);
+      try {
+        const loginImage = image.value.trim() || captureBase64();
+        const data = await api("/api/auth/face-login", {method: "POST", body: JSON.stringify({
+          image: loginImage,
+          terminal_id: terminalId.value,
+          challenge_id: challengeId.value,
+          risk_retry_token: riskRetryToken || null,
+          state: `web-${Date.now()}`
+        })});
+        riskRetryToken = "";
+        demoToken = data.token;
+        if (data.face && data.face.face_api && data.face.face_api.anti_spoof_risk) {
+          cameraStatus.textContent = formatAntiSpoofRisk(data.face.face_api.anti_spoof_risk);
+        }
+        show("result", data);
+        loadAudit();
+      } catch (err) {
+        const detail = err.detail || {};
+        if (detail.code === "FACE_API_ANTI_SPOOF_MEDIUM_RETRY_REQUIRED" || detail.code === "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED") {
+          riskRetryToken = detail.retry && detail.retry.risk_retry_token ? detail.retry.risk_retry_token : "";
+          cameraStatus.className = "status fail";
+          cameraStatus.textContent = "检测到中风险，请重试一次";
+        }
+        show("result", err);
       }
-      show("result", data);
-      loadAudit();
     }
 
     async function loadAudit() {

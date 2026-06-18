@@ -32,6 +32,7 @@ class FaceLoginReq(BaseModel):
     image: str
     terminal_id: str
     challenge_id: str
+    risk_retry_token: Optional[str] = None
     state: Optional[str] = None
     threshold: float = 0.6
 

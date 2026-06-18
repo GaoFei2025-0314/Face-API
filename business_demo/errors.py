@@ -1,13 +1,14 @@
 class BusinessDemoError(Exception):
-    def __init__(self, code, message, reason, status_code=400):
+    def __init__(self, code, message, reason, status_code=400, extra=None):
         super().__init__(reason)
         self.code = code
         self.message = message
         self.reason = reason
         self.status_code = status_code
+        self.extra = extra or {}
 
     def detail(self):
-        return {"code": self.code, "message": self.message, "reason": self.reason}
+        return {"code": self.code, "message": self.message, "reason": self.reason, **self.extra}
 
 
 ERRORS = {
@@ -66,6 +67,16 @@ ERRORS = {
         "疑似翻拍风险",
         "人脸识别服务判断本次采集疑似照片、屏幕或静态画面，请重新面对摄像头完成活体检测",
     ),
+    "FACE_API_ANTI_SPOOF_MEDIUM_RETRY_REQUIRED": (
+        403,
+        "检测到中风险，请重试一次",
+        "人脸识别服务要求重新面对摄像头重试一次",
+    ),
+    "FACE_API_ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED": (
+        403,
+        "中风险重试未通过",
+        "本次中风险重试机会已使用，请重新发起登录或转人工复核",
+    ),
     "FACE_API_MATCH_MISMATCH": (
         403,
         "人脸识别结果不匹配",
@@ -89,7 +100,7 @@ ERRORS = {
 }
 
 
-def raise_business_error(code, message=None, reason=None, status_code=None):
+def raise_business_error(code, message=None, reason=None, status_code=None, extra=None):
     default_status, default_message, default_reason = ERRORS.get(
         code,
         (400, "业务请求失败", "业务请求处理失败，请查看返回的错误码"),
@@ -99,4 +110,5 @@ def raise_business_error(code, message=None, reason=None, status_code=None):
         message=message or default_message,
         reason=reason or default_reason,
         status_code=status_code or default_status,
+        extra=extra,
     )

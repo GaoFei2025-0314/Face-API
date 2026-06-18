@@ -173,6 +173,9 @@
       LIVENESS_FRAME_COUNT_INVALID: ["采集帧数不足，请重新尝试", "按后端 action_window_seconds 采集 10 到 30 帧"],
       LIVENESS_ACTION_WINDOW_EXPIRED: ["活体动作超时，请重新开始", "动作需要在后端 action_window_seconds 内完成"],
       ANTI_SPOOF_HIGH_RISK: ["疑似翻拍风险，请重新面对摄像头", "检查是否为照片、屏幕或静态画面，必要时复核 audit 的防翻拍原因"],
+      ANTI_SPOOF_MEDIUM_RETRY_REQUIRED: ["检测到中风险，请重试一次", "页面已保存本次 risk_retry_token，下次登录会自动回传"],
+      ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED: ["中风险重试未通过，请重新开始", "本次重试机会已使用，重新创建 challenge 或转人工复核"],
+      ANTI_SPOOF_RETRY_TOKEN_INVALID: ["重试令牌无效，请重新开始", "检查终端、challenge 和重试流程是否一致"],
       NO_MATCH: ["未匹配到已注册用户", "检查用户是否已注册、阈值是否过高、现场图像质量"],
       VALIDATION_ERROR: ["请求参数不完整，请刷新后重试", "检查必填字段、JSON 格式和字段类型"],
       INVALID_USERNAME: ["姓名不符合要求，请重新输入", "检查 username 是否为空或格式不合法"],
@@ -186,6 +189,7 @@
 
     let stream = null;
     let lastChallenge = null;
+    let loginRiskRetryToken = null;
     const flowStatusIds = ["configStatus", "cameraStepStatus", "registerStatus", "loginStatus", "auditStatus"];
 
     function renderErrorMap() {
@@ -198,6 +202,13 @@
     function setText(id, text) {
       const el = document.getElementById(id);
       if (el) el.textContent = text;
+    }
+
+    function setCameraStatus(state, text) {
+      const status = document.getElementById("cameraStatus");
+      if (!status) return;
+      status.className = "status" + (state ? " " + state : "");
+      status.textContent = text;
     }
 
     function getConfig() {
@@ -283,6 +294,7 @@
       for (const [key, item] of Object.entries(value)) {
         if (key.toLowerCase().includes("embedding")) continue;
         if (key.toLowerCase().includes("api_key") || key.toLowerCase().includes("apikey")) continue;
+        if (key === "risk_retry_token") continue;
         if (key === "metrics") continue;
         clean[key] = sanitize(item);
       }
@@ -296,7 +308,8 @@
       const mapped = errorMap[code] || ["请求失败，请重试", "查看服务日志和接口返回 detail"];
       const message = detail && typeof detail === "object" && detail.message ? detail.message : mapped[0];
       const reason = detail && typeof detail === "object" && detail.reason ? detail.reason : mapped[1];
-      return { code, message, reason, user_message: mapped[0], operator_action: mapped[1], raw: sanitize(data) };
+      const retry = detail && typeof detail === "object" ? detail.retry : null;
+      return { code, message, reason, retry, user_message: mapped[0], operator_action: mapped[1], raw: sanitize(data) };
     }
 
     async function request(path, options = {}) {
@@ -363,16 +376,13 @@
     }
 
     async function startCamera() {
-      const status = document.getElementById("cameraStatus");
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
         document.getElementById("video").srcObject = stream;
-        status.className = "status ok";
-        status.textContent = "摄像头已打开";
+        setCameraStatus("ok", "摄像头已打开");
         setStep("cameraStepStatus", "ok", "已打开");
       } catch (err) {
-        status.className = "status err";
-        status.textContent = "摄像头不可用：" + err.message;
+        setCameraStatus("err", "摄像头不可用：" + err.message);
         setStep("cameraStepStatus", "err", "不可用");
       }
     }
@@ -405,19 +415,12 @@
     async function captureFrames(count = 24, intervalMs = 180, actionText = "请眨眼并轻微前后移动") {
       await ensureCamera();
       const frames = [];
-      const status = document.getElementById("cameraStatus");
       for (let i = 0; i < count; i += 1) {
-        if (status) {
-          status.className = "status";
-          status.textContent = `${actionText}，正在采集 ${i + 1}/${count}`;
-        }
+        setCameraStatus("", `${actionText}，正在采集 ${i + 1}/${count}`);
         frames.push(captureBase64());
         await new Promise(resolve => setTimeout(resolve, intervalMs));
       }
-      if (status) {
-        status.className = "status ok";
-        status.textContent = "活体帧采集完成，正在提交";
-      }
+      setCameraStatus("ok", "活体帧采集完成，正在提交");
       return frames;
     }
 
@@ -444,6 +447,7 @@
       });
       if (result && result.passed === false) {
         const riskText = result.anti_spoof_risk ? formatAntiSpoofRisk(result.anti_spoof_risk) : "";
+        setCameraStatus("err", "活体失败，请重试");
         throw explainError({
           detail: {
             code: result.result_reason === "anti_spoof_high_risk" ? "ANTI_SPOOF_HIGH_RISK" : "LIVENESS_CHALLENGE_FAILED",
@@ -452,6 +456,7 @@
           }
         });
       }
+      setCameraStatus("ok", "活体提交完成");
       return result;
     }
 
@@ -475,6 +480,7 @@
         setStep("loginStatus", "ok", result.anti_spoof_risk ? formatAntiSpoofRisk(result.anti_spoof_risk) : "活体通过");
         show({ challenge_result: result });
       } catch (err) {
+        setCameraStatus("err", "活体失败，请重试");
         setStep("loginStatus", "err", "活体失败");
         show(err);
       }
@@ -488,6 +494,7 @@
         const challenge = await createChallenge("login");
         setStep("loginStatus", "", "采集活体帧");
         const liveness = await submitChallenge(challenge);
+        setCameraStatus("", "活体通过，正在提交登录");
         setStep("loginStatus", "", "提交登录");
         const image = captureBase64();
         const data = await request("/auth/face-login", {
@@ -496,14 +503,25 @@
             image,
             terminal_id: cfg.terminalId,
             challenge_id: liveness.challenge_id,
+            risk_retry_token: loginRiskRetryToken || undefined,
             threshold: cfg.threshold,
             state: "web-" + Date.now()
           })
         });
+        loginRiskRetryToken = null;
         setStep("loginStatus", "ok", data.anti_spoof_risk ? `登录成功，${formatAntiSpoofRisk(data.anti_spoof_risk)}` : "登录成功");
+        setCameraStatus("ok", "登录完成");
         show({ step: "login_complete", data, business_next_step: "业务系统拿 match.user_id/username 查询用户表并签发自己的 session" });
       } catch (err) {
-        setStep("loginStatus", "err", "登录失败");
+        if (err.code === "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED" && err.retry && err.retry.risk_retry_token) {
+          loginRiskRetryToken = err.retry.risk_retry_token;
+          setCameraStatus("err", "检测到中风险，请重试一次");
+          setStep("loginStatus", "err", "中风险，请重试一次");
+        } else {
+          loginRiskRetryToken = null;
+          setCameraStatus("err", "登录失败，请重试");
+          setStep("loginStatus", "err", "登录失败");
+        }
         show(err);
       } finally {
         await refreshAuditAfterLogin();
@@ -528,6 +546,7 @@
           setStep("registerStatus", "", "采集注册图");
           await ensureCamera();
         }
+        setCameraStatus("", "正在提交注册");
         const image = captureBase64();
         const data = await request("/faces/register", {
           method: "POST",
@@ -541,8 +560,10 @@
           })
         });
         setStep("registerStatus", "ok", "注册成功");
+        setCameraStatus("ok", "注册完成");
         show({ step: "register_complete", data });
       } catch (err) {
+        setCameraStatus("err", "注册失败，请重试");
         setStep("registerStatus", "err", "注册失败");
         show(err);
       }

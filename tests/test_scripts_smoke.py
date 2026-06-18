@@ -255,6 +255,18 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn("result.reason || result.result_reason", html)
         self.assertIn("请眨眼并轻微前后移动", html)
 
+    def test_camera_integration_clears_submission_status_after_flows(self):
+        html = (ROOT / "camera-integration.html").read_text(encoding="utf-8")
+
+        self.assertIn("function setCameraStatus(state, text)", html)
+        self.assertIn('setCameraStatus("ok", "活体提交完成");', html)
+        self.assertIn('setCameraStatus("", "活体通过，正在提交登录");', html)
+        self.assertIn('setCameraStatus("ok", "登录完成");', html)
+        self.assertIn('setCameraStatus("err", "登录失败，请重试");', html)
+        self.assertIn('setCameraStatus("", "正在提交注册");', html)
+        self.assertIn('setCameraStatus("ok", "注册完成");', html)
+        self.assertIn('setCameraStatus("err", "注册失败，请重试");', html)
+
     def test_camera_integration_displays_anti_spoof_risk_without_metrics(self):
         html = (ROOT / "camera-integration.html").read_text(encoding="utf-8")
 
@@ -262,6 +274,15 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn("anti_spoof_risk", html)
         self.assertIn("防翻拍", html)
         self.assertNotIn("anti_spoof_risk.metrics", html)
+
+    def test_camera_integration_handles_medium_retry_token_without_displaying_it(self):
+        html = (ROOT / "camera-integration.html").read_text(encoding="utf-8")
+
+        self.assertIn("loginRiskRetryToken", html)
+        self.assertIn("ANTI_SPOOF_MEDIUM_RETRY_REQUIRED", html)
+        self.assertIn("risk_retry_token: loginRiskRetryToken || undefined", html)
+        self.assertIn('key === "risk_retry_token"', html)
+        self.assertIn("请重试一次", html)
 
     def test_v21_acceptance_record_and_docs_cover_anti_spoofing(self):
         acceptance = (ROOT / "docs" / "90_archive" / "04_acceptance" / "05_v2.1_acceptance_record.md").read_text(
@@ -326,10 +347,21 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn("apiKey: undefined", html)
         self.assertIn("image: undefined", html)
         self.assertIn("frames: undefined", html)
+        self.assertIn("risk_retry_token: undefined", html)
         self.assertNotIn("localStorage", html)
         self.assertNotIn("sessionStorage", html)
         self.assertNotIn("indexedDB", html)
         self.assertNotIn("embedding", html.lower())
+
+    def test_acceptance_page_distinguishes_medium_retry_in_v23_reports(self):
+        html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
+
+        self.assertIn('version: "V2.3"', html)
+        self.assertIn("face-api-v2.3-acceptance.json", html)
+        self.assertIn("face-api-v2.3-acceptance.csv", html)
+        self.assertIn("ANTI_SPOOF_MEDIUM_RETRY_REQUIRED", html)
+        self.assertIn("medium_retry_required", html)
+        self.assertIn("retry_required", html)
 
     def test_acceptance_page_hardens_reviewed_frontend_edges(self):
         html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
@@ -407,7 +439,7 @@ class ScriptSmokeTests(unittest.TestCase):
             "face_pixels",
         ]:
             self.assertIn(field, html)
-        self.assertIn("样例类型,第几次,是否成功,风险等级,相似度,det_score,brightness,sharpness,face_pixels,中文原因,风险原因", html)
+        self.assertIn("样例类型,第几次,是否成功,处理结果,需要重试,风险等级,相似度,det_score,brightness,sharpness,face_pixels,中文原因,风险原因", html)
         self.assertIn("escapeHtml", html)
         self.assertIn("escapeHtml(last.message)", html)
 
@@ -464,6 +496,16 @@ class ScriptSmokeTests(unittest.TestCase):
             self.assertIn("anti_spoof_risk", html)
             self.assertIn("防翻拍", html)
             self.assertNotIn("anti_spoof_risk.metrics", html)
+
+    def test_business_demo_pages_handle_medium_retry_token(self):
+        index_html = (ROOT / "business_demo" / "static" / "index.html").read_text(encoding="utf-8")
+        terminal_html = (ROOT / "business_demo" / "static" / "terminal.html").read_text(encoding="utf-8")
+
+        for html in (index_html, terminal_html):
+            self.assertIn("riskRetryToken", html)
+            self.assertIn("risk_retry_token", html)
+            self.assertIn("ANTI_SPOOF_MEDIUM_RETRY_REQUIRED", html)
+            self.assertIn("请重试一次", html)
 
     def test_business_demo_terminal_page_has_local_dependencies_only(self):
         html = (ROOT / "business_demo" / "static" / "terminal.html").read_text(encoding="utf-8")

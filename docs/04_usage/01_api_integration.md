@@ -1,7 +1,7 @@
 # 人脸识别 API 前端对接文档
 
-> 最后同步：2026-06-16
-> 适用阶段：face_api V2.1 轻量防翻拍活体增强
+> 最后同步：2026-06-17
+> 适用阶段：face_api V2.3 轻量防翻拍阈值治理与中风险重试机制
 
 这是 **联调手册**。  
 如果你是前端 / 全栈 / Electron 集成方，优先看这一份。
@@ -229,6 +229,9 @@ function fileToBase64(file) {
 | `LIVENESS_ACTION_WINDOW_EXPIRED` | 活体动作超时，请重新开始。 | 用户必须在 `FACE_CHALLENGE_ACTION_SECONDS` 时间窗口内完成动作。 |
 | `LIVENESS_FRAME_COUNT_INVALID` | 采集帧数不足，请重新尝试。 | 按后端配置采集 10 到 30 帧。 |
 | `ANTI_SPOOF_HIGH_RISK` | 疑似翻拍风险，请重新面对摄像头。 | 检查是否为照片、屏幕或静态画面，结合 audit 的 `anti_spoof_risk` 复核。 |
+| `ANTI_SPOOF_MEDIUM_RETRY_REQUIRED` | 检测到中风险，请重试一次。 | 保存 `detail.retry.risk_retry_token`，重新采集活体和登录图片，下一次 `/auth/face-login` 回传该 token。 |
+| `ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED` | 重试后仍存在中风险，请联系工作人员处理。 | 中风险最多重试 1 次；不要继续无限重试。 |
+| `ANTI_SPOOF_RETRY_TOKEN_INVALID` | 重试凭证已失效，请重新开始登录。 | 重新创建 login challenge；检查 token 是否过期、已使用或 terminal 不一致。 |
 | `NO_MATCH` | 未匹配到已注册用户。 | 检查用户是否已注册、阈值是否过高、现场图像质量。 |
 | `VALIDATION_ERROR` | 请求参数不完整，请刷新后重试。 | 检查必填字段、JSON 格式和字段类型。 |
 | `MAINTENANCE_MODE_ACTIVE` | 系统维护中，请稍后再试。 | 等待运维退出维护模式。 |
@@ -436,7 +439,8 @@ X-API-Key: <你的密钥>
   "terminal_id": "kiosk-01",
   "challenge_id": "passed-login-challenge-id",
   "state": "trace-001",
-  "threshold": 0.6
+  "threshold": 0.6,
+  "risk_retry_token": null
 }
 ```
 
@@ -506,6 +510,31 @@ V2.1 起，活体提交和 face login 会返回可选 `anti_spoof_risk`：
 - `FACE_ANTI_SPOOF_MIN_FACE_MOTION`：抽样人脸框位置或面积变化阈值，默认 `0.015`。
 - `FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION`：清晰度变化阈值，默认 `1.0`。
 
+V2.3 起，中风险默认不再直接放行，而是返回一次重试机会。第一次中风险默认返回 HTTP 403：
+
+```json
+{
+  "detail": {
+    "code": "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED",
+    "message": "检测到中风险，请重试一次",
+    "reason": "当前画面存在轻量防翻拍中风险，请重新面对摄像头完成一次采集",
+    "retry": {
+      "risk_retry_token": "<opaque-token>",
+      "expires_at": "2026-06-17T12:00:00Z",
+      "remaining_attempts": 1
+    }
+  }
+}
+```
+
+客户端处理规则：
+
+- `risk_retry_token` 是不透明 token，只能原样保存并回传，不要解析、展示或写入报告。
+- 第二次重试必须重新创建 login challenge，重新采集连续帧和登录图片，并在 `/auth/face-login` 请求体中同时传新的 `challenge_id` 和上一次返回的 `risk_retry_token`。
+- token 由后端强制校验，最多使用 1 次，并绑定 `terminal_id` 和有效期；不要依赖前端 `state` 自己计数。
+- 第二次仍为中风险时，后端返回 `ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED`，前端应提示失败或转人工处理。
+- `acceptance.html` 的 JSON/CSV 报告和 audit 页面只记录 retry 状态，不导出原始 token。
+
 高风险 challenge 示例：
 
 ```json
@@ -535,6 +564,7 @@ V2.1 起，活体提交和 face login 会返回可选 `anti_spoof_risk`：
 - 用途和 `terminal_id` 必须与 login/注册请求一致。
 - challenge 通过时的人脸必须与最终 login/注册图片中的人脸一致。
 - 如果 challenge 提交失败，请重新创建 challenge；失败的 `challenge_id` 不能继续复用。
+- V2.3 中风险重试时，第二次 login 也必须使用新的已通过 `challenge_id`，不能复用第一次 challenge。
 - 维护模式下不能创建或提交 challenge。
 
 ### V1.1 运维控制台 API
@@ -585,6 +615,7 @@ terminal 上线前至少验证：
 - 注册流程能正确处理 `NO_FACE`、`MULTIPLE_FACES`、`FACE_QUALITY_LOW`。
 - face login 流程能先完成活体 challenge，再携带一次性 `challenge_id` 调用 `/auth/face-login`。
 - 活体失败时，用户端展示简短操作提示。
+- 中风险 `ANTI_SPOOF_MEDIUM_RETRY_REQUIRED` 时，用户端重新采集一次，并把 `risk_retry_token` 只回传给下一次 `/auth/face-login`。
 - `NO_MATCH`、`LIVENESS_CHALLENGE_REQUIRED`、`LIVENESS_CHALLENGE_INVALID` 能映射到明确重试动作。
 - 现场网络异常时客户端有 timeout 和 retry 限制，避免无限重试。
 - 运维人员能在 `/audit/login/recent?terminal_id=<id>` 中看到该 terminal 的记录。
@@ -614,6 +645,7 @@ terminal 上线前至少验证：
 - 图片必须且只能有 1 张脸
 - 无人脸 / 多人脸 / 无匹配 / 脏底库记录都走结构化失败语义
 - 高风险防翻拍结果返回 `ANTI_SPOOF_HIGH_RISK`，不应继续发起业务登录
+- 中风险默认返回 `ANTI_SPOOF_MEDIUM_RETRY_REQUIRED`，不应当作登录成功；第二次仍中风险返回 `ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED`
 - 只返回匹配结果，不负责 token/session 签发
 
 ---
@@ -650,7 +682,11 @@ X-API-Key: <你的密钥>
     "enabled": true,
     "mode": "lightweight-risk-score",
     "default_block_level": "high",
-    "medium_action": "review",
+    "medium_action": "retry",
+    "retry": {
+      "medium_max_retries": 1,
+      "token_ttl_seconds": 300
+    },
     "thresholds": {
       "min_frame_variation": 5.0,
       "min_frame_delta": 1.0,
@@ -702,7 +738,11 @@ X-API-Key: <你的密钥>
     "enabled": true,
     "mode": "lightweight-risk-score",
     "default_block_level": "high",
-    "medium_action": "review",
+    "medium_action": "retry",
+    "retry": {
+      "medium_max_retries": 1,
+      "token_ttl_seconds": 300
+    },
     "thresholds": {
       "min_frame_variation": 5.0,
       "min_frame_delta": 1.0,
@@ -728,6 +768,10 @@ X-API-Key: <你的密钥>
 - `terminal_id`：按终端标识筛选
 
 V2.1 起，每条记录可能包含 `anti_spoof_risk`，用于区分普通活体失败、画面质量问题和疑似翻拍高风险。页面只展示风险等级和中文提示，运维可以结合 `reasons` 复核。
+
+V2.2 起，login 用途的活体 challenge 如果在 `/liveness/challenges/submit` 阶段失败，也会写入一条失败 login audit，便于现场验收时在“最近 audit”里看到完整登录失败链路。
+
+V2.3 起，中风险重试会记录 retry 状态、风险等级、原因和处理动作，但不会记录或返回原始 `risk_retry_token`。token 只出现在本次错误响应的 `detail.retry.risk_retry_token` 中。
 
 ### `GET /audit/login/summary`
 用途：
@@ -827,14 +871,21 @@ async function faceLogin(apiBase, apiKey, terminalId, challengeId, imageBase64) 
       terminal_id: terminalId,
       challenge_id: challengeId,
       threshold: 0.6,
-      state: "trace-" + Date.now()
+      state: "trace-" + Date.now(),
+      risk_retry_token: window.pendingRiskRetryToken || undefined
     })
   });
   const data = await res.json();
-  if (!res.ok) throw data;
+  if (!res.ok) {
+    if (data.detail && data.detail.code === "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED") {
+      window.pendingRiskRetryToken = data.detail.retry && data.detail.retry.risk_retry_token;
+    }
+    throw data;
+  }
 
   // face_api 不签发 token/session。
   // 业务系统应使用 data.match.user_id / data.match.username 查询自己的用户表。
+  window.pendingRiskRetryToken = null;
   return data;
 }
 ```
@@ -899,12 +950,32 @@ export interface FaceLoginResp {
   elapsed_ms: number;
 }
 
+export interface FaceLoginReq {
+  image: string;
+  terminal_id: string;
+  challenge_id: string;
+  threshold?: number;
+  state?: string | null;
+  risk_retry_token?: string | null;
+}
+
 export interface AntiSpoofRisk {
   level: "low" | "medium" | "high";
   reasons: string[];
   action: "allow" | "review" | "retry" | "block";
   message: string;
   metrics?: Record<string, number | string | null>;
+}
+
+export interface FaceApiErrorDetail {
+  code: string;
+  message: string;
+  reason: string;
+  retry?: {
+    risk_retry_token: string;
+    expires_at: string;
+    remaining_attempts: number;
+  };
 }
 ```
 

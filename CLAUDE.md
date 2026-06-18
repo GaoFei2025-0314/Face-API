@@ -8,6 +8,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Keep the MVP shape small: the business code currently lives in `main.py`, `face_engine.py`, and `storage.py`. Prefer extending these files while they remain focused and under roughly 500 lines. Do not framework-ize `test.html` or the `.bat` scripts.
 
+## Karpathy-style coding guidelines
+
+Use these rules when writing, reviewing, or refactoring code in this repository:
+
+- Think before coding. State assumptions, surface uncertainty, and ask when requirements have multiple reasonable interpretations.
+- Keep changes simple. Implement the minimum code that solves the requested problem; avoid speculative features, single-use abstractions, and unnecessary configurability.
+- Make surgical edits. Touch only the files and lines required by the task, match existing style, and do not refactor unrelated code.
+- Clean up only what your change creates. Remove imports, variables, functions, or docs made obsolete by your own edits, but do not delete pre-existing dead code unless asked.
+- Work from verifiable goals. For bugs, write or identify a failing test/reproduction first; for features, define the expected behavior and verification command before implementation.
+- Report tradeoffs clearly. If a faster approach is less robust, or a robust approach adds complexity, say so before choosing.
+
 ## Common commands
 
 Use Windows commands unless the user explicitly asks for another shell.

@@ -69,13 +69,15 @@ class AppConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "FACE_CHALLENGE_MAX_FRAMES 必须大于等于 40"):
                 load_settings()
 
-    def test_anti_spoof_defaults_keep_lightweight_user_experience(self):
+    def test_anti_spoof_defaults_require_medium_retry_once(self):
         with patch.dict(os.environ, {"FACE_DB_PATH": "faces.db"}, clear=True):
             settings = load_settings()
 
         self.assertTrue(settings.face_anti_spoof_enabled)
         self.assertEqual(settings.face_anti_spoof_block_level, "high")
-        self.assertEqual(settings.face_anti_spoof_medium_action, "review")
+        self.assertEqual(settings.face_anti_spoof_medium_action, "retry")
+        self.assertEqual(settings.face_anti_spoof_retry_token_ttl_seconds, 300)
+        self.assertFalse(hasattr(settings, "face_anti_spoof_medium_max_retries"))
         self.assertEqual(settings.face_anti_spoof_min_frame_variation, 5.0)
         self.assertEqual(settings.face_anti_spoof_min_frame_delta, 1.0)
         self.assertEqual(settings.face_anti_spoof_min_face_motion, 0.015)
@@ -97,6 +99,7 @@ class AppConfigTest(unittest.TestCase):
             {
                 "FACE_DB_PATH": "faces.db",
                 "FACE_ANTI_SPOOF_MIN_FRAME_DELTA": "2.5",
+                "FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS": "120",
                 "FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION": "8.5",
             },
             clear=True,
@@ -104,7 +107,17 @@ class AppConfigTest(unittest.TestCase):
             settings = load_settings()
 
         self.assertEqual(settings.face_anti_spoof_min_frame_delta, 2.5)
+        self.assertEqual(settings.face_anti_spoof_retry_token_ttl_seconds, 120)
         self.assertEqual(settings.face_liveness_min_brightness_variation, 8.5)
+
+    def test_retry_token_ttl_rejects_invalid_values(self):
+        with patch.dict(
+            os.environ,
+            {"FACE_DB_PATH": "faces.db", "FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS": "0"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS"):
+                load_settings()
 
     def test_anti_spoof_rejects_invalid_policy_values(self):
         with patch.dict(

@@ -2,7 +2,7 @@
 
 > 当前日期：2026-06-17
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：V2.1 轻量防翻拍活体增强（已完成），V2.2 现场算法验收与阈值调优台（自动验证已完成，待现场摄像头验收）
+> 当前版本基线：V2.3 轻量防翻拍阈值治理与中风险重试机制已完成，固定摄像头现场五类样例验收通过。
 
 ## 1. 本季度目标
 
@@ -29,7 +29,8 @@
 | V1.9 | 现场验收收口与 P1/P2 小修 | 已完成 | `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`、`specs/020-field-acceptance-closure/tasks.md` |
 | V2.0 | 业务系统正式接入示范版 | 已完成 | `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`、`specs/021-business-integration-demo/tasks.md` |
 | V2.1 | 轻量防翻拍活体增强 | 已完成 | `docs/90_archive/04_acceptance/05_v2.1_acceptance_record.md`、`specs/022-lightweight-anti-spoofing/tasks.md` |
-| V2.2 | 现场算法验收与阈值调优台 | 自动验证已完成，待现场摄像头验收 | `docs/90_archive/04_acceptance/06_v2.2_acceptance_record.md`、`specs/023-field-algorithm-acceptance-console/tasks.md` |
+| V2.2 | 现场算法验收与阈值调优台 | 现场验收完成，主链路通过，防翻拍未达上线标准 | `docs/90_archive/04_acceptance/06_v2.2_acceptance_record.md`、`specs/023-field-algorithm-acceptance-console/tasks.md` |
+| V2.3 | 轻量防翻拍阈值治理与中风险重试机制 | 已完成 | `docs/90_archive/04_acceptance/07_v2.3_acceptance_record.md`、`specs/024-lightweight-anti-spoof-governance/tasks.md` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -147,7 +148,7 @@ V2.0 准入和边界：
 
 V2.1 已完成轻量防翻拍活体增强，核心结果是 `anti_spoof_risk`、中文失败原因、audit 记录和 business-demo 风险透传能力。
 
-## 10. V2.2 下一步计划
+## 10. V2.2 现场验收结果与 V2.3 下一步计划
 
 V2.2 主题为“现场算法验收与阈值调优台”。目标是在不新增后端存储和公开接口的前提下，用 `acceptance.html` 完成五类样例现场验收、报告下载和保守调参建议。
 
@@ -168,6 +169,33 @@ V2.2 关键边界：
 - 注册/重绑兼容注册活体开关。
 - 通过 `FACE_CORS_ORIGINS` 支持 `http://localhost:8122` 现场浏览器验收。
 - 不保存原图、连续帧、embedding 或 API Key。
+
+V2.2 现场验收结论：
+
+- 真人正脸 3/3 成功，说明主链路可用。
+- 打印照片、手机屏幕照片、电脑屏幕照片和手机播放眨眼视频仍出现低风险成功。
+- 后续进入 V2.3，重点治理轻量防翻拍风险评分和中风险重试策略。
+
+V2.3 基线入口：
+
+```text
+specs/ROADMAP-v2.3.md
+specs/024-lightweight-anti-spoof-governance/spec.md
+specs/024-lightweight-anti-spoof-governance/plan.md
+specs/024-lightweight-anti-spoof-governance/tasks.md
+docs/90_archive/04_acceptance/07_v2.3_acceptance_record.md
+```
+
+V2.3 关键边界：
+
+- 真人正脸至少 2/3 通过。
+- 翻拍样例不能再低风险静默成功。
+- 不新增复杂动作，不引入重型 anti-spoofing 模型。
+- 中风险默认由后端强制重试，最多重试 1 次。
+- 中风险策略可配置，但默认验收使用强制重试。
+- 中风险重试由后端签发的 `risk_retry_token` 强制，第二次 login 必须回传有效 token 和新的 `challenge_id`，不能依赖前端 `state` 或业务端自报次数。
+- 第一次中风险错误响应固定包含 `detail.retry.risk_retry_token`、`detail.retry.expires_at`、`detail.retry.remaining_attempts`；audit 和报告不得导出原始 token。
+- 固定摄像头现场验收已通过；手持或移动摄像头制造运动视差属于残余风险，需要后续更强活体能力或设备固定约束。
 
 ## 11. 每周检查节奏
 

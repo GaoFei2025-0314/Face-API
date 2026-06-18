@@ -109,6 +109,18 @@ ERROR_DEFINITIONS = {
         "message": "疑似翻拍风险",
         "reason": "疑似照片、屏幕或静态画面，请面对摄像头重新完成活体检测",
     },
+    "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED": {
+        "message": "检测到中风险，请重试一次",
+        "reason": "当前画面存在轻量防翻拍中风险，请重新面对摄像头完成一次采集",
+    },
+    "ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED": {
+        "message": "中风险重试未通过",
+        "reason": "本次中风险重试机会已使用，请重新发起登录或转人工复核",
+    },
+    "ANTI_SPOOF_RETRY_TOKEN_INVALID": {
+        "message": "中风险重试令牌无效",
+        "reason": "重试令牌不存在、已过期、已使用或不属于当前终端，请重新完成人脸登录",
+    },
     "UNSUPPORTED_LIVENESS_ACTION": {
         "message": "不支持的活体动作",
         "reason": "第一版活体挑战至少稳定支持眨眼，请检查 action 参数",
@@ -140,14 +152,28 @@ ERROR_DEFINITIONS = {
 }
 
 
-def error_detail(code: str, message: Optional[str] = None, reason: Optional[str] = None) -> dict:
+def error_detail(
+    code: str,
+    message: Optional[str] = None,
+    reason: Optional[str] = None,
+    extra: Optional[dict] = None,
+) -> dict:
     definition = ERROR_DEFINITIONS.get(code, {})
-    return {
+    detail = {
         "code": code,
         "message": message or definition.get("message", "请求失败"),
         "reason": reason or definition.get("reason", "请求处理失败，请检查请求参数或联系服务维护人员"),
     }
+    if extra:
+        detail.update(extra)
+    return detail
 
 
-def raise_api_error(status_code: int, code: str, message: Optional[str] = None, reason: Optional[str] = None):
-    raise HTTPException(status_code=status_code, detail=error_detail(code, message, reason))
+def raise_api_error(
+    status_code: int,
+    code: str,
+    message: Optional[str] = None,
+    reason: Optional[str] = None,
+    extra: Optional[dict] = None,
+):
+    raise HTTPException(status_code=status_code, detail=error_detail(code, message, reason, extra))

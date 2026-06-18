@@ -13,6 +13,7 @@
 - `ROADMAP-v2.0.md` - 业务系统正式接入示范版规划
 - `ROADMAP-v2.1.md` - 轻量防翻拍活体增强规划
 - `ROADMAP-v2.2.md` - 现场算法验收与阈值调优台规划
+- `ROADMAP-v2.3.md` - 轻量防翻拍阈值治理与中风险重试机制规划
 
 ## 已规划开发阶段
 
@@ -135,6 +136,30 @@ Roadmap v2.2 已确认主定位为“现场算法验收与阈值调优台”。�
 - 支持 JSON/CSV 报告下载。
 - 不保存原图、连续帧或 API Key。
 - 只提供保守调参方向。
+
+Roadmap v2.3 已完成入口：
+
+- `024-lightweight-anti-spoof-governance/spec.md`
+- `024-lightweight-anti-spoof-governance/plan.md`
+- `024-lightweight-anti-spoof-governance/tasks.md`
+- `docs/90_archive/04_acceptance/07_v2.3_acceptance_record.md`
+
+Roadmap v2.3 建议执行顺序：
+
+1. `024-lightweight-anti-spoof-governance` - 轻量防翻拍阈值治理与中风险重试机制
+
+Roadmap v2.3 已完成，主定位为“轻量防翻拍阈值治理与中风险重试机制”。关键决策包括：
+
+- 真人正脸至少 2/3 通过。
+- 翻拍样例不能再低风险静默成功。
+- 不新增复杂动作，不引入重型 anti-spoofing 模型。
+- 增强现有连续帧轻量评分逻辑。
+- 中风险默认由后端强制重试。
+- 中风险策略可配置，默认最多重试 1 次。
+- 中风险重试由后端 `risk_retry_token` 强制，不依赖前端 `state` 或业务端自报次数。
+- 第一次中风险错误响应固定包含 `detail.retry.risk_retry_token`、`detail.retry.expires_at`、`detail.retry.remaining_attempts`。
+- V2.3 最大重试次数固定为 1，不新增最大重试次数环境变量；只配置中风险策略和 retry token TTL。
+- 固定摄像头现场五类样例验收通过；手持或移动摄像头制造运动视差记录为残余风险。
 
 ## 推荐流程
 

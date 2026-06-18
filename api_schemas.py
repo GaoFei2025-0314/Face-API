@@ -42,6 +42,7 @@ class FaceLoginReq(BaseModel):
     image: str = Field(..., description="摄像头截图或照片的 Base64")
     terminal_id: str = Field(..., description="终端标识，用于审计和业务侧追踪")
     challenge_id: Optional[str] = Field(None, description="通过活体 challenge 后获得的一次性 ID")
+    risk_retry_token: Optional[str] = Field(None, description="中风险重试时由后端签发、客户端原样回传的一次性令牌")
     state: Optional[str] = Field(None, description="前端请求追踪标识")
     threshold: float = Field(0.6, ge=0.0, le=1.0, description="认证匹配阈值，默认 0.60")
 

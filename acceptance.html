@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>face_api V2.2 现场算法验收</title>
+  <title>face_api V2.3 现场算法验收</title>
   <style>
     :root {
       --bg: #f4f7fb;
@@ -173,7 +173,7 @@
 <body>
   <header>
     <div>
-      <h1>face_api V2.2 现场算法验收</h1>
+      <h1>face_api V2.3 现场算法验收</h1>
       <p>用于真人、照片、屏幕和视频翻拍样例的本地验收；只记录指标和接口结果，不保存原图、连续帧或 API Key。</p>
     </div>
     <span class="pill unknown">本地工作站 / 受控内网</span>
@@ -319,9 +319,19 @@
     }
 
     function normalizeAttempt(result) {
-      const risk = result.anti_spoof_risk || {};
+      const detail = result.detail || {};
+      const code = detail.code || result.code || "";
+      const retryRequired = code === "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED";
+      const risk = result.anti_spoof_risk || (retryRequired ? {
+        level: "medium",
+        reasons: ["medium_retry_required"],
+        action: "retry",
+        message: detail.message || "检测到中风险，请重试一次"
+      } : {});
       return {
         success: Boolean(result.authenticated || result.passed),
+        outcome: retryRequired ? "medium_retry_required" : (result.authenticated || result.passed ? "success" : "failure"),
+        retry_required: retryRequired,
         similarity: result.similarity ?? result.match?.similarity ?? "",
         risk_level: risk.level || "unknown",
         risk_reasons: risk.reasons || [],
@@ -329,7 +339,8 @@
         message: result.message || result.reason || result.result_reason || result.detail?.reason || "无中文原因",
         apiKey: undefined,
         image: undefined,
-        frames: undefined
+        frames: undefined,
+        risk_retry_token: undefined
       };
     }
 
@@ -400,7 +411,7 @@
     function buildReport() {
       readConfig();
       return {
-        version: "V2.2",
+        version: "V2.3",
         generated_at: new Date().toISOString(),
         api_base_url: state.apiBaseUrl,
         test_user: state.testUser,
@@ -439,18 +450,20 @@
     }
 
     function downloadJsonReport() {
-      downloadBlob("face-api-v2.2-acceptance.json", JSON.stringify(buildReport(), null, 2), "application/json;charset=utf-8");
+      downloadBlob("face-api-v2.3-acceptance.json", JSON.stringify(buildReport(), null, 2), "application/json;charset=utf-8");
     }
 
     function downloadCsvReport() {
       const report = buildReport();
-      const csvHeader = "样例类型,第几次,是否成功,风险等级,相似度,det_score,brightness,sharpness,face_pixels,中文原因,风险原因";
+      const csvHeader = "样例类型,第几次,是否成功,处理结果,需要重试,风险等级,相似度,det_score,brightness,sharpness,face_pixels,中文原因,风险原因";
       const rows = [csvHeader.split(",")];
       report.samples.forEach(sample => sample.attempts.forEach((attempt, index) => {
         rows.push([
           sample.sample_type,
           index + 1,
           attempt.success ? "成功" : "失败",
+          attempt.outcome,
+          attempt.retry_required ? "是" : "否",
           attempt.risk_level,
           attempt.similarity,
           attempt.quality.det_score,
@@ -461,7 +474,7 @@
           attempt.risk_reasons.join(";")
         ]);
       }));
-      downloadBlob("face-api-v2.2-acceptance.csv", rows.map(row => row.map(escapeCsv).join(",")).join("\r\n"), "text/csv;charset=utf-8");
+      downloadBlob("face-api-v2.3-acceptance.csv", rows.map(row => row.map(escapeCsv).join(",")).join("\r\n"), "text/csv;charset=utf-8");
     }
 
     function renderSummary() {
@@ -523,7 +536,10 @@
       if (!response.ok) {
         const detail = data.detail || {};
         const message = detail.reason || detail.message || data.message || response.statusText;
-        throw new Error(`${detail.code || response.status}: ${message}`);
+        const error = new Error(`${detail.code || response.status}: ${message}`);
+        error.detail = detail;
+        error.retry = detail.retry || null;
+        throw error;
       }
       return data;
     }
@@ -656,7 +672,7 @@
           image,
           terminal_id: "acceptance-console",
           challenge_id: challengeId,
-          metadata: { source: "acceptance.html", version: "V2.2" }
+          metadata: { source: "acceptance.html", version: "V2.3" }
         })
       });
       setText("serviceStatus", `测试用户已注册/重绑：${result.user_id ?? state.testUser.user_id ?? "-"} / ${result.username || state.testUser.username}`);
@@ -670,7 +686,7 @@
           image: captureBase64(),
           terminal_id: "acceptance-console",
           challenge_id: challenge.challenge_id,
-          state: "v2.2-acceptance"
+          state: "v2.3-acceptance"
         })
       });
     }
@@ -703,10 +719,15 @@
         })));
         setText("cameraStatus", `${sample.label} 采集完成。`);
       } catch (error) {
+        const detail = error.detail || {};
+        const isMediumRetry = detail.code === "ANTI_SPOOF_MEDIUM_RETRY_REQUIRED";
         sample.attempts.push(normalizeAttempt({
           authenticated: false,
-          message: error.message,
-          anti_spoof_risk: { level: "unknown", reasons: ["request_failed"] }
+          detail,
+          message: detail.reason || error.message,
+          anti_spoof_risk: isMediumRetry
+            ? { level: "medium", reasons: ["medium_retry_required"], action: "retry", message: detail.message || "检测到中风险，请重试一次" }
+            : { level: "unknown", reasons: ["request_failed"] }
         }));
         setText("cameraStatus", `${sample.label} 采集失败：${error.message}`);
       }

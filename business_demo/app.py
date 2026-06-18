@@ -326,6 +326,7 @@ def create_app(settings=None, face_api_client=None):
                 "image": req.image,
                 "terminal_id": req.terminal_id,
                 "challenge_id": req.challenge_id,
+                "risk_retry_token": req.risk_retry_token,
                 "state": req.state,
                 "threshold": req.threshold,
             }
