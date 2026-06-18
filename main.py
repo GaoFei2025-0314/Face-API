@@ -1066,7 +1066,12 @@ def create_liveness_challenge(req: LivenessChallengeCreateReq):
     purpose = req.purpose.strip().lower()
     action = req.action.strip().lower()
     if purpose not in {"login", "register"}:
-        raise_api_error(422, "VALIDATION_ERROR")
+        raise_api_error(
+            422,
+            "VALIDATION_ERROR",
+            message="purpose 必须是 login 或 register",
+            reason=f"当前值为 {purpose!r}，仅支持 login 和 register",
+        )
     if action not in FACE_CHALLENGE_ACTIONS:
         raise_api_error(400, "UNSUPPORTED_LIVENESS_ACTION")
     challenge_id = db.add_liveness_challenge(
@@ -1651,6 +1656,21 @@ def face_login(req: FaceLoginReq):
                 status_code=403,
                 code="ANTI_SPOOF_MEDIUM_REVIEW_REQUIRED",
                 message="中风险需要人工复核",
+                threshold=threshold,
+                terminal_id=terminal_id,
+                state=req.state,
+                elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+                liveness_status=liveness_result["status"],
+                liveness_reason=liveness_result["reason"],
+                quality_metrics=quality_metrics,
+                anti_spoof_risk=anti_spoof_risk,
+            )
+        else:
+            log_event("anti_spoof_medium_action_unknown", medium_action=FACE_ANTI_SPOOF_MEDIUM_ACTION)
+            raise_with_audit(
+                status_code=403,
+                code="ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED",
+                message="中风险未通过（配置异常，已降级处理）",
                 threshold=threshold,
                 terminal_id=terminal_id,
                 state=req.state,

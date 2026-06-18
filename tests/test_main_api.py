@@ -1248,6 +1248,18 @@ class MainApiContractTests(unittest.TestCase):
         self.assert_error_detail(exc_info.exception.detail, "VALIDATION_ERROR", "purpose 必须是 login 或 register")
         self.assertIn("当前值为 'admin'", exc_info.exception.detail["reason"])
 
+    def test_liveness_challenge_create_rejects_invalid_purpose_with_specific_message(self):
+        module = load_main_module(api_key="secret")
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.create_liveness_challenge(
+                module.LivenessChallengeCreateReq(purpose="admin", terminal_id="door-1")
+            )
+
+        self.assertEqual(exc_info.exception.status_code, 422)
+        self.assert_error_detail(exc_info.exception.detail, "VALIDATION_ERROR", "purpose 必须是 login 或 register")
+        self.assertIn("当前值为 'admin'", exc_info.exception.detail["reason"])
+
     def test_liveness_challenge_cannot_be_written_in_maintenance_mode(self):
         module = load_main_module(api_key="secret")
         module.set_maintenance_mode(True)
@@ -1756,6 +1768,57 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(module.db.audit_entries[0]["failure_reason"], "ANTI_SPOOF_MEDIUM_REVIEW_REQUIRED")
         self.assertEqual(module.db.audit_entries[0]["anti_spoof_risk"]["action"], "review")
         self.assertEqual(module.db.risk_retry_tokens, [])
+
+    def test_face_login_medium_anti_spoof_unknown_action_fails_closed(self):
+        module = load_main_module(
+            api_key="secret",
+            disable_login_liveness=False,
+            extra_env={"FACE_MIN_FACE_SHARPNESS": "0"},
+        )
+        module.FACE_ANTI_SPOOF_MEDIUM_ACTION = "warn"
+        challenge_id = module.db.add_liveness_challenge(
+            purpose="login",
+            terminal_id="door-1",
+            action="blink",
+            expires_at=module.time.time() + 60,
+            action_window_seconds=10,
+        )
+        risk = {
+            "level": "medium",
+            "reasons": ["low_frame_variation"],
+            "action": "warn",
+            "message": "画面变化不足，请调整光线、脸部位置后重试",
+        }
+        module.db.mark_liveness_challenge_result(
+            challenge_id,
+            passed=True,
+            result_reason="ok",
+            face_embedding=EMBEDDING,
+            anti_spoof_risk=risk,
+        )
+        module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
+        module.get_single_face_or_raise = lambda _: {
+            "bbox": [0, 0, 80, 80],
+            "det_score": 0.99,
+            "embedding": EMBEDDING,
+        }
+        module.db.search = lambda *args, **kwargs: [
+            {"id": "face-7", "user_id": 7, "username": "alice", "similarity": 0.91, "metadata": {}}
+        ]
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(
+                module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="door-1", challenge_id=challenge_id)
+            )
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assert_error_detail(
+            exc_info.exception.detail,
+            "ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED",
+            "中风险未通过（配置异常，已降级处理）",
+        )
+        self.assertEqual(module.db.audit_entries[0]["failure_reason"], "ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED")
+        self.assertEqual(module.db.audit_entries[0]["anti_spoof_risk"]["action"], "warn")
 
     def test_admin_restore_requires_maintenance_and_confirmation(self):
         module = load_main_module(api_key="secret")

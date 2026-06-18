@@ -398,13 +398,6 @@ class ScriptSmokeTests(unittest.TestCase):
         self.assertIn("value < 1", html)
         self.assertIn("测试 user_id 必须是大于等于 1 的整数，或留空", html)
 
-    def test_face_login_medium_action_branches_are_explicitly_mutually_exclusive(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-
-        self.assertIn('if FACE_ANTI_SPOOF_MEDIUM_ACTION == "retry":', source)
-        self.assertIn('elif FACE_ANTI_SPOOF_MEDIUM_ACTION == "block":', source)
-        self.assertIn('elif FACE_ANTI_SPOOF_MEDIUM_ACTION == "review":', source)
-
     def test_acceptance_page_implements_complete_login_workflow(self):
         html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
 
