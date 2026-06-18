@@ -263,6 +263,7 @@ def load_main_module(api_key="", use_gpu=None, force_cpu=None, extra_env=None, d
         "FACE_ANTI_SPOOF_MIN_FRAME_DELTA",
         "FACE_ANTI_SPOOF_MIN_FACE_MOTION",
         "FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION",
+        "FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION",
         "FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION",
     ]:
         os.environ.pop(key, None)
@@ -1040,6 +1041,7 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(risk["action"], "block")
         self.assertIn("repeated_frames", risk["reasons"])
         self.assertIn("static_face_box", risk["reasons"])
+        self.assertNotIn("poor_capture_quality", risk["reasons"])
 
     def test_anti_spoof_risk_scoring_marks_normal_motion_low(self):
         module = load_main_module(api_key="secret")
@@ -1088,6 +1090,21 @@ class MainApiContractTests(unittest.TestCase):
 
         self.assertIn("repeated_frames", risk["reasons"])
         self.assertEqual(risk["metrics"]["max_frame_delta"], 1.0)
+
+    def test_anti_spoof_uniform_frame_delta_uses_texture_threshold(self):
+        module = load_main_module(
+            api_key="secret",
+            extra_env={"FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION": "0"},
+        )
+        frames = [
+            module.np.ones((40, 40, 3), dtype=module.np.uint8) * value
+            for value in (40, 80, 120, 80, 40, 120)
+        ]
+
+        risk = module.evaluate_anti_spoof_risk(frames)
+
+        self.assertNotIn("uniform_frame_delta", risk["reasons"])
+        self.assertEqual(risk["metrics"]["max_frame_delta_texture"], 0.0)
 
     def test_liveness_challenge_submit_returns_low_anti_spoof_risk(self):
         module = load_main_module(api_key="secret")
@@ -1190,6 +1207,25 @@ class MainApiContractTests(unittest.TestCase):
 
         self.assertEqual(exc_info.exception.status_code, 403)
         self.assert_error_detail(exc_info.exception.detail, "LIVENESS_ACTION_WINDOW_EXPIRED", "活体动作超时")
+
+    def test_liveness_challenge_submit_rejects_invalid_purpose_before_matching_challenge(self):
+        module = load_main_module(api_key="secret")
+        created = module.create_liveness_challenge(
+            module.LivenessChallengeCreateReq(purpose="login", terminal_id="door-1")
+        )
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.submit_liveness_challenge(
+                module.LivenessChallengeSubmitReq(
+                    challenge_id=created["challenge_id"],
+                    purpose="admin",
+                    terminal_id="door-1",
+                    frames=["dark"] * 10 + ["bright"] * 10,
+                )
+            )
+
+        self.assertEqual(exc_info.exception.status_code, 422)
+        self.assert_error_detail(exc_info.exception.detail, "VALIDATION_ERROR", "请求参数校验失败")
 
     def test_liveness_challenge_cannot_be_written_in_maintenance_mode(self):
         module = load_main_module(api_key="secret")
@@ -1646,6 +1682,60 @@ class MainApiContractTests(unittest.TestCase):
         self.assertIsNotNone(module.db.risk_retry_tokens[0]["used_at"])
         self.assertEqual(module.db.audit_entries[0]["failure_reason"], "ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED")
 
+    def test_face_login_medium_anti_spoof_review_requires_manual_review(self):
+        module = load_main_module(
+            api_key="secret",
+            disable_login_liveness=False,
+            extra_env={
+                "FACE_MIN_FACE_SHARPNESS": "0",
+                "FACE_ANTI_SPOOF_MEDIUM_ACTION": "review",
+            },
+        )
+        challenge_id = module.db.add_liveness_challenge(
+            purpose="login",
+            terminal_id="door-1",
+            action="blink",
+            expires_at=module.time.time() + 60,
+            action_window_seconds=10,
+        )
+        risk = {
+            "level": "medium",
+            "reasons": ["low_frame_variation"],
+            "action": "review",
+            "message": "画面变化不足，请调整光线、脸部位置后重试",
+        }
+        module.db.mark_liveness_challenge_result(
+            challenge_id,
+            passed=True,
+            result_reason="ok",
+            face_embedding=EMBEDDING,
+            anti_spoof_risk=risk,
+        )
+        module.decode_base64 = lambda _: module.np.ones((100, 100, 3), dtype=module.np.uint8) * 120
+        module.get_single_face_or_raise = lambda _: {
+            "bbox": [0, 0, 80, 80],
+            "det_score": 0.99,
+            "embedding": EMBEDDING,
+        }
+        module.db.search = lambda *args, **kwargs: [
+            {"id": "face-7", "user_id": 7, "username": "alice", "similarity": 0.91, "metadata": {}}
+        ]
+
+        with self.assertRaises(HTTPException) as exc_info:
+            module.face_login(
+                module.FaceLoginReq(image="dummy", threshold=0.6, terminal_id="door-1", challenge_id=challenge_id)
+            )
+
+        self.assertEqual(exc_info.exception.status_code, 403)
+        self.assert_error_detail(
+            exc_info.exception.detail,
+            "ANTI_SPOOF_MEDIUM_REVIEW_REQUIRED",
+            "中风险需要人工复核",
+        )
+        self.assertEqual(module.db.audit_entries[0]["failure_reason"], "ANTI_SPOOF_MEDIUM_REVIEW_REQUIRED")
+        self.assertEqual(module.db.audit_entries[0]["anti_spoof_risk"]["action"], "review")
+        self.assertEqual(module.db.risk_retry_tokens, [])
+
     def test_admin_restore_requires_maintenance_and_confirmation(self):
         module = load_main_module(api_key="secret")
 
@@ -1852,6 +1942,7 @@ class MainApiContractTests(unittest.TestCase):
         self.assertTrue(body["anti_spoof"]["enabled"])
         self.assertEqual(body["anti_spoof"]["default_block_level"], "high")
         self.assertEqual(body["anti_spoof"]["medium_action"], "retry")
+        self.assertEqual(body["anti_spoof"]["thresholds"]["min_texture_variation"], 1.0)
         self.assertEqual(body["anti_spoof"]["retry"]["medium_max_retries"], 1)
         self.assertEqual(body["anti_spoof"]["retry"]["token_ttl_seconds"], 300)
         self.assertIn("printed_photo", body["anti_spoof"]["sample_types"])
@@ -1883,6 +1974,7 @@ class MainApiContractTests(unittest.TestCase):
         self.assertFalse(body["liveness"]["login_enabled"])
         self.assertEqual(body["anti_spoof"]["default_block_level"], "high")
         self.assertEqual(body["anti_spoof"]["medium_action"], "retry")
+        self.assertEqual(body["anti_spoof"]["thresholds"]["min_texture_variation"], 1.0)
         self.assertEqual(body["anti_spoof"]["retry"]["medium_max_retries"], 1)
         self.assertEqual(body["anti_spoof"]["retry"]["token_ttl_seconds"], 300)
         self.assertEqual(body["recognition_policy"]["profile"], "default")

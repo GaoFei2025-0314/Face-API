@@ -78,13 +78,13 @@ class RuntimeSettings:
     face_challenge_max_frames: int
     face_challenge_actions: list[str]
     face_anti_spoof_enabled: bool
-    face_anti_spoof_block_level: str
     face_anti_spoof_medium_action: str
     face_anti_spoof_retry_token_ttl_seconds: int
     face_anti_spoof_min_frame_variation: float
     face_anti_spoof_min_frame_delta: float
     face_anti_spoof_min_face_motion: float
     face_anti_spoof_min_sharpness_variation: float
+    face_anti_spoof_min_texture_variation: float
     face_default_policy_profile: str
     face_terminal_policy_map: str
     maintenance_mode_file: Path
@@ -139,13 +139,13 @@ def load_settings() -> RuntimeSettings:
         ),
         face_challenge_actions=env_list("FACE_CHALLENGE_ACTIONS", ["blink"]),
         face_anti_spoof_enabled=env_bool("FACE_ANTI_SPOOF_ENABLED", True),
-        face_anti_spoof_block_level=os.getenv("FACE_ANTI_SPOOF_BLOCK_LEVEL", "high").strip().lower() or "high",
         face_anti_spoof_medium_action=os.getenv("FACE_ANTI_SPOOF_MEDIUM_ACTION", "retry").strip().lower() or "retry",
         face_anti_spoof_retry_token_ttl_seconds=env_int("FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS", 300, 1),
         face_anti_spoof_min_frame_variation=env_float("FACE_ANTI_SPOOF_MIN_FRAME_VARIATION", 5.0, 0.0),
         face_anti_spoof_min_frame_delta=env_float("FACE_ANTI_SPOOF_MIN_FRAME_DELTA", 1.0, 0.0),
         face_anti_spoof_min_face_motion=env_float("FACE_ANTI_SPOOF_MIN_FACE_MOTION", 0.015, 0.0),
         face_anti_spoof_min_sharpness_variation=env_float("FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION", 1.0, 0.0),
+        face_anti_spoof_min_texture_variation=env_float("FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION", 1.0, 0.0),
         face_default_policy_profile=os.getenv("FACE_DEFAULT_POLICY_PROFILE", "default").strip() or "default",
         face_terminal_policy_map=os.getenv("FACE_TERMINAL_POLICY_MAP", "").strip(),
         maintenance_mode_file=Path(os.getenv("FACE_MAINTENANCE_FILE", ".maintenance_mode")),
@@ -164,8 +164,6 @@ def validate_settings(settings: RuntimeSettings) -> None:
         raise RuntimeError("FACE_DUPLICATE_POLICY 必须是 allow、reject 或 replace")
     if "blink" not in settings.face_challenge_actions:
         raise RuntimeError("FACE_CHALLENGE_ACTIONS 第一版必须包含 blink")
-    if settings.face_anti_spoof_block_level != "high":
-        raise RuntimeError("FACE_ANTI_SPOOF_BLOCK_LEVEL V2.1 仅支持 high，避免轻量防翻拍过度打扰用户")
     if settings.face_anti_spoof_medium_action not in {"review", "retry", "block"}:
         raise RuntimeError("FACE_ANTI_SPOOF_MEDIUM_ACTION 必须是 review、retry 或 block")
     db_dir = Path(settings.db_path).expanduser().resolve().parent

@@ -272,8 +272,8 @@
       const raw = $("testUserId").value.trim();
       if (!raw) return null;
       const value = Number.parseInt(raw, 10);
-      if (!Number.isInteger(value) || String(value) !== raw) {
-        throw new Error("测试 user_id 必须是整数，或留空");
+      if (!Number.isInteger(value) || String(value) !== raw || value < 1) {
+        throw new Error("测试 user_id 必须是大于等于 1 的整数，或留空");
       }
       return value;
     }
@@ -403,7 +403,8 @@
         { audience: "开发/运维阈值方向", text: "防翻拍亮度变化不足时关注 FACE_ANTI_SPOOF_MIN_FRAME_VARIATION。" },
         { audience: "开发/运维阈值方向", text: "连续帧太像时关注 FACE_ANTI_SPOOF_MIN_FRAME_DELTA。" },
         { audience: "开发/运维阈值方向", text: "人脸框几乎不动时关注 FACE_ANTI_SPOOF_MIN_FACE_MOTION。" },
-        { audience: "开发/运维阈值方向", text: "清晰度变化不足时关注 FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION。" }
+        { audience: "开发/运维阈值方向", text: "清晰度变化不足时关注 FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION。" },
+        { audience: "开发/运维阈值方向", text: "画面差异过于均匀时关注 FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION。" }
       );
       return items;
     }

@@ -386,6 +386,7 @@ set FACE_FORCE_CPU=1
 | `FACE_ANTI_SPOOF_MIN_FRAME_DELTA` | `1.0` | 轻量防翻拍连续帧重复判定的最低帧差阈值 |
 | `FACE_ANTI_SPOOF_MIN_FACE_MOTION` | `0.015` | 抽样人脸框位置或面积变化阈值 |
 | `FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION` | `1.0` | 清晰度变化阈值 |
+| `FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION` | `1.0` | 连续帧差异过于均匀时的纹理变化阈值 |
 | `FACE_DEFAULT_POLICY_PROFILE` | `default` | 默认识别策略档案 |
 | `FACE_TERMINAL_POLICY_MAP` | 空 | terminal 到策略档案的绑定，如 `door-1:strict` |
 | `FACE_MAX_BASE64_CHARS` | `11185068` | Base64 图片字符串最大长度 |

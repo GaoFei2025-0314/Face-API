@@ -509,6 +509,7 @@ V2.1 起，活体提交和 face login 会返回可选 `anti_spoof_risk`：
 - `FACE_ANTI_SPOOF_MIN_FRAME_VARIATION`：防翻拍亮度变化阈值，默认 `5.0`。
 - `FACE_ANTI_SPOOF_MIN_FACE_MOTION`：抽样人脸框位置或面积变化阈值，默认 `0.015`。
 - `FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION`：清晰度变化阈值，默认 `1.0`。
+- `FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION`：连续帧差异过于均匀时的纹理变化阈值，默认 `1.0`。
 
 V2.3 起，中风险默认不再直接放行，而是返回一次重试机会。第一次中风险默认返回 HTTP 403：
 
@@ -691,7 +692,8 @@ X-API-Key: <你的密钥>
       "min_frame_variation": 5.0,
       "min_frame_delta": 1.0,
       "min_face_motion": 0.015,
-      "min_sharpness_variation": 1.0
+      "min_sharpness_variation": 1.0,
+      "min_texture_variation": 1.0
     }
   },
   "search_cache": {
@@ -747,7 +749,8 @@ X-API-Key: <你的密钥>
       "min_frame_variation": 5.0,
       "min_frame_delta": 1.0,
       "min_face_motion": 0.015,
-      "min_sharpness_variation": 1.0
+      "min_sharpness_variation": 1.0,
+      "min_texture_variation": 1.0
     }
   }
 }

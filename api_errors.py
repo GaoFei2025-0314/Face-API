@@ -117,6 +117,10 @@ ERROR_DEFINITIONS = {
         "message": "中风险重试未通过",
         "reason": "本次中风险重试机会已使用，请重新发起登录或转人工复核",
     },
+    "ANTI_SPOOF_MEDIUM_REVIEW_REQUIRED": {
+        "message": "中风险需要人工复核",
+        "reason": "当前画面存在轻量防翻拍中风险，请转人工复核或重新发起登录",
+    },
     "ANTI_SPOOF_RETRY_TOKEN_INVALID": {
         "message": "中风险重试令牌无效",
         "reason": "重试令牌不存在、已过期、已使用或不属于当前终端，请重新完成人脸登录",

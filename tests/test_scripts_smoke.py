@@ -386,10 +386,17 @@ class ScriptSmokeTests(unittest.TestCase):
             "FACE_ANTI_SPOOF_MIN_FRAME_DELTA",
             "FACE_ANTI_SPOOF_MIN_FACE_MOTION",
             "FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION",
+            "FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION",
         ]:
             self.assertIn(env_name, html)
         self.assertIn("小白建议", html)
         self.assertIn("开发/运维阈值方向", html)
+
+    def test_acceptance_page_rejects_zero_test_user_id(self):
+        html = (ROOT / "acceptance.html").read_text(encoding="utf-8")
+
+        self.assertIn("value < 1", html)
+        self.assertIn("测试 user_id 必须是大于等于 1 的整数，或留空", html)
 
     def test_acceptance_page_implements_complete_login_workflow(self):
         html = (ROOT / "acceptance.html").read_text(encoding="utf-8")

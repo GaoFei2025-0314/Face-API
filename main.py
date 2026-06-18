@@ -182,13 +182,13 @@ FACE_CHALLENGE_MIN_FRAMES = settings.face_challenge_min_frames
 FACE_CHALLENGE_MAX_FRAMES = settings.face_challenge_max_frames
 FACE_CHALLENGE_ACTIONS = settings.face_challenge_actions
 FACE_ANTI_SPOOF_ENABLED = settings.face_anti_spoof_enabled
-FACE_ANTI_SPOOF_BLOCK_LEVEL = settings.face_anti_spoof_block_level
 FACE_ANTI_SPOOF_MEDIUM_ACTION = settings.face_anti_spoof_medium_action
 FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS = settings.face_anti_spoof_retry_token_ttl_seconds
 FACE_ANTI_SPOOF_MIN_FRAME_VARIATION = settings.face_anti_spoof_min_frame_variation
 FACE_ANTI_SPOOF_MIN_FRAME_DELTA = settings.face_anti_spoof_min_frame_delta
 FACE_ANTI_SPOOF_MIN_FACE_MOTION = settings.face_anti_spoof_min_face_motion
 FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION = settings.face_anti_spoof_min_sharpness_variation
+FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION = settings.face_anti_spoof_min_texture_variation
 FACE_DEFAULT_POLICY_PROFILE = settings.face_default_policy_profile
 FACE_TERMINAL_POLICY_MAP = settings.face_terminal_policy_map
 MAINTENANCE_MODE_FILE = settings.maintenance_mode_file
@@ -453,13 +453,14 @@ def get_anti_spoof_policy() -> dict:
     return {
         "enabled": FACE_ANTI_SPOOF_ENABLED,
         "mode": "lightweight-risk-score",
-        "default_block_level": FACE_ANTI_SPOOF_BLOCK_LEVEL,
+        "default_block_level": "high",
         "medium_action": FACE_ANTI_SPOOF_MEDIUM_ACTION,
         "thresholds": {
             "min_frame_variation": FACE_ANTI_SPOOF_MIN_FRAME_VARIATION,
             "min_frame_delta": FACE_ANTI_SPOOF_MIN_FRAME_DELTA,
             "min_face_motion": FACE_ANTI_SPOOF_MIN_FACE_MOTION,
             "min_sharpness_variation": FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION,
+            "min_texture_variation": FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION,
         },
         "retry": {
             "medium_max_retries": 1,
@@ -573,11 +574,9 @@ def evaluate_anti_spoof_risk(decoded_frames: list[np.ndarray], sampled_faces: Op
     if (
         max_frame_delta >= FACE_ANTI_SPOOF_MIN_FRAME_DELTA
         and frame_variation >= FACE_ANTI_SPOOF_MIN_FRAME_VARIATION
-        and max_frame_delta_texture < max(1.0, FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION)
+        and max_frame_delta_texture < FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION
     ):
         reasons.append("uniform_frame_delta")
-    if sharpness_variation < FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION and frame_variation < FACE_ANTI_SPOOF_MIN_FRAME_VARIATION:
-        reasons.append("poor_capture_quality")
 
     metrics = {
         "frame_variation": round(frame_variation, 2),
@@ -1094,6 +1093,8 @@ def submit_liveness_challenge(req: LivenessChallengeSubmitReq):
     t0 = time.perf_counter()
     terminal_id = require_terminal_id_value(req.terminal_id)
     purpose = req.purpose.strip().lower()
+    if purpose not in {"login", "register"}:
+        raise_api_error(422, "VALIDATION_ERROR")
     challenge = db.get_liveness_challenge(req.challenge_id)
     if not challenge:
         raise_api_error(404, "LIVENESS_CHALLENGE_INVALID")
@@ -1625,6 +1626,20 @@ def face_login(req: FaceLoginReq):
                 status_code=403,
                 code="ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED",
                 message="中风险重试未通过",
+                threshold=threshold,
+                terminal_id=terminal_id,
+                state=req.state,
+                elapsed_ms=round((time.perf_counter() - t0) * 1000, 2),
+                liveness_status=liveness_result["status"],
+                liveness_reason=liveness_result["reason"],
+                quality_metrics=quality_metrics,
+                anti_spoof_risk=anti_spoof_risk,
+            )
+        if FACE_ANTI_SPOOF_MEDIUM_ACTION == "review":
+            raise_with_audit(
+                status_code=403,
+                code="ANTI_SPOOF_MEDIUM_REVIEW_REQUIRED",
+                message="中风险需要人工复核",
                 threshold=threshold,
                 terminal_id=terminal_id,
                 state=req.state,

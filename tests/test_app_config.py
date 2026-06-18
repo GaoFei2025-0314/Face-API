@@ -74,7 +74,7 @@ class AppConfigTest(unittest.TestCase):
             settings = load_settings()
 
         self.assertTrue(settings.face_anti_spoof_enabled)
-        self.assertEqual(settings.face_anti_spoof_block_level, "high")
+        self.assertFalse(hasattr(settings, "face_anti_spoof_block_level"))
         self.assertEqual(settings.face_anti_spoof_medium_action, "retry")
         self.assertEqual(settings.face_anti_spoof_retry_token_ttl_seconds, 300)
         self.assertFalse(hasattr(settings, "face_anti_spoof_medium_max_retries"))
@@ -82,6 +82,7 @@ class AppConfigTest(unittest.TestCase):
         self.assertEqual(settings.face_anti_spoof_min_frame_delta, 1.0)
         self.assertEqual(settings.face_anti_spoof_min_face_motion, 0.015)
         self.assertEqual(settings.face_anti_spoof_min_sharpness_variation, 1.0)
+        self.assertEqual(settings.face_anti_spoof_min_texture_variation, 1.0)
         self.assertEqual(settings.face_liveness_min_brightness_variation, 5.0)
 
     def test_float_settings_reject_invalid_values_with_context(self):
@@ -99,6 +100,7 @@ class AppConfigTest(unittest.TestCase):
             {
                 "FACE_DB_PATH": "faces.db",
                 "FACE_ANTI_SPOOF_MIN_FRAME_DELTA": "2.5",
+                "FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION": "3.5",
                 "FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS": "120",
                 "FACE_LIVENESS_MIN_BRIGHTNESS_VARIATION": "8.5",
             },
@@ -107,6 +109,7 @@ class AppConfigTest(unittest.TestCase):
             settings = load_settings()
 
         self.assertEqual(settings.face_anti_spoof_min_frame_delta, 2.5)
+        self.assertEqual(settings.face_anti_spoof_min_texture_variation, 3.5)
         self.assertEqual(settings.face_anti_spoof_retry_token_ttl_seconds, 120)
         self.assertEqual(settings.face_liveness_min_brightness_variation, 8.5)
 
@@ -119,7 +122,7 @@ class AppConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "FACE_ANTI_SPOOF_RETRY_TOKEN_TTL_SECONDS"):
                 load_settings()
 
-    def test_anti_spoof_rejects_invalid_policy_values(self):
+    def test_anti_spoof_ignores_removed_block_level_env(self):
         with patch.dict(
             os.environ,
             {
@@ -129,8 +132,10 @@ class AppConfigTest(unittest.TestCase):
             },
             clear=True,
         ):
-            with self.assertRaisesRegex(RuntimeError, "FACE_ANTI_SPOOF_BLOCK_LEVEL"):
-                load_settings()
+            settings = load_settings()
+
+        self.assertFalse(hasattr(settings, "face_anti_spoof_block_level"))
+        self.assertEqual(settings.face_anti_spoof_medium_action, "block")
 
     def test_production_rejects_wildcard_cors_origins(self):
         with patch.dict(
