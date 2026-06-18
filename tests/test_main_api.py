@@ -1814,10 +1814,10 @@ class MainApiContractTests(unittest.TestCase):
         self.assertEqual(exc_info.exception.status_code, 403)
         self.assert_error_detail(
             exc_info.exception.detail,
-            "ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED",
+            "ANTI_SPOOF_CONFIG_INVALID",
             "中风险未通过（配置异常，已降级处理）",
         )
-        self.assertEqual(module.db.audit_entries[0]["failure_reason"], "ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED")
+        self.assertEqual(module.db.audit_entries[0]["failure_reason"], "ANTI_SPOOF_CONFIG_INVALID")
         self.assertEqual(module.db.audit_entries[0]["anti_spoof_risk"]["action"], "warn")
 
     def test_admin_restore_requires_maintenance_and_confirmation(self):

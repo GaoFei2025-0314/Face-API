@@ -232,6 +232,7 @@ function fileToBase64(file) {
 | `ANTI_SPOOF_MEDIUM_RETRY_REQUIRED` | 检测到中风险，请重试一次。 | 保存 `detail.retry.risk_retry_token`，重新采集活体和登录图片，下一次 `/auth/face-login` 回传该 token。 |
 | `ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED` | 重试后仍存在中风险，请联系工作人员处理。 | 中风险最多重试 1 次；不要继续无限重试。 |
 | `ANTI_SPOOF_RETRY_TOKEN_INVALID` | 重试凭证已失效，请重新开始登录。 | 重新创建 login challenge；检查 token 是否过期、已使用或 terminal 不一致。 |
+| `ANTI_SPOOF_CONFIG_INVALID` | 防翻拍配置异常，请联系管理员。 | 服务端中风险处理策略配置无效，已按失败处理；检查 `FACE_ANTI_SPOOF_MEDIUM_ACTION`。 |
 | `NO_MATCH` | 未匹配到已注册用户。 | 检查用户是否已注册、阈值是否过高、现场图像质量。 |
 | `VALIDATION_ERROR` | 请求参数不完整，请刷新后重试。 | 检查必填字段、JSON 格式和字段类型。 |
 | `MAINTENANCE_MODE_ACTIVE` | 系统维护中，请稍后再试。 | 等待运维退出维护模式。 |

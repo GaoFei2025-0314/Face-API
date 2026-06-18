@@ -125,6 +125,10 @@ ERROR_DEFINITIONS = {
         "message": "中风险重试令牌无效",
         "reason": "重试令牌不存在、已过期、已使用或不属于当前终端，请重新完成人脸登录",
     },
+    "ANTI_SPOOF_CONFIG_INVALID": {
+        "message": "防翻拍配置异常",
+        "reason": "服务端中风险处理策略配置无效，已按失败处理，请联系管理员检查 FACE_ANTI_SPOOF_MEDIUM_ACTION",
+    },
     "UNSUPPORTED_LIVENESS_ACTION": {
         "message": "不支持的活体动作",
         "reason": "第一版活体挑战至少稳定支持眨眼，请检查 action 参数",
