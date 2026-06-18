@@ -497,7 +497,7 @@ V2.1 起，活体提交和 face login 会返回可选 `anti_spoof_risk`：
 字段含义：
 
 - `level`：`low`、`medium`、`high`。
-- `reasons`：稳定原因码，给运维和验收记录使用。
+- `reasons`：稳定原因码，给运维和验收记录使用；常见值包括 `repeated_frames`、`low_frame_variation`、`static_face_box`、`uniform_frame_delta`、`low_sharpness_variation`。
 - `action`：`allow`、`review`、`retry`、`block`。
 - `message`：简短中文提示，适合页面展示。
 - `metrics`：可选诊断指标，前端可以忽略，不要直接展示给普通用户。

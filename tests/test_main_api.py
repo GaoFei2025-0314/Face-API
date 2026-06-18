@@ -1106,6 +1106,26 @@ class MainApiContractTests(unittest.TestCase):
         self.assertNotIn("uniform_frame_delta", risk["reasons"])
         self.assertEqual(risk["metrics"]["max_frame_delta_texture"], 0.0)
 
+    def test_anti_spoof_low_sharpness_variation_strengthens_static_face_risk(self):
+        module = load_main_module(
+            api_key="secret",
+            extra_env={
+                "FACE_ANTI_SPOOF_MIN_FRAME_DELTA": "0",
+                "FACE_ANTI_SPOOF_MIN_FRAME_VARIATION": "0",
+                "FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION": "0",
+                "FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION": "1",
+            },
+        )
+        frames = [module.np.ones((20, 20, 3), dtype=module.np.uint8) * 80 for _ in range(3)]
+        faces = [{"bbox": [5, 5, 15, 15]}, {"bbox": [5, 5, 15, 15]}, {"bbox": [5, 5, 15, 15]}]
+
+        risk = module.evaluate_anti_spoof_risk(frames, faces)
+
+        self.assertEqual(risk["level"], "high")
+        self.assertIn("static_face_box", risk["reasons"])
+        self.assertIn("low_sharpness_variation", risk["reasons"])
+        self.assertEqual(risk["metrics"]["sharpness_variation"], 0.0)
+
     def test_liveness_challenge_submit_returns_low_anti_spoof_risk(self):
         module = load_main_module(api_key="secret")
 
@@ -1222,10 +1242,11 @@ class MainApiContractTests(unittest.TestCase):
                     terminal_id="door-1",
                     frames=["dark"] * 10 + ["bright"] * 10,
                 )
-            )
+        )
 
         self.assertEqual(exc_info.exception.status_code, 422)
-        self.assert_error_detail(exc_info.exception.detail, "VALIDATION_ERROR", "请求参数校验失败")
+        self.assert_error_detail(exc_info.exception.detail, "VALIDATION_ERROR", "purpose 必须是 login 或 register")
+        self.assertIn("当前值为 'admin'", exc_info.exception.detail["reason"])
 
     def test_liveness_challenge_cannot_be_written_in_maintenance_mode(self):
         module = load_main_module(api_key="secret")

@@ -577,6 +577,12 @@ def evaluate_anti_spoof_risk(decoded_frames: list[np.ndarray], sampled_faces: Op
         and max_frame_delta_texture < FACE_ANTI_SPOOF_MIN_TEXTURE_VARIATION
     ):
         reasons.append("uniform_frame_delta")
+    if (
+        len(sharpness_values) >= 2
+        and sharpness_variation < FACE_ANTI_SPOOF_MIN_SHARPNESS_VARIATION
+        and any(reason in reasons for reason in {"repeated_frames", "low_frame_variation", "static_face_box", "uniform_frame_delta"})
+    ):
+        reasons.append("low_sharpness_variation")
 
     metrics = {
         "frame_variation": round(frame_variation, 2),
@@ -585,7 +591,7 @@ def evaluate_anti_spoof_risk(decoded_frames: list[np.ndarray], sampled_faces: Op
         "face_box_motion": face_motion,
         "sharpness_variation": round(sharpness_variation, 2),
     }
-    critical_reasons = {"repeated_frames", "low_frame_variation", "static_face_box"}
+    critical_reasons = {"repeated_frames", "low_frame_variation", "static_face_box", "low_sharpness_variation"}
     critical_count = len(critical_reasons.intersection(reasons))
     if "static_face_box" in reasons and critical_count >= 2:
         return {
@@ -1094,7 +1100,12 @@ def submit_liveness_challenge(req: LivenessChallengeSubmitReq):
     terminal_id = require_terminal_id_value(req.terminal_id)
     purpose = req.purpose.strip().lower()
     if purpose not in {"login", "register"}:
-        raise_api_error(422, "VALIDATION_ERROR")
+        raise_api_error(
+            422,
+            "VALIDATION_ERROR",
+            message="purpose 必须是 login 或 register",
+            reason=f"当前值为 {purpose!r}，仅支持 login 和 register",
+        )
     challenge = db.get_liveness_challenge(req.challenge_id)
     if not challenge:
         raise_api_error(404, "LIVENESS_CHALLENGE_INVALID")
@@ -1621,7 +1632,7 @@ def face_login(req: FaceLoginReq):
                 anti_spoof_risk=anti_spoof_risk,
                 detail_extra={"retry": retry},
             )
-        if FACE_ANTI_SPOOF_MEDIUM_ACTION == "block":
+        elif FACE_ANTI_SPOOF_MEDIUM_ACTION == "block":
             raise_with_audit(
                 status_code=403,
                 code="ANTI_SPOOF_MEDIUM_RETRY_EXHAUSTED",
@@ -1635,7 +1646,7 @@ def face_login(req: FaceLoginReq):
                 quality_metrics=quality_metrics,
                 anti_spoof_risk=anti_spoof_risk,
             )
-        if FACE_ANTI_SPOOF_MEDIUM_ACTION == "review":
+        elif FACE_ANTI_SPOOF_MEDIUM_ACTION == "review":
             raise_with_audit(
                 status_code=403,
                 code="ANTI_SPOOF_MEDIUM_REVIEW_REQUIRED",
