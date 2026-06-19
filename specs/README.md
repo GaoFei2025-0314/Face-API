@@ -15,6 +15,7 @@
 - `ROADMAP-v2.2.md` - 现场算法验收与阈值调优台规划
 - `ROADMAP-v2.3.md` - 轻量防翻拍阈值治理与中风险重试机制规划
 - `ROADMAP-v2.4.md` - Face API 与 WMS 现场联动验收基线规划
+- `ROADMAP-v2.5.md` - 通用接入契约与服务化基线规划
 
 ## 已规划开发阶段
 
@@ -182,7 +183,29 @@ Roadmap v2.4 已确认主定位为“Face API + WMS 现场联动验收基线”�
 - WMS 仓库路径按 `H:\AI_test\electron-wms\electron-wms` 检查；路径不存在时停止并记录阻塞。
 - 问题必须归到算法底座、终端采集或业务流程三类之一。
 - 验收记录不得保存原图、视频帧、连续帧、embedding、API Key 或真实用户敏感信息。
-- V2.4 的产出用于决定 V2.5 优先改算法、WMS 采集还是业务提示。
+- V2.4 的澄清促成 V2.5 转向通用接入契约，避免把 `face_api` 设计成 WMS 专用适配器。
+
+Roadmap v2.5 当前执行入口：
+
+- `026-general-integration-service-baseline/spec.md`
+- `026-general-integration-service-baseline/plan.md`
+- `026-general-integration-service-baseline/tasks.md`
+- `026-general-integration-service-baseline/quickstart.md`
+- `docs/04_usage/06_general_integration_contract.md`
+- `docs/90_archive/04_acceptance/09_v2.5_acceptance_record.md`
+
+Roadmap v2.5 建议执行顺序：
+
+1. `026-general-integration-service-baseline` - 通用接入契约与服务化基线
+
+Roadmap v2.5 已确认主定位为“通用接入契约与服务化基线”。关键决策包括：
+
+- `face_api` 是多项目可复用的本地或边缘 REST API 服务，不是 WMS 专用适配器。
+- 普通 Web 项目默认走业务后端代理，浏览器不保存 `X-API-Key`。
+- Electron、一体机、闸机和 Windows 客户端可作为受控终端直连，但必须有稳定 `terminal_id` 和 audit 证据。
+- `admin.html`、`camera-integration.html`、`acceptance.html` 属于本地运维验收模式。
+- V2.5 不新增公开 API、不新增 SDK、不改 WMS 代码、不实现多租户。
+- 短期按一项目一 Face API 实例处理；多项目共享实例、`app_id` / `client_id` / namespace 和中心管理后续单独评估。
 
 ## 推荐流程
 

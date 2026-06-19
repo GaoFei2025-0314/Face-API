@@ -1,8 +1,8 @@
 # face_api 2026 Q2 季度计划与进度看板
 
-> 当前日期：2026-06-18
+> 当前日期：2026-06-19
 > 季度范围：2026-04-01 至 2026-06-30  
-> 当前版本基线：V2.3 轻量防翻拍阈值治理与中风险重试机制已完成；V2.4 Face API 与 WMS 现场联动验收基线已建立，待现场执行样例。
+> 当前版本基线：V2.5 通用接入契约与服务化基线已完成。
 
 ## 1. 本季度目标
 
@@ -32,6 +32,7 @@
 | V2.2 | 现场算法验收与阈值调优台 | 现场验收完成，主链路通过，防翻拍未达上线标准 | `docs/90_archive/04_acceptance/06_v2.2_acceptance_record.md`、`specs/023-field-algorithm-acceptance-console/tasks.md` |
 | V2.3 | 轻量防翻拍阈值治理与中风险重试机制 | 已完成 | `docs/90_archive/04_acceptance/07_v2.3_acceptance_record.md`、`specs/024-lightweight-anti-spoof-governance/tasks.md` |
 | V2.4 | Face API 与 WMS 现场联动验收基线 | 基线已建立，待现场执行样例 | `specs/ROADMAP-v2.4.md`、`specs/025-wms-capture-loop-baseline/tasks.md`、`docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md` |
+| V2.5 | 通用接入契约与服务化基线 | 已完成 | `specs/ROADMAP-v2.5.md`、`specs/026-general-integration-service-baseline/tasks.md`、`docs/04_usage/06_general_integration_contract.md`、`docs/90_archive/04_acceptance/09_v2.5_acceptance_record.md` |
 
 当前 V1.3-V1.6 已统一提交：
 
@@ -41,7 +42,7 @@ a1bdf64 feat: complete roadmap v1.3-v1.6
 
 ## 3. 本季度剩余重点
 
-V2.0 已完成业务系统正式接入示范版。当前重点从“继续规划 V2.0”转为“按验收记录维护 business-demo、终端 demo 和 Java 接入文档的一致性”。
+当前重点从“WMS 单点联动视角”转为“多项目通用接入契约”。后续所有业务系统、WMS、Electron、终端和外部项目接入前，都先按 V2.5 的通用服务边界判断模式，再决定是否进入具体 adapter 或业务系统实现。
 
 ### P0：V2.0 规划验收
 
@@ -198,7 +199,7 @@ V2.3 关键边界：
 - 第一次中风险错误响应固定包含 `detail.retry.risk_retry_token`、`detail.retry.expires_at`、`detail.retry.remaining_attempts`；audit 和报告不得导出原始 token。
 - 固定摄像头现场验收已通过；手持或移动摄像头制造运动视差属于残余风险，需要后续更强活体能力或设备固定约束。
 
-## 11. V2.4 下一步计划
+## 11. V2.4 状态
 
 V2.4 主题为“Face API 与 WMS 现场联动验收基线”。目标是在不默认修改 `face_api` 后端接口、不默认修改 WMS 业务逻辑的前提下，建立可复用的真实终端联动验收模板和 runbook。
 
@@ -229,7 +230,41 @@ V2.4 推荐 `/goal`：
 /goal Implement face_api Roadmap V2.4 - WMS Capture Loop Baseline
 ```
 
-## 12. 每周检查节奏
+## 12. V2.5 完成状态
+
+V2.5 主题为“通用接入契约与服务化基线”。目标是在不新增公开 API、不改 WMS 代码、不新增 SDK 的前提下，把 `face_api` 定义成多项目可复用的本地或边缘 REST API 服务。
+
+V2.5 已完成 docs-only 交付，后续真实接入实现应进入 V2.6 或独立版本。
+
+V2.5 基线入口：
+
+```text
+specs/ROADMAP-v2.5.md
+specs/026-general-integration-service-baseline/spec.md
+specs/026-general-integration-service-baseline/plan.md
+specs/026-general-integration-service-baseline/tasks.md
+specs/026-general-integration-service-baseline/quickstart.md
+docs/superpowers/specs/2026-06-19-v2.5-general-integration-service-baseline-design.md
+docs/04_usage/06_general_integration_contract.md
+docs/90_archive/04_acceptance/09_v2.5_acceptance_record.md
+```
+
+V2.5 关键边界：
+
+- 普通 Web 项目默认走业务后端代理，浏览器不保存 `X-API-Key`。
+- Java / Spring Boot 后端负责保存密钥、代理调用、查询用户表和签发业务 session/JWT/SSO。
+- Electron、一体机、闸机、Windows 客户端可作为受控终端直连，但必须有稳定 `terminal_id` 和 audit 证据。
+- `admin.html`、`camera-integration.html`、`acceptance.html` 属于本地运维验收模式。
+- 不新增公开 API、不新增 SDK、不改 WMS 代码、不实现多租户。
+- WMS 后续接入按通用契约评估，不作为 `face_api` 的专用设计中心。
+
+V2.5 历史 `/goal`：
+
+```text
+/goal Implement face_api Roadmap V2.5 - General Integration Service Baseline
+```
+
+## 13. 每周检查节奏
 
 每周只看 5 件事：
 

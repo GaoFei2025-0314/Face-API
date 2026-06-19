@@ -1,7 +1,7 @@
 # 人脸识别 API 运行与使用说明
 
-> 最后同步：2026-06-17
-> 适用阶段：V2.3 轻量防翻拍阈值治理与中风险重试机制
+> 最后同步：2026-06-19
+> 适用阶段：V2.5 通用接入契约与服务化基线
 
 这是 **首次接手时优先阅读** 的文档。
 
@@ -18,6 +18,10 @@
 如果你要把控季度进度和功能边界，看：
 
 - `docs/02_product/02_quarterly_plan.md`
+
+如果你要给新项目接入 `face_api`，优先看：
+
+- `docs/04_usage/06_general_integration_contract.md`
 
 如果你现在的目标是：
 - 把服务跑起来
@@ -41,6 +45,7 @@
 - 轻量人脸登录认证
 - 最小运维状态 / 配置 / 审计查询
 - 独立 `business-demo` 业务接入示范服务
+- 通用接入契约，覆盖普通 Web、Java / Spring Boot、Electron / 终端和后续 WMS 接入
 
 它当前更适合被理解为：
 
@@ -513,9 +518,10 @@ http://localhost:8000/admin.html
 
 按这个顺序：
 1. `README.md` —— 先跑起来
-2. `docs/04_usage/01_api_integration.md` —— 看怎么调用接口
-3. `docs/05_architecture/01_architecture.md` —— 看架构、边界和维护重点
-4. `docs/90_archive/01_releases/01_2026-05-27_phase_1_summary.md` —— 看当前阶段成果和风险边界
+2. `docs/04_usage/06_general_integration_contract.md` —— 判断新项目该怎么接入
+3. `docs/04_usage/01_api_integration.md` —— 看怎么调用接口
+4. `docs/05_architecture/01_architecture.md` —— 看架构、边界和维护重点
+5. `docs/90_archive/01_releases/01_2026-05-27_phase_1_summary.md` —— 看当前阶段成果和风险边界
 
 ### Q2：报 `ModuleNotFoundError`
 
@@ -563,6 +569,11 @@ http://localhost:8000/admin.html
 适合：
 - Java / Spring Boot 团队照着替换 `business-demo`
 - 看 Controller、Service、FaceApiClient 和业务 audit 的伪代码
+
+### `docs/04_usage/06_general_integration_contract.md`
+适合：
+- 新项目判断应该走业务后端代理、受控终端直连，还是本地运维验收
+- 统一理解 `X-API-Key`、`terminal_id`、中风险重试、audit 和业务 token 的边界
 
 ### `docs/05_architecture/01_architecture.md`
 适合：

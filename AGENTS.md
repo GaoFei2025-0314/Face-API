@@ -16,12 +16,14 @@ Keep the MVP shape small: the business code currently lives in `main.py`, `face_
 
 Use these rules when writing, reviewing, or refactoring code in this repository:
 
-- Think before coding. State assumptions, surface uncertainty, and ask when requirements have multiple reasonable interpretations.
-- Keep changes simple. Implement the minimum code that solves the requested problem; avoid speculative features, single-use abstractions, and unnecessary configurability.
-- Make surgical edits. Touch only the files and lines required by the task, match existing style, and do not refactor unrelated code.
-- Clean up only what your change creates. Remove imports, variables, functions, or docs made obsolete by your own edits, but do not delete pre-existing dead code unless asked.
+- Think before coding. State assumptions explicitly, surface uncertainty, and ask when requirements have multiple reasonable interpretations.
+- Prefer simplicity first. Implement the minimum code that solves the requested problem; avoid speculative features, single-use abstractions, unnecessary configurability, and broad defensive handling for impossible cases.
+- Make surgical edits. Touch only the files and lines required by the task, match existing style, and do not refactor unrelated code, comments, or formatting.
+- Clean up only what your change creates. Remove imports, variables, functions, docs, or tests made obsolete by your own edits, but do not delete pre-existing dead code unless asked.
 - Work from verifiable goals. For bugs, write or identify a failing test/reproduction first; for features, define the expected behavior and verification command before implementation.
+- Keep every changed line traceable to the user's request. If a change cannot be explained by the request, leave it out or mention it separately instead of editing it opportunistically.
 - Report tradeoffs clearly. If a faster approach is less robust, or a robust approach adds complexity, say so before choosing.
+- For multi-step tasks, state a short plan with a verification step for each meaningful phase, then loop until the checks pass or the blocker is explicit.
 
 ## Common commands
 
@@ -175,5 +177,5 @@ If an endpoint accepts images, preserve both upload and Base64 support when it i
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/025-wms-capture-loop-baseline/plan.md`
+`specs/026-general-integration-service-baseline/plan.md`
 <!-- SPECKIT END -->

@@ -5,6 +5,7 @@
 ## 按角色阅读
 
 - 新同事：先看 `README.md`、`docs/02_product/01_prd.md`、`architecture.html`。
+- 新项目通用接入：先看 `docs/04_usage/06_general_integration_contract.md`、`docs/04_usage/01_api_integration.md`、`specs/ROADMAP-v2.5.md`。
 - 前端接入：先看 `docs/04_usage/01_api_integration.md`、`docs/04_usage/02_frontend_business_integration.md`、`camera-integration.html`。
 - 业务系统接入：先看 `docs/04_usage/04_business_integration_v2.md`、`docs/04_usage/05_spring_boot_integration_notes.md`、`specs/ROADMAP-v2.0.md`。
 - WMS 联动验收：先看 `specs/ROADMAP-v2.4.md`、`specs/025-wms-capture-loop-baseline/plan.md`、`docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md`，WMS 侧看 `H:\AI_test\electron-wms\electron-wms\doc\13-Face-API-WMS智能抓拍联动验收基线.md`。
@@ -56,6 +57,7 @@
 - `docs/04_usage/02_frontend_business_integration.md`
 - `docs/04_usage/04_business_integration_v2.md`
 - `docs/04_usage/05_spring_boot_integration_notes.md`
+- `docs/04_usage/06_general_integration_contract.md`
 - `camera-integration.html`
 - `business_demo/README.md`
 - `http://localhost:8010`
@@ -68,6 +70,7 @@
 - `04_usage/02_frontend_business_integration.md`：摄像头 login/register 标准流程。
 - `04_usage/04_business_integration_v2.md`：V2.0 业务后端代理、终端链路、绑定、登录和 audit 边界。
 - `04_usage/05_spring_boot_integration_notes.md`：Java / Spring Boot 接入伪代码和生产注意事项。
+- `04_usage/06_general_integration_contract.md`：V2.5 通用接入契约，说明普通 Web、Java / Spring Boot、Electron / 终端和后续 WMS 应如何选择接入模式。
 - `camera-integration.html`：本机或内网联调、V1.7.1 现场闭环验收页面。
 - `business_demo/README.md`：V2.0 mock 业务后端启动说明。
 - `http://localhost:8010`：业务 Web 接入 demo。
@@ -125,6 +128,7 @@
 - `specs/ROADMAP-v1.9.md`
 - `specs/ROADMAP-v2.0.md`
 - `specs/ROADMAP-v2.4.md`
+- `specs/ROADMAP-v2.5.md`
 - `specs/014-production-runtime-monitoring/`
 - `specs/015-recognition-security-accuracy/`
 - `specs/016-frontend-business-integration/`
@@ -134,9 +138,11 @@
 - `specs/020-field-acceptance-closure/`
 - `specs/021-business-integration-demo/`
 - `specs/025-wms-capture-loop-baseline/`
+- `specs/026-general-integration-service-baseline/`
 - `docs/90_archive/04_acceptance/03_v1.9_acceptance_record.md`
 - `docs/90_archive/04_acceptance/04_v2.0_acceptance_record.md`
 - `docs/90_archive/04_acceptance/08_face_api_wms_capture_loop_baseline.md`
+- `docs/90_archive/04_acceptance/09_v2.5_acceptance_record.md`
 
 作用：
 
@@ -144,6 +150,7 @@
 - 日常使用不需要每次看 `specs/`。
 - 新版本开发前，再看对应 spec。
 - `08_face_api_wms_capture_loop_baseline.md` 是 Face API 与 Electron WMS 智能抓拍联动验收基线，用来记录环境快照、现场样例、审计回收、问题分类和下一轮改进项。
+- `09_v2.5_acceptance_record.md` 是通用接入契约与服务化基线的验收记录，用来确认普通 Web、Java / Spring Boot、Electron / 终端和后续 WMS 接入口径一致。
 
 ## 9. 文档分层规则
 
