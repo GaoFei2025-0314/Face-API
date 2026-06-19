@@ -11,17 +11,16 @@ V2.3 已经完成 `face_api` 自身的固定摄像头现场验收：真人正脸
 V2.4 的目标不是继续单独堆算法规则，而是把 `face_api` 放进真实 WMS 终端链路里验收：
 
 ```text
-WMS 摄像头采集
--> Face API 检测 / 活体 / face login
--> WMS 终端提示或登录
--> Face API audit 与 WMS 日志回收
--> 问题归因
--> 下一轮改进决策
+阶段一：WMS 摄像头采集 -> WMS 内置人脸识别 -> WMS 直接登录 -> WMS 日志回收
+阶段二：摄像头验收页或独立页面 -> Face API 检测 / 活体 / face login -> Face API audit 回收
+阶段三：对比两边结果 -> 问题归因 -> 下一轮改进决策
 ```
 
 本版本定位为：
 
 > Face API + WMS 现场联动验收基线。
+
+当前 WMS 原有链路没有活体检测，也尚未接入 `face_api` REST API。V2.4 先建立对照验收和接入前基线，不宣称 WMS 已经调用 `face_api`。
 
 ## 2. 子版本范围
 
@@ -36,6 +35,7 @@ WMS 摄像头采集
 
 - V2.4 先做联动验收基线，不默认修改 `face_api` 后端接口。
 - V2.4 先做文档、模板、runbook 和检查流程，不默认改 WMS 登录业务逻辑。
+- WMS 现状是内置算法直接人脸登录，没有活体检测；`face_api` 的活体和防翻拍能力先作为独立服务对照验收。
 - WMS 仓库路径按 `H:\AI_test\electron-wms\electron-wms` 处理；如果实施时路径不存在，先停止并记录阻塞，不猜路径。
 - Face API 侧保存联动验收模板，WMS 侧保存终端 runbook。
 - 单次问题必须归为三类之一：算法底座、终端采集、业务流程。

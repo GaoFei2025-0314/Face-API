@@ -8,6 +8,8 @@
 
 **输入**：V2.3 已完成 `face_api` 固定摄像头现场验收；下一步需要把 `face_api` 与 Electron WMS 的摄像头采集、终端登录、现场日志和问题归因串成可复用联动验收闭环。
 
+**当前 WMS 基线**：WMS 原有链路是摄像头抓拍后走 WMS 内置人脸识别算法，识别成功后直接登录；没有活体检测，也尚未接入 `face_api` REST API。
+
 ## Clarifications
 
 ### Session 2026-06-18
@@ -16,10 +18,11 @@
 - Q: V2.4 是否修改 WMS 业务逻辑？ → A: 默认不改业务逻辑，先新增终端侧 runbook 和验收流程。
 - Q: 是否保存现场原图或视频？ → A: 不保存。只记录结果、配置、错误码、风险等级、相似度、耗时、audit 和日志证据。
 - Q: WMS 仓库路径？ → A: 默认使用 `H:\AI_test\electron-wms\electron-wms`；实施前必须显式检查路径和 git 状态。
+- Q: WMS 当前是否已经接入 `face_api` 或已有活体检测？ → A: 没有。WMS 当前是内置算法直接人脸识别登录；V2.4 先做现有 WMS 链路与 `face_api` 独立能力的对照验收。
 
 ## 范围边界
 
-V2.4 只建立联动验收基线：规格、计划、任务、Face API 验收模板、WMS 终端 runbook、文档索引和执行检查。不新增 `face_api` API，不改变算法策略，不改变 WMS 登录业务逻辑。
+V2.4 只建立联动验收基线：规格、计划、任务、Face API 验收模板、WMS 终端 runbook、文档索引和执行检查。不新增 `face_api` API，不改变算法策略，不改变 WMS 登录业务逻辑，不把 WMS 改造成调用 `face_api` 的模式。
 
 ## 用户场景与测试
 
