@@ -96,12 +96,14 @@ Do not create `FaceEngine()` inside request handlers; it loads a large InsightFa
 
 Current route groups:
 
-- System: `GET /`, `GET /health`
-- Detection: `POST /detect`, `POST /detect/base64`
+- System/config: `GET /`, `GET /health`, `GET /system/status`, `GET /config/effective`, `GET /admin.html`, `GET /admin/overview`, `GET /admin/maintenance`, `POST /admin/maintenance`
+- Policy/performance helpers: `GET /policy/tuning-summary`, `GET /search/benchmark-summary`, `GET /search/index-status`, `GET /performance/scale-plan`
+- Detection/extraction: `POST /detect`, `POST /detect/base64`, `POST /extract/base64`
 - Comparison: `POST /compare`
-- Face database: `POST /faces/register`, `GET /faces`, `DELETE /faces/{face_id}`
+- Face database: `POST /faces/register`, `GET /faces`, `GET /faces/by-user/{user_id}`, `DELETE /faces/{face_id}`, `POST /admin/faces/{face_id}/delete`
 - Search: `POST /search`
-- Auth: `POST /auth/face-login`
+- Auth/liveness/audit: `POST /liveness/challenges`, `POST /liveness/challenges/submit`, `POST /auth/face-login`, `GET /audit/login/recent`, `GET /audit/login/summary`
+- Backup/restore: `POST /admin/backup`, `POST /admin/restore`
 
 Image inputs are OpenCV BGR arrays after decoding. Base64 inputs support strings with or without a `data:image/...;base64,` prefix.
 
@@ -146,9 +148,18 @@ When API behavior, request/response models, environment variables, setup, or fro
 - `README.md` for setup/run/operator guidance.
 - `docs/04_usage/01_api_integration.md` for frontend contract changes.
 - `HOW_TO_DELIVER.md` for deployment/hand-off changes when applicable.
+- `architecture.html` for visual architecture, role views, flow diagrams, and architecture walkthrough changes.
+
+When module boundaries, route groups, startup scripts, runtime configuration, data storage, or documentation structure change, check whether `architecture.html` needs to be updated.
 
 ## Adding or changing endpoints
 
 For new endpoints, follow the existing `main.py` pattern: define Pydantic request/response models near the other schemas, add a route with a Chinese Swagger summary/docstring, include `dependencies=[Depends(verify_api_key)]` unless it is intentionally public, decode images through existing helpers, call the module-level `engine`, and return `elapsed_ms` for compute-heavy work.
 
 If an endpoint accepts images, preserve both upload and Base64 support when it is part of the public API contract.
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan:
+`specs/026-general-integration-service-baseline/plan.md`
+<!-- SPECKIT END -->

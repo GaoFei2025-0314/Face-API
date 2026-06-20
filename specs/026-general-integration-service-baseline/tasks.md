@@ -14,7 +14,7 @@
 
 - [X] T004 [P] 确认 `docs/04_usage/06_general_integration_contract.md` 尚未存在或已准备更新
 - [X] T005 [P] 确认 `README.md`、`docs/01_document_index.md`、`specs/README.md`、`docs/02_product/02_quarterly_plan.md` 都需要同步 V2.5 入口
-- [X] T006 [P] 确认 `.specify/feature.json` 和 `AGENTS.md` 当前计划指针需要指向 `026-general-integration-service-baseline`
+- [X] T006 [P] 确认 `.specify/feature.json`、`AGENTS.md` 和 `CLAUDE.md` 当前计划指针需要指向 `026-general-integration-service-baseline`
 
 ## Phase 3: User Story 1 - 新项目负责人能判断接入模式 (P1)
 
@@ -66,7 +66,7 @@
 - [X] T020 [US5] 更新 `docs/01_document_index.md`，新增通用接入契约阅读入口
 - [X] T021 [US5] 更新 `docs/02_product/02_quarterly_plan.md`，新增 V2.5 当前计划、边界和推荐 `/goal`
 - [X] T022 [US5] 更新 `.specify/feature.json`，指向 `specs/026-general-integration-service-baseline`
-- [X] T023 [US5] 更新 `AGENTS.md` 的 SPECKIT 当前计划指针，指向 `specs/026-general-integration-service-baseline/plan.md`
+- [X] T023 [US5] 更新 `AGENTS.md` 和 `CLAUDE.md` 的 SPECKIT 当前计划指针，指向 `specs/026-general-integration-service-baseline/plan.md`
 
 ## Phase 8: Verification
 
@@ -81,9 +81,9 @@
 Face API 仓库只提交 Face API 侧文档和 spec-kit 文件：
 
 ```powershell
-git -C 'H:\AI_test\face_api' status --short
-git -C 'H:\AI_test\face_api' add -- 'specs/ROADMAP-v2.5.md' 'specs/README.md' 'specs/026-general-integration-service-baseline' 'docs/superpowers/specs/2026-06-19-v2.5-general-integration-service-baseline-design.md' 'docs/04_usage/06_general_integration_contract.md' 'docs/90_archive/04_acceptance/09_v2.5_acceptance_record.md' 'docs/01_document_index.md' 'docs/02_product/02_quarterly_plan.md' 'README.md' '.specify/feature.json' 'AGENTS.md'
-git -C 'H:\AI_test\face_api' commit -m "docs: plan v2.5 general integration service baseline"
+git status --short
+git add -- 'specs/ROADMAP-v2.5.md' 'specs/README.md' 'specs/026-general-integration-service-baseline' 'docs/superpowers/specs/2026-06-19-v2.5-general-integration-service-baseline-design.md' 'docs/04_usage/06_general_integration_contract.md' 'docs/90_archive/04_acceptance/09_v2.5_acceptance_record.md' 'docs/01_document_index.md' 'docs/02_product/02_quarterly_plan.md' 'README.md' '.specify/feature.json' 'AGENTS.md' 'CLAUDE.md'
+git commit -m "docs: complete v2.5 general integration service baseline"
 ```
 
 禁止使用 `git add .`。

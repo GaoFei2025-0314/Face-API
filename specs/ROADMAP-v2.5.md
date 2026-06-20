@@ -12,15 +12,15 @@ V2.5 的目标是把 `face_api` 从“某个项目可用的人脸识别服务”
 
 > V2.5 = 通用接入契约与服务化基线。
 
-## 2. 子版本范围
+## 2. 交付范围
 
-| 子版本 | Spec | 主题 | 目标 |
+| 范围 | Spec | 主题 | 目标 |
 |---|---|---|---|
-| V2.5.1 | `specs/026-general-integration-service-baseline` | 通用服务定位 | 明确 `face_api` 做什么、不做什么，以及接入方职责边界 |
-| V2.5.2 | `specs/026-general-integration-service-baseline` | 三类接入模式 | 固化业务后端代理、受控终端直连、本地运维验收三种模式 |
-| V2.5.3 | `specs/026-general-integration-service-baseline` | 接口与错误契约 | 梳理核心 API、鉴权、错误码、中风险重试、audit 和 timeout 规则 |
-| V2.5.4 | `specs/026-general-integration-service-baseline` | 服务化运行基线 | 梳理 Windows 启停、监控、CPU/GPU、备份恢复和现场排障入口 |
-| V2.5.5 | `specs/026-general-integration-service-baseline` | 文档索引同步 | 更新 README、文档入口、季度计划、specs 索引和 agent 当前计划指针 |
+| 服务定位 | `specs/026-general-integration-service-baseline` | 通用服务定位 | 明确 `face_api` 做什么、不做什么，以及接入方职责边界 |
+| 接入模式 | `specs/026-general-integration-service-baseline` | 三类接入模式 | 固化业务后端代理、受控终端直连、本地运维验收三种模式 |
+| 契约规则 | `specs/026-general-integration-service-baseline` | 接口与错误契约 | 梳理核心 API、鉴权、错误码、中风险重试、audit 和 timeout 规则 |
+| 运行基线 | `specs/026-general-integration-service-baseline` | 服务化运行基线 | 梳理 Windows 启停、监控、CPU/GPU、备份恢复和现场排障入口 |
+| 文档同步 | `specs/026-general-integration-service-baseline` | 文档索引同步 | 更新 README、文档入口、季度计划、specs 索引和 agent 当前计划指针 |
 
 ## 3. 已确认决策
 

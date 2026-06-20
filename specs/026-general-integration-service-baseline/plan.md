@@ -90,6 +90,7 @@ docs/04_usage/05_spring_boot_integration_notes.md
 docs/03_deployment/01_runbook.md
 architecture.html
 AGENTS.md
+CLAUDE.md
 .specify/feature.json
 ```
 
@@ -106,21 +107,26 @@ AGENTS.md
 1. 建立 V2.5 roadmap 和 spec-kit 目录。
 2. 新增通用接入契约文档。
 3. 更新 README、文档入口、季度计划和 specs 索引。
-4. 更新 `.specify/feature.json` 和 `AGENTS.md` 当前计划指针。
+4. 更新 `.specify/feature.json`、`AGENTS.md` 和 `CLAUDE.md` 当前计划指针。
 5. 执行静态验证和提交范围检查。
 
 ## Verification Plan
 
 ```powershell
 git status --short
-Test-Path 'H:\AI_test\face_api\specs\ROADMAP-v2.5.md'
-Test-Path 'H:\AI_test\face_api\specs\026-general-integration-service-baseline\spec.md'
-Test-Path 'H:\AI_test\face_api\specs\026-general-integration-service-baseline\plan.md'
-Test-Path 'H:\AI_test\face_api\specs\026-general-integration-service-baseline\tasks.md'
-Test-Path 'H:\AI_test\face_api\specs\026-general-integration-service-baseline\quickstart.md'
-Test-Path 'H:\AI_test\face_api\docs\superpowers\specs\2026-06-19-v2.5-general-integration-service-baseline-design.md'
-Test-Path 'H:\AI_test\face_api\docs\04_usage\06_general_integration_contract.md'
-Test-Path 'H:\AI_test\face_api\docs\90_archive\04_acceptance\09_v2.5_acceptance_record.md'
+$repoRoot = (Resolve-Path ".").Path
+$requiredPaths = @(
+  'specs\ROADMAP-v2.5.md',
+  'specs\026-general-integration-service-baseline\spec.md',
+  'specs\026-general-integration-service-baseline\plan.md',
+  'specs\026-general-integration-service-baseline\tasks.md',
+  'specs\026-general-integration-service-baseline\quickstart.md',
+  'docs\superpowers\specs\2026-06-19-v2.5-general-integration-service-baseline-design.md',
+  'docs\04_usage\06_general_integration_contract.md',
+  'docs\90_archive\04_acceptance\09_v2.5_acceptance_record.md'
+)
+$missingRequiredPaths = $requiredPaths | Where-Object { -not (Test-Path (Join-Path $repoRoot $_)) }
+if ($missingRequiredPaths) { throw "Missing required path: $($missingRequiredPaths -join ', ')" }
 
 $scanTerms = @(
   ('TB' + 'D')
@@ -129,22 +135,22 @@ $scanTerms = @(
   ('占' + '位')
 )
 $scanPaths = @(
-  'H:\AI_test\face_api\specs\ROADMAP-v2.5.md',
-  'H:\AI_test\face_api\specs\026-general-integration-service-baseline\spec.md',
-  'H:\AI_test\face_api\specs\026-general-integration-service-baseline\plan.md',
-  'H:\AI_test\face_api\specs\026-general-integration-service-baseline\tasks.md',
-  'H:\AI_test\face_api\specs\026-general-integration-service-baseline\quickstart.md',
-  'H:\AI_test\face_api\docs\superpowers\specs\2026-06-19-v2.5-general-integration-service-baseline-design.md',
-  'H:\AI_test\face_api\docs\04_usage\06_general_integration_contract.md',
-  'H:\AI_test\face_api\docs\90_archive\04_acceptance\09_v2.5_acceptance_record.md',
-  'H:\AI_test\face_api\docs\01_document_index.md',
-  'H:\AI_test\face_api\docs\02_product\02_quarterly_plan.md',
-  'H:\AI_test\face_api\specs\README.md',
-  'H:\AI_test\face_api\README.md'
+  'specs\ROADMAP-v2.5.md',
+  'specs\026-general-integration-service-baseline\spec.md',
+  'specs\026-general-integration-service-baseline\plan.md',
+  'specs\026-general-integration-service-baseline\tasks.md',
+  'specs\026-general-integration-service-baseline\quickstart.md',
+  'docs\superpowers\specs\2026-06-19-v2.5-general-integration-service-baseline-design.md',
+  'docs\04_usage\06_general_integration_contract.md',
+  'docs\90_archive\04_acceptance\09_v2.5_acceptance_record.md',
+  'docs\01_document_index.md',
+  'docs\02_product\02_quarterly_plan.md',
+  'specs\README.md',
+  'README.md'
 )
-$missingScanPaths = $scanPaths | Where-Object { -not (Test-Path $_) }
+$missingScanPaths = $scanPaths | Where-Object { -not (Test-Path (Join-Path $repoRoot $_)) }
 if ($missingScanPaths) { throw "Missing scan path: $($missingScanPaths -join ', ')" }
-Select-String -LiteralPath $scanPaths -Pattern $scanTerms -SimpleMatch
+Select-String -LiteralPath ($scanPaths | ForEach-Object { Join-Path $repoRoot $_ }) -Pattern $scanTerms -SimpleMatch
 
 git diff --check
 ```
@@ -152,8 +158,8 @@ git diff --check
 如果实施过程修改了代码，再运行：
 
 ```powershell
-D:\anaconda3\envs\face_api\python.exe -m unittest discover -s tests -v
-D:\anaconda3\envs\face_api\python.exe -m compileall main.py app_config.py api_errors.py api_schemas.py storage.py business_demo tests scripts
+python -m unittest discover -s tests -v
+python -m compileall main.py app_config.py api_errors.py api_schemas.py storage.py business_demo tests scripts
 ```
 
 ## 风险和缓解
@@ -162,4 +168,4 @@ D:\anaconda3\envs\face_api\python.exe -m compileall main.py app_config.py api_er
 - 风险：文档承诺 SDK 或多租户。缓解：明确列为后续评估，不在 V2.5 实现。
 - 风险：浏览器误持有 API Key。缓解：通用契约和 README 都明确普通 Web 走业务后端代理。
 - 风险：接入方误认为 `face_api` 签发业务 token。缓解：成功流明确由业务系统签发 session/JWT/SSO。
-- 风险：后续 `/goal` 找不到当前计划。缓解：更新 `.specify/feature.json`、AGENTS 指针、specs 索引和季度计划。
+- 风险：后续 `/goal` 找不到当前计划。缓解：更新 `.specify/feature.json`、AGENTS/CLAUDE 指针、specs 索引和季度计划。
