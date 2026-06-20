@@ -128,6 +128,7 @@ $requiredPaths = @(
 $missingRequiredPaths = $requiredPaths | Where-Object { -not (Test-Path (Join-Path $repoRoot $_)) }
 if ($missingRequiredPaths) { throw "Missing required path: $($missingRequiredPaths -join ', ')" }
 
+# Keep scan words split to avoid matching this verification snippet itself.
 $scanTerms = @(
   ('TB' + 'D')
   ('TO' + 'DO')
